@@ -95,14 +95,14 @@
 
         <div class="t-card">
           <h3>✍️ Ensinar algo novo</h3>
-          <p class="sub">Envie um documento OU escreva você mesmo. O assistente passa a usar isso nas respostas imediatamente.</p>
+          <p class="sub">Envie um documento OU escreva você mesmo. Pode ser um texto bem grande (uma instrução inteira, por exemplo) — o assistente guarda tudo e, em cada pergunta, usa só os trechos que interessam.</p>
 
           <!-- Envio de documento -->
           <div class="upload-zone">
             <span class="uz-icon">📎</span>
             <span class="uz-text">
               <strong>Enviar um documento</strong>
-              <small>PDF, Word (.docx), TXT ou Markdown — eu extraio o texto pra você revisar.</small>
+              <small>PDF, Word (.docx), TXT ou Markdown — pode ser grande. Eu extraio o texto pra você revisar.</small>
             </span>
             <input id="file" type="file" accept=".pdf,.txt,.md,.docx" hidden />
             <button type="button" class="t-btn soft" id="pick-file">Escolher arquivo</button>
@@ -112,10 +112,10 @@
           <div class="or-divider">— ou escreva —</div>
 
           <label class="t-label" for="t-title">Título (assunto)</label>
-          <input id="t-title" class="t-input" type="text" placeholder="Ex.: Horário especial de atendimento no fim de ano" />
+          <input id="t-title" class="t-input" type="text" placeholder="Ex.: Instrução Normativa 02/2026 — novas regras de vistoria" />
           <label class="t-label" for="t-content">Conteúdo</label>
-          <textarea id="t-content" class="t-textarea" placeholder="Ex.: Entre 20/12 e 02/01 o atendimento presencial funciona só das 9h às 12h. Os serviços online continuam normais."></textarea>
-          <div class="t-hint"><span id="char-count">0</span>/15000 caracteres</div>
+          <textarea id="t-content" class="t-textarea" placeholder="Cole aqui o texto (pode ser longo) ou envie um documento acima."></textarea>
+          <div class="t-hint"><span id="char-count">0</span>/120000 caracteres</div>
           <div id="add-msg"></div>
           <div class="t-row" style="margin-top:12px">
             <button id="save" class="t-btn primary">Salvar conhecimento</button>
@@ -127,7 +127,7 @@
           <h3>🧪 Testar o assistente</h3>
           <p class="sub">Faça uma pergunta para conferir se o que você ensinou já está sendo usado.</p>
           <div class="test-q">
-            <input id="test-input" class="t-input" type="text" placeholder="Ex.: Qual o horário de atendimento no fim de ano?" />
+            <input id="test-input" class="t-input" type="text" placeholder="Ex.: Quais as novas regras de vistoria?" />
             <button id="test-send" class="t-btn soft">Perguntar</button>
           </div>
           <div id="test-answer"></div>

@@ -4,9 +4,9 @@
 // Roda local (server.js chama app.listen) e no Vercel (export default = função).
 // A chave da Anthropic vive só no servidor. O navegador fala apenas com /api/*.
 //
-// Inclui a "Sala do Tutor": conhecimento ensinado por uma pessoa autorizada
-// (texto digitado OU documento enviado), guardado de forma permanente (store.js)
-// e injetado no assistente em tempo real.
+// Sala do Tutor: conhecimento ensinado por senha (texto ou documento). Documentos
+// grandes são aceitos; na conversa, só os trechos relevantes à pergunta são
+// enviados ao assistente (store.js → buildTutorContext).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import "dotenv/config";
@@ -15,7 +15,7 @@ import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { FORMS, FORM_INDEX } from "../forms-data.js";
-import { storageMode, listEntries, addEntry, updateEntry, deleteEntry, knowledgeText } from "../store.js";
+import { storageMode, listEntries, addEntry, updateEntry, deleteEntry, buildTutorContext } from "../store.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
@@ -27,7 +27,7 @@ const TUTOR_PASSWORD = process.env.TUTOR_PASSWORD || "";
 
 const MAX_MESSAGES = 24;
 const MAX_CHARS_PER_MSG = 4000;
-const MAX_ENTRY_CHARS = 15000;
+const MAX_ENTRY_CHARS = 120000; // documentos bem maiores são aceitos
 const RATE_WINDOW_MS = 60_000;
 const RATE_MAX = 20;
 
@@ -96,13 +96,13 @@ ${LISTA_FORMS}
 BASE DE CONHECIMENTO:
 ${BASE_CONHECIMENTO}`;
 
-// Junta a base estática com o conhecimento ensinado pelo Tutor (buscado ao vivo).
+// Junta a base estática com o conhecimento (trechos) do Tutor relevantes à pergunta.
 function buildSystem(tutorTexto) {
   if (tutorTexto && tutorTexto.trim()) {
     return `${SYSTEM_PROMPT}
 
-===== CONHECIMENTO ADICIONADO PELO TUTOR =====
-(Use com a mesma confiança da base oficial. Se contradisser a base oficial, prefira o que o Tutor ensinou, pois é mais recente.)
+===== CONHECIMENTO ADICIONADO PELO TUTOR (trechos relevantes) =====
+(Use com a mesma confiança da base oficial. Se contradisser a base oficial, prefira o que o Tutor ensinou, pois é mais recente. São apenas os trechos que parecem ligados à pergunta atual.)
 
 ${tutorTexto}`;
   }
@@ -111,7 +111,7 @@ ${tutorTexto}`;
 
 // ── App ─────────────────────────────────────────────────────────────────────
 const app = express();
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({ limit: "2mb" }));
 app.use(express.static(join(ROOT, "public")));
 
 const hits = new Map();
@@ -165,9 +165,21 @@ app.post("/api/tutor/auth", (req, res) => {
   return res.status(401).json({ error: "Senha incorreta." });
 });
 
+// Lista com PRÉVIA (não manda o conteúdo inteiro dos documentos grandes)
 app.get("/api/tutor/entries", tutorAuth, async (_req, res) => {
-  try { res.json({ entries: await listEntries(), storage: storageMode() }); }
-  catch (err) { persistError(res, err); }
+  try {
+    const all = await listEntries();
+    const entries = all.map((e) => ({
+      id: e.id,
+      title: e.title,
+      source: e.source || "texto",
+      chars: (e.content || "").length,
+      preview: (e.content || "").slice(0, 600),
+      createdAt: e.createdAt,
+      updatedAt: e.updatedAt,
+    }));
+    res.json({ entries, storage: storageMode() });
+  } catch (err) { persistError(res, err); }
 });
 
 app.post("/api/tutor/entries", tutorAuth, async (req, res) => {
@@ -176,7 +188,7 @@ app.post("/api/tutor/entries", tutorAuth, async (req, res) => {
     return res.status(400).json({ error: "Informe o título e o conteúdo." });
   }
   if (String(content).length > MAX_ENTRY_CHARS) {
-    return res.status(400).json({ error: `Conteúdo muito longo (máximo de ${MAX_ENTRY_CHARS} caracteres). Resuma ou divida em partes.` });
+    return res.status(400).json({ error: `Conteúdo muito longo (máximo de ${MAX_ENTRY_CHARS.toLocaleString("pt-BR")} caracteres).` });
   }
   try { res.json({ entry: await addEntry({ title, content, source }) }); }
   catch (err) { persistError(res, err); }
@@ -185,7 +197,7 @@ app.post("/api/tutor/entries", tutorAuth, async (req, res) => {
 app.put("/api/tutor/entries/:id", tutorAuth, async (req, res) => {
   const { title, content } = req.body || {};
   if (content != null && String(content).length > MAX_ENTRY_CHARS) {
-    return res.status(400).json({ error: `Conteúdo muito longo (máximo de ${MAX_ENTRY_CHARS} caracteres).` });
+    return res.status(400).json({ error: `Conteúdo muito longo (máximo de ${MAX_ENTRY_CHARS.toLocaleString("pt-BR")} caracteres).` });
   }
   try {
     const e = await updateEntry(req.params.id, { title, content });
@@ -226,9 +238,10 @@ app.post("/api/chat", async (req, res) => {
     return res.status(400).json({ error: "A última mensagem deve ser do usuário." });
   }
 
-  // Conhecimento do tutor, buscado ao vivo (para refletir o que foi ensinado agora)
+  // Conhecimento do tutor: só os TRECHOS relevantes à última pergunta.
+  const ultimaPergunta = messages[messages.length - 1].content;
   let tutorTexto = "";
-  try { tutorTexto = await knowledgeText(); } catch (e) { /* segue sem o tutor se falhar */ }
+  try { tutorTexto = await buildTutorContext(ultimaPergunta); } catch (e) { /* segue sem o tutor se falhar */ }
 
   try {
     const resposta = await fetch("https://api.anthropic.com/v1/messages", {

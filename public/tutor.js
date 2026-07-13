@@ -15,7 +15,8 @@ const el = {
   file: $("file"), pickFile: $("pick-file"), upStatus: $("up-status"),
 };
 
-const MAX_CHARS = 15000;
+const MAX_CHARS = 120000;      // documentos bem maiores são aceitos
+const MAX_PDF_PAGES = 200;     // teto de páginas lidas de um PDF
 
 function escapeHtml(s) {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -32,6 +33,7 @@ function fmtDate(ts) {
   const d = new Date(ts);
   return d.toLocaleDateString("pt-BR") + " " + d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
+function fmtNum(n) { return Number(n || 0).toLocaleString("pt-BR"); }
 
 async function api(path, opts = {}) {
   const headers = Object.assign({ "Content-Type": "application/json" }, opts.headers || {});
@@ -85,7 +87,7 @@ el.file.onchange = async () => {
   const file = el.file.files && el.file.files[0];
   if (!file) return;
   const nome = file.name;
-  setUp(`Extraindo o texto de "${nome}"…`, "busy");
+  setUp(`Extraindo o texto de "${nome}"… (documentos grandes podem levar alguns segundos)`, "busy");
   el.pickFile.disabled = true;
   try {
     let texto = await extractText(file);
@@ -94,19 +96,19 @@ el.file.onchange = async () => {
     let aviso = "";
     if (texto.length > MAX_CHARS) {
       texto = texto.slice(0, MAX_CHARS);
-      aviso = " (o documento é grande; mantive o começo — revise e corte o que não for essencial)";
+      aviso = ` (o documento é enorme; mantive os primeiros ${fmtNum(MAX_CHARS)} caracteres)`;
     }
     el.title.value = tituloDoArquivo(nome);
     el.content.value = texto;
-    el.charCount.textContent = texto.length;
+    el.charCount.textContent = fmtNum(texto.length);
     pendingSource = "documento";
-    setUp(`Pronto! Texto de "${nome}" carregado abaixo${aviso}. Revise e clique em Salvar.`, "");
+    setUp(`Pronto! Texto de "${nome}" carregado (${fmtNum(texto.length)} caracteres)${aviso}. Revise e clique em Salvar.`, "");
     el.content.scrollIntoView({ behavior: "smooth", block: "center" });
   } catch (e) {
     setUp(e.message || "Não consegui ler este arquivo. Tente PDF, Word (.docx), TXT ou cole o texto manualmente.", "err");
   } finally {
     el.pickFile.disabled = false;
-    el.file.value = ""; // permite reenviar o mesmo arquivo
+    el.file.value = "";
   }
 };
 
@@ -137,12 +139,13 @@ async function extractText(file) {
     const buf = await file.arrayBuffer();
     const pdf = await pdfjs.getDocument({ data: buf }).promise;
     let out = "";
-    const limite = Math.min(pdf.numPages, 60);
+    const limite = Math.min(pdf.numPages, MAX_PDF_PAGES);
     for (let i = 1; i <= limite; i++) {
       const page = await pdf.getPage(i);
       const tc = await page.getTextContent();
       out += tc.items.map((it) => it.str).join(" ") + "\n\n";
-      if (out.length > MAX_CHARS + 2000) break;
+      if (out.length > MAX_CHARS + 4000) break;
+      if (i % 10 === 0) setUp(`Extraindo… página ${i} de ${limite}`, "busy");
     }
     return out;
   }
@@ -157,7 +160,7 @@ async function extractText(file) {
 }
 
 /* ── Salvar / limpar ── */
-el.content.addEventListener("input", () => { el.charCount.textContent = el.content.value.length; });
+el.content.addEventListener("input", () => { el.charCount.textContent = fmtNum(el.content.value.length); });
 el.save.onclick = salvar;
 el.clear.onclick = () => {
   el.title.value = ""; el.content.value = ""; el.charCount.textContent = "0";
@@ -168,7 +171,7 @@ async function salvar() {
   const title = el.title.value.trim();
   const content = el.content.value.trim();
   if (!title || !content) { msg(el.addMsg, "Preencha o título e o conteúdo (ou envie um documento).", "err"); return; }
-  if (content.length > MAX_CHARS) { msg(el.addMsg, `O conteúdo passou de ${MAX_CHARS} caracteres. Corte um pouco antes de salvar.`, "err"); return; }
+  if (content.length > MAX_CHARS) { msg(el.addMsg, `O conteúdo passou de ${fmtNum(MAX_CHARS)} caracteres. Corte um pouco antes de salvar.`, "err"); return; }
   el.save.disabled = true;
   const { ok, data } = await api("/api/tutor/entries", { method: "POST", body: JSON.stringify({ title, content, source: pendingSource }) });
   el.save.disabled = false;
@@ -188,16 +191,22 @@ async function loadEntries() {
   el.listCount.textContent = entries.length
     ? `${entries.length} ${entries.length === 1 ? "item ensinado" : "itens ensinados"}.`
     : "Você ainda não ensinou nada. Comece pelo campo acima.";
-  el.list.innerHTML = entries.map((e) => `
-    <div class="entry" data-id="${e.id}">
-      <h4>${escapeHtml(e.title)} ${e.source === "documento" ? '<span class="tag-doc">📄 documento</span>' : ""}</h4>
-      <div class="body">${escapeHtml(e.content)}</div>
-      <div class="meta">
-        <span>Atualizado em ${fmtDate(e.updatedAt)}</span>
-        <span class="spacer"></span>
-        <button class="t-btn danger" data-del="${e.id}">Remover</button>
-      </div>
-    </div>`).join("");
+  el.list.innerHTML = entries.map((e) => {
+    const truncado = (e.chars || 0) > (e.preview || "").length;
+    const corpo = escapeHtml(e.preview || "") + (truncado ? "…" : "");
+    const tag = e.source === "documento" ? '<span class="tag-doc">📄 documento</span>' : "";
+    const grande = (e.chars || 0) > 2000 ? `<span class="tag-doc" style="background:#EEE6D8;color:#7A5A20">${fmtNum(e.chars)} caracteres</span>` : "";
+    return `
+      <div class="entry" data-id="${e.id}">
+        <h4>${escapeHtml(e.title)} ${tag} ${grande}</h4>
+        <div class="body">${corpo}</div>
+        <div class="meta">
+          <span>Atualizado em ${fmtDate(e.updatedAt)}</span>
+          <span class="spacer"></span>
+          <button class="t-btn danger" data-del="${e.id}">Remover</button>
+        </div>
+      </div>`;
+  }).join("");
   el.list.querySelectorAll("[data-del]").forEach((b) => { b.onclick = () => remover(b.getAttribute("data-del")); });
 }
 
@@ -224,7 +233,10 @@ async function testar() {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) { el.testAnswer.innerHTML = `<div class="t-msg err">${escapeHtml(data.error || "Erro ao consultar.")}</div>`; }
-    else { el.testAnswer.innerHTML = `<div class="test-answer">${escapeHtml(data.reply || "")}</div>`; }
+    else {
+      const limpo = String(data.reply || "").replace(/\[\[BREAK\]\]/g, "\n\n").replace(/\[\[FORM:[a-z-]+\]\]/gi, "").replace(/\n{3,}/g, "\n\n").trim();
+      el.testAnswer.innerHTML = `<div class="test-answer">${escapeHtml(limpo)}</div>`;
+    }
   } catch (e) {
     el.testAnswer.innerHTML = `<div class="t-msg err">Não foi possível conectar ao servidor.</div>`;
   } finally { el.testSend.disabled = false; }
