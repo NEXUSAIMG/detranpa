@@ -59,7 +59,7 @@ html, body {
   display: inline-flex; align-items: center; gap: 6px;
   border: 0; cursor: pointer;
   background: rgba(255,255,255,.08); color: #DCEAE4;
-  padding: 8px 11px; border-radius: 9px; font-size: 12.5px;
+  padding: 8px 11px; border-radius: 9px; font-size: 12.5px; text-decoration: none;
 }
 .ghost-btn:hover { background: rgba(255,255,255,.16); }
 .hidden { display: none !important; }
@@ -82,7 +82,6 @@ html, body {
 .suggestion .area { color: var(--moss); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; font-weight: 600; }
 .suggestion .q { font-size: 14px; margin-top: 5px; color: #23332D; }
 
-/* CTA de documentos na tela inicial */
 .docs-cta {
   width: 100%; margin-top: 14px; cursor: pointer; text-align: left;
   display: flex; align-items: center; gap: 14px;
@@ -119,7 +118,6 @@ html, body {
 .bubble.bot .li::before { content: "•"; color: var(--moss); }
 .bubble.bot .blank { height: 8px; }
 
-/* Botão de documento embutido na resposta do assistente */
 .form-suggest {
   margin-top: 10px; display: inline-flex; align-items: center; gap: 8px;
   cursor: pointer; border: 1px solid var(--moss-pale); background: #EEF6F2;
@@ -178,7 +176,6 @@ html, body {
 .icon-btn:hover { background: rgba(255,255,255,.2); }
 .overlay-body { flex: 1; overflow-y: auto; padding: 18px; }
 
-/* Lista de documentos */
 .doc-intro { color: var(--ink-soft); font-size: 14px; margin: 0 0 14px; }
 .doc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 @media (max-width: 640px) { .doc-grid { grid-template-columns: 1fr; } }
@@ -193,7 +190,6 @@ html, body {
 .doc-card p { margin: 5px 0 0; font-size: 12.5px; color: var(--ink-soft); line-height: 1.4; }
 .doc-card .doc-sub { margin-top: 8px; font-size: 10.5px; letter-spacing: .04em; color: var(--moss); text-transform: uppercase; font-weight: 600; }
 
-/* Tela do documento: preenchimento + pré-visualização */
 .doc-screen { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 @media (max-width: 760px) { .doc-screen { grid-template-columns: 1fr; } }
 
@@ -220,7 +216,6 @@ html, body {
 }
 .radio-chip.on { background: var(--moss); color: #fff; border-color: var(--moss); }
 
-/* Pré-visualização (parece um documento oficial) */
 .doc-preview-wrap { position: sticky; top: 0; align-self: start; }
 .preview-actions { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
 .btn {
@@ -232,18 +227,40 @@ html, body {
 .btn-soft { background: var(--chip); color: #2A3A33; }
 .btn-soft:hover { background: #E6DFD2; }
 
+/* ───────── Documento (layout oficial DETRAN-PA) ───────── */
 #doc-paper {
-  background: #fff; border: 1px solid var(--paper-edge); border-radius: 8px;
+  position: relative;
+  background: #fff; border: 1px solid #C9C4B8; border-radius: 8px;
   padding: 26px 28px; font-size: 12.5px; line-height: 1.6; color: #14211C;
   max-height: 62dvh; overflow-y: auto;
 }
 
-/* Estilos do documento (usados na tela E na impressão, via #print-holder) */
-.dp-gov { text-align: center; font-size: 10.5px; letter-spacing: .04em; color: #3A4A43; text-transform: uppercase; line-height: 1.5; }
-.dp-title { text-align: center; font-weight: 700; font-size: 14px; margin: 12px 0 2px; }
+/* marca d'água ao fundo */
+.dp-wm {
+  position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  opacity: .06;
+}
+.dp-wm .detran-mark { width: 52%; max-width: 260px; height: auto; }
+.dp-wm span { font-weight: 800; letter-spacing: .18em; font-size: 30px; color: #0E6B57; margin-top: 8px; }
+
+.dp-content { position: relative; z-index: 1; }
+
+/* cabeçalho com logo */
+.dp-head { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.dp-logo .detran-mark { width: 50px; height: auto; display: block; }
+.dp-gov { text-align: center; font-size: 10.5px; letter-spacing: .03em; color: #223029; text-transform: uppercase; line-height: 1.5; font-weight: 700; }
+.dp-title { text-align: center; font-weight: 700; font-size: 14px; margin: 12px 0 3px; text-decoration: underline; text-transform: uppercase; }
 .dp-sub { text-align: center; font-style: italic; font-size: 11px; color: var(--ink-soft); margin-bottom: 14px; }
 .dp-intro { text-align: justify; margin-bottom: 14px; }
-.dp-section { margin: 14px 0 4px; font-weight: 700; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--moss-deep); border-bottom: 1px solid #E7E2D7; padding-bottom: 3px; }
+
+/* barra cinza das seções (igual ao documento oficial) */
+.dp-section {
+  background: #E7E7E7; border: 1px solid #CFCFCF;
+  text-align: center; font-weight: 700; font-size: 11px;
+  letter-spacing: .04em; text-transform: uppercase; color: #2A2A2A;
+  padding: 4px 8px; margin: 14px 0 8px;
+}
 .dp-line { margin: 5px 0; }
 .dp-line .lbl { color: #3A4A43; }
 .dp-val { font-weight: 600; }
@@ -258,30 +275,33 @@ html, body {
 .dp-notes ul { margin: 6px 0 0; padding-left: 18px; }
 .dp-notes li { font-size: 11px; color: #4A5A53; margin-bottom: 4px; }
 
-/* Bloco usado só para impressão (fica oculto na tela) */
 #print-holder { display: none; }
 
-/* Acessibilidade: foco visível */
 button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visible {
   outline: 2px solid var(--moss); outline-offset: 2px;
 }
 @media (prefers-reduced-motion: reduce) { .dot { animation: none; } * { scroll-behavior: auto !important; } }
 
-/* ───────── Impressão: mostra só o #print-holder ───────── */
+/* ───────── Impressão: mostra só o #print-holder, com logo e marca d'água ───────── */
 @media print {
   body.is-printing > *:not(#print-holder) { display: none !important; }
   body.is-printing #print-holder {
-    display: block !important;
+    display: block !important; position: relative;
     padding: 0; color: #000; font-size: 12pt; line-height: 1.6;
     font-family: Georgia, "Times New Roman", serif;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
-  #print-holder .dp-gov { font-size: 9pt; color: #000; }
+  #print-holder .dp-wm { position: fixed; inset: 0; opacity: .07; }
+  #print-holder .dp-wm .detran-mark { width: 46%; max-width: 320px; }
+  #print-holder .dp-wm span { font-size: 40px; }
+  #print-holder .dp-head .detran-mark { width: 58px; }
+  #print-holder .dp-gov { font-size: 9.5pt; color: #000; }
   #print-holder .dp-title { font-size: 13pt; }
   #print-holder .dp-sub { font-size: 10pt; color: #333; }
-  #print-holder .dp-section { color: #000; border-color: #999; font-size: 10pt; }
+  #print-holder .dp-section { background: #E7E7E7 !important; border-color: #B9B9B9; color: #000; font-size: 10pt; }
   #print-holder .dp-blank { color: #777; }
   #print-holder .dp-sign .sig-line { border-top: 1px solid #000; }
   #print-holder .dp-notes .att { color: #000; }
   #print-holder .dp-notes li { font-size: 9.5pt; color: #222; }
-  @page { margin: 2cm; }
+  @page { margin: 1.6cm; }
 }

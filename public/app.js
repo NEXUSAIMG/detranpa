@@ -12,6 +12,9 @@ const SUGESTOES = [
   { area: "Habilitação", q: "Quem precisa fazer exame toxicológico?" },
 ];
 
+// Emblema do DETRAN-PA recriado em vetor (três anéis: vermelho, verde e amarelo).
+const LOGO_SVG = `<svg class="detran-mark" viewBox="0 0 100 96" xmlns="http://www.w3.org/2000/svg" aria-label="DETRAN-PA"><g fill="none" stroke-width="7"><circle cx="50" cy="28" r="18" stroke="#E11B22"/><circle cx="33" cy="60" r="18" stroke="#3AAA35"/><circle cx="67" cy="60" r="18" stroke="#F6C400"/></g><g><circle cx="50" cy="28" r="3.6" fill="#E11B22"/><circle cx="33" cy="60" r="3.6" fill="#3AAA35"/><circle cx="67" cy="60" r="3.6" fill="#F6C400"/></g></svg>`;
+
 const els = {
   scroll: document.getElementById("scroll"),
   thread: document.getElementById("thread"),
@@ -30,9 +33,11 @@ const els = {
   docsClose: document.getElementById("docs-close"),
 };
 
-const conversa = []; // [{ role, content }]
+const conversa = [];
 let carregando = false;
-let formsCache = null; // lista de formulários {id,title,desc,subtitle}
+let formsCache = null;
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /* ════════════════════════════ CHAT ════════════════════════════ */
 
@@ -70,22 +75,15 @@ function renderRich(text) {
   }).join("");
 }
 
-function addBubble(role, content) {
+function addBubble(role, content, formId) {
   els.empty.classList.add("hidden");
   els.reset.classList.remove("hidden");
-
-  let formId = null;
-  let texto = content;
-  if (role === "assistant") {
-    const m = texto.match(/\[\[FORM:([a-z-]+)\]\]/i);
-    if (m) { formId = m[1].toLowerCase(); texto = texto.replace(m[0], "").trim(); }
-  }
 
   const row = document.createElement("div");
   row.className = `row ${role === "user" ? "user" : "bot"}`;
   const bubble = document.createElement("div");
   bubble.className = `bubble ${role === "user" ? "user" : "bot"}`;
-  bubble.innerHTML = role === "user" ? escapeHtml(content) : renderRich(texto);
+  bubble.innerHTML = role === "user" ? escapeHtml(content) : renderRich(content);
 
   if (formId) {
     const info = (formsCache || []).find((f) => f.id === formId);
@@ -103,15 +101,50 @@ function addBubble(role, content) {
 }
 
 function showTyping() {
+  if (document.getElementById("typing-row")) return;
   const row = document.createElement("div");
   row.className = "row bot"; row.id = "typing-row";
-  row.innerHTML = `<div class="bubble bot"><span class="typing"><span class="dot"></span><span class="dot"></span><span class="dot"></span> Consultando a base do DETRAN-PA…</span></div>`;
+  row.innerHTML = `<div class="bubble bot"><span class="typing"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span></div>`;
   els.thread.appendChild(row); scrollDown();
 }
 function hideTyping() { document.getElementById("typing-row")?.remove(); }
 function showError(msg) { els.error.textContent = msg; els.error.classList.remove("hidden"); }
 function clearError() { els.error.classList.add("hidden"); }
 function scrollDown() { els.scroll.scrollTo({ top: els.scroll.scrollHeight, behavior: "smooth" }); }
+
+function splitReply(text) {
+  let parts;
+  if (text.includes("[[BREAK]]")) {
+    parts = text.split(/\[\[BREAK\]\]/g);
+  } else {
+    const paras = text.split(/\n{2,}/);
+    parts = [];
+    for (const p of paras) {
+      const t = p.trim();
+      if (!t) continue;
+      const isList = /^\s*([-*]|\d+[.)])\s+/.test(t);
+      if (parts.length && (isList || t.length < 40)) parts[parts.length - 1] += "\n\n" + t;
+      else parts.push(t);
+    }
+    if (parts.length > 5) {
+      const head = parts.slice(0, 4);
+      head.push(parts.slice(4).join("\n\n"));
+      parts = head;
+    }
+  }
+  return parts.map((s) => s.trim()).filter(Boolean);
+}
+
+function delayFor(part) { return Math.min(1500, 400 + part.length * 12); }
+
+async function revealParts(parts, formId) {
+  for (let i = 0; i < parts.length; i++) {
+    showTyping();
+    await sleep(i === 0 ? 300 : delayFor(parts[i]));
+    hideTyping();
+    addBubble("assistant", parts[i], i === parts.length - 1 ? formId : null);
+  }
+}
 
 async function enviar(texto) {
   const pergunta = (texto ?? els.input.value).trim();
@@ -132,8 +165,14 @@ async function enviar(texto) {
       showError(data.error || "Não foi possível obter a resposta. Tente novamente.");
       conversa.pop(); els.input.value = pergunta;
     } else {
-      addBubble("assistant", data.reply);
-      conversa.push({ role: "assistant", content: data.reply });
+      let reply = data.reply || "";
+      let formId = null;
+      const m = reply.match(/\[\[FORM:([a-z-]+)\]\]/i);
+      if (m) { formId = m[1].toLowerCase(); reply = reply.replace(m[0], "").trim(); }
+      const limpo = reply.replace(/\[\[BREAK\]\]/g, "\n\n").replace(/\n{3,}/g, "\n\n").trim();
+      conversa.push({ role: "assistant", content: limpo });
+      const parts = splitReply(reply);
+      await revealParts(parts, formId);
     }
   } catch (e) {
     hideTyping();
@@ -276,8 +315,6 @@ function fallbackCopy(txt) {
   document.body.removeChild(ta);
 }
 
-// ── Impressão / salvar PDF (método robusto: clona o documento para um bloco
-//    no topo da página e esconde o resto; ver regra @media print no CSS) ──
 function printDoc(form, values) {
   const { html } = buildDoc(form, values);
   let holder = document.getElementById("print-holder");
@@ -287,16 +324,14 @@ function printDoc(form, values) {
   holder.innerHTML = html;
   document.body.appendChild(holder);
   document.body.classList.add("is-printing");
-
   const cleanup = () => {
     holder.remove();
     document.body.classList.remove("is-printing");
     window.removeEventListener("afterprint", cleanup);
   };
   window.addEventListener("afterprint", cleanup);
-  // dá um instante para o layout aplicar antes de abrir o diálogo
   setTimeout(() => window.print(), 60);
-  setTimeout(cleanup, 4000); // rede de segurança
+  setTimeout(cleanup, 4000);
 }
 
 function fmtDate(v) {
@@ -305,14 +340,21 @@ function fmtDate(v) {
   return m ? `${m[3]}/${m[2]}/${m[1]}` : v;
 }
 
+// Monta o documento no layout oficial do DETRAN-PA (logo no topo + marca d'água).
 function buildDoc(form, values) {
   const blankH = '<span class="dp-blank">__________________</span>';
   const blankT = "__________________";
   const H = []; const T = [];
 
-  H.push(`<div class="dp-gov">Governo do Estado do Pará<br>Departamento de Trânsito do Estado do Pará</div>`);
+  // Marca d'água (ao fundo)
+  H.push(`<div class="dp-wm" aria-hidden="true">${LOGO_SVG}<span>DETRAN-PA</span></div>`);
+  H.push(`<div class="dp-content">`);
+
+  // Cabeçalho oficial: logo + órgão
+  H.push(`<div class="dp-head"><div class="dp-logo">${LOGO_SVG}</div><div class="dp-gov">Governo do Estado do Pará<br>Departamento de Trânsito do Estado do Pará<br>DETRAN-PA</div></div>`);
   T.push("GOVERNO DO ESTADO DO PARÁ");
-  T.push("DEPARTAMENTO DE TRÂNSITO DO ESTADO DO PARÁ\n");
+  T.push("DEPARTAMENTO DE TRÂNSITO DO ESTADO DO PARÁ");
+  T.push("DETRAN-PA\n");
 
   H.push(`<div class="dp-title">${escapeHtml(form.title)}</div>`);
   T.push(form.title.toUpperCase());
@@ -354,6 +396,7 @@ function buildDoc(form, values) {
     form.notes.forEach((n) => T.push(" - " + n));
   }
 
+  H.push(`</div>`); // fecha .dp-content
   return { html: H.join("\n"), text: T.join("\n") };
 }
 
