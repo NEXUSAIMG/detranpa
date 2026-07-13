@@ -1,13 +1,15 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Armazenamento do conhecimento ensinado pelo Tutor + seleção inteligente.
+// Armazenamento do conhecimento do Tutor — escalável para documentos GRANDES.
 //
-// Modos (escolhidos automaticamente):
-//   • "kv"   — Vercel KV / Upstash Redis (REST). Permanente, recomendado p/ produção.
-//   • "file" — arquivo local data/tutor-knowledge.json. Usado no seu PC.
-//   • "none" — Vercel sem KV: leitura ok, gravar bloqueado (fs somente leitura).
+// Cada documento é guardado na sua própria "gaveta" (chave separada), com um
+// índice leve por cima. Assim dá pra ter vários documentos enormes sem reescrever
+// tudo a cada mudança e sem estourar o limite de tamanho por gravação.
 //
-// Documentos grandes: guardados por inteiro, mas na hora da conversa o assistente
-// recebe só os TRECHOS relevantes à pergunta (buildTutorContext), para não pesar.
+// Modos: "kv" (Vercel KV / Upstash Redis, permanente), "file" (local), "none"
+// (Vercel sem KV — só leitura). Migra automaticamente o formato antigo.
+//
+// Na conversa, só os TRECHOS relevantes à pergunta vão ao assistente
+// (buildTutorContext), então o tamanho do documento não pesa no custo por resposta.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
@@ -20,12 +22,15 @@ const FILE = join(DATA_DIR, "tutor-knowledge.json");
 
 const KV_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || "";
 const KV_TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || "";
-const KV_KEY = "detranpa:tutor:knowledge";
 const ON_VERCEL = Boolean(process.env.VERCEL);
 
-// Orçamento de contexto enviado ao assistente por pergunta (em caracteres).
-const CTX_BUDGET = 8000;   // teto total do que vai no prompt
-const SMALL_ENTRY = 1600;  // entradas até esse tamanho vão inteiras
+const IDX_KEY = "detranpa:tutor:index";
+const OLD_KEY = "detranpa:tutor:knowledge"; // formato antigo (array único)
+const cKey = (id) => "detranpa:tutor:c:" + id;
+
+const PREVIEW = 600;       // caracteres guardados no índice para pré-visualização
+const CTX_BUDGET = 8000;   // teto do que vai no prompt por pergunta
+const SMALL_ENTRY = 1600;  // entradas até isso vão inteiras
 const CHUNK_SIZE = 750;    // tamanho de cada trecho de documento grande
 
 export function storageMode() {
@@ -34,102 +39,172 @@ export function storageMode() {
   return "none";
 }
 
-async function kv(command) {
+/* ── acesso ao KV (Upstash REST) ── */
+async function kvCmd(cmd) {
   const res = await fetch(KV_URL, {
     method: "POST",
     headers: { Authorization: `Bearer ${KV_TOKEN}`, "Content-Type": "application/json" },
-    body: JSON.stringify(command),
+    body: JSON.stringify(cmd),
   });
   if (!res.ok) throw new Error("KV_HTTP_" + res.status);
-  const data = await res.json();
-  return data.result;
+  return (await res.json()).result;
 }
+const kvGet = (k) => kvCmd(["GET", k]);
+const kvSet = (k, v) => kvCmd(["SET", k, v]);
+const kvDel = (k) => kvCmd(["DEL", k]);
+const kvMGet = (keys) => (keys.length ? kvCmd(["MGET", ...keys]) : Promise.resolve([]));
 
-async function readAll() {
-  const mode = storageMode();
-  if (mode === "kv") {
-    const raw = await kv(["GET", KV_KEY]);
-    return raw ? JSON.parse(raw) : [];
-  }
-  if (existsSync(FILE)) {
-    try { return JSON.parse(readFileSync(FILE, "utf8")); } catch { return []; }
-  }
-  return [];
+/* ── acesso ao arquivo local ── */
+function fileLoad() {
+  if (existsSync(FILE)) { try { return JSON.parse(readFileSync(FILE, "utf8")); } catch { return null; } }
+  return null;
 }
-
-async function writeAll(entries) {
-  const mode = storageMode();
-  if (mode === "kv") { await kv(["SET", KV_KEY, JSON.stringify(entries)]); return; }
-  if (mode === "file") {
-    if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
-    writeFileSync(FILE, JSON.stringify(entries, null, 2), "utf8");
-    return;
+function fileSave(obj) {
+  if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
+  writeFileSync(FILE, JSON.stringify(obj, null, 2), "utf8");
+}
+function metaFrom(e) {
+  const c = e.content || "";
+  return { id: e.id, title: e.title, source: e.source || "texto", chars: c.length, preview: c.slice(0, PREVIEW), createdAt: e.createdAt, updatedAt: e.updatedAt };
+}
+// Lê o arquivo local no formato { index, contents }, migrando o formato antigo (array).
+function fileRead() {
+  let data = fileLoad();
+  if (Array.isArray(data)) {
+    const contents = {}; const index = [];
+    for (const e of data) { contents[e.id] = e.content || ""; index.push(metaFrom(e)); }
+    data = { index, contents };
+    fileSave(data);
   }
-  throw new Error("PERSIST_NONE"); // Vercel sem KV
+  if (!data || typeof data !== "object") data = { index: [], contents: {} };
+  if (!Array.isArray(data.index)) data.index = [];
+  if (!data.contents) data.contents = {};
+  return data;
 }
 
 function genId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
+/* ── índice (metadados) ── */
+async function readIndex() {
+  const mode = storageMode();
+  if (mode === "kv") {
+    const raw = await kvGet(IDX_KEY);
+    if (!raw) {
+      // migração do formato antigo (array único) → gavetas separadas
+      const oldRaw = await kvGet(OLD_KEY);
+      if (oldRaw) {
+        const arr = JSON.parse(oldRaw);
+        const index = [];
+        for (const e of arr) { await kvSet(cKey(e.id), e.content || ""); index.push(metaFrom(e)); }
+        await kvSet(IDX_KEY, JSON.stringify(index));
+        await kvDel(OLD_KEY);
+        return index;
+      }
+      return [];
+    }
+    return JSON.parse(raw);
+  }
+  return fileRead().index; // file / none
+}
+
 export async function listEntries() {
-  const all = await readAll();
-  return all.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  const idx = await readIndex();
+  return idx.slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
 }
 
 export async function addEntry({ title, content, source }) {
-  const entries = await readAll();
+  const mode = storageMode();
+  const id = genId();
   const now = Date.now();
-  const entry = {
-    id: genId(),
-    title: String(title).trim(),
-    content: String(content).trim(),
-    source: source ? String(source) : "texto",
-    createdAt: now,
-    updatedAt: now,
-  };
-  entries.push(entry);
-  await writeAll(entries);
-  return entry;
+  content = String(content);
+  const m = { id, title: String(title).trim(), source: source ? String(source) : "texto", chars: content.length, preview: content.slice(0, PREVIEW), createdAt: now, updatedAt: now };
+
+  if (mode === "kv") {
+    const idx = await readIndex();
+    await kvSet(cKey(id), content);
+    idx.push(m);
+    await kvSet(IDX_KEY, JSON.stringify(idx));
+  } else if (mode === "file") {
+    const data = fileRead();
+    data.contents[id] = content;
+    data.index.push(m);
+    fileSave(data);
+  } else {
+    throw new Error("PERSIST_NONE");
+  }
+  return m;
 }
 
 export async function updateEntry(id, { title, content }) {
-  const entries = await readAll();
-  const e = entries.find((x) => x.id === id);
-  if (!e) return null;
-  if (title != null) e.title = String(title).trim();
-  if (content != null) e.content = String(content).trim();
-  e.updatedAt = Date.now();
-  await writeAll(entries);
-  return e;
+  const mode = storageMode();
+  if (mode === "kv") {
+    const idx = await readIndex();
+    const m = idx.find((x) => x.id === id);
+    if (!m) return null;
+    if (title != null) m.title = String(title).trim();
+    if (content != null) { const c = String(content); await kvSet(cKey(id), c); m.chars = c.length; m.preview = c.slice(0, PREVIEW); }
+    m.updatedAt = Date.now();
+    await kvSet(IDX_KEY, JSON.stringify(idx));
+    return m;
+  } else if (mode === "file") {
+    const data = fileRead();
+    const m = data.index.find((x) => x.id === id);
+    if (!m) return null;
+    if (title != null) m.title = String(title).trim();
+    if (content != null) { const c = String(content); data.contents[id] = c; m.chars = c.length; m.preview = c.slice(0, PREVIEW); }
+    m.updatedAt = Date.now();
+    fileSave(data);
+    return m;
+  }
+  throw new Error("PERSIST_NONE");
 }
 
 export async function deleteEntry(id) {
-  const entries = await readAll();
-  const next = entries.filter((x) => x.id !== id);
-  if (next.length === entries.length) return false;
-  await writeAll(next);
-  return true;
+  const mode = storageMode();
+  if (mode === "kv") {
+    const idx = await readIndex();
+    const next = idx.filter((x) => x.id !== id);
+    if (next.length === idx.length) return false;
+    await kvDel(cKey(id));
+    await kvSet(IDX_KEY, JSON.stringify(next));
+    return true;
+  } else if (mode === "file") {
+    const data = fileRead();
+    if (!data.index.find((x) => x.id === id)) return false;
+    data.index = data.index.filter((x) => x.id !== id);
+    delete data.contents[id];
+    fileSave(data);
+    return true;
+  }
+  throw new Error("PERSIST_NONE");
 }
 
-// ── Seleção inteligente de contexto ─────────────────────────────────────────
+// Carrega índice + conteúdo completo (para a seleção de trechos).
+async function loadFull() {
+  const mode = storageMode();
+  const idx = await readIndex();
+  if (!idx.length) return [];
+  if (mode === "kv") {
+    const vals = await kvMGet(idx.map((m) => cKey(m.id)));
+    return idx.map((m, i) => ({ ...m, content: (vals && vals[i]) || "" }));
+  }
+  const data = fileRead();
+  return idx.map((m) => ({ ...m, content: data.contents[m.id] || "" }));
+}
 
+/* ── Seleção inteligente de contexto ── */
 const STOP = new Set([
   "de","da","do","das","dos","e","o","a","os","as","um","uma","uns","umas","que","para","por","com",
   "no","na","nos","nas","em","se","ao","aos","à","às","é","ou","como","qual","quais","meu","minha",
   "seu","sua","tem","ter","the","of","and","preciso","quero","onde","quando","quanto","posso","fazer",
   "sobre","pelo","pela","este","essa","esse","esta","isso","aqui","tá","tô","pra","pro",
 ]);
-
 function normalize(s) {
-  return String(s || "")
-    .toLowerCase()
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  return String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
 }
-
 function chunkText(text, size) {
   const paras = String(text).split(/\n{2,}/).map((s) => s.trim()).filter(Boolean);
   const chunks = []; let cur = "";
@@ -145,25 +220,20 @@ function chunkText(text, size) {
   if (cur) chunks.push(cur);
   return chunks.length ? chunks : [String(text).slice(0, size)];
 }
-
 function countTerm(hay, term) {
   let idx = 0, c = 0;
   while ((idx = hay.indexOf(term, idx)) !== -1) { c++; idx += term.length; }
   return c;
 }
 
-// Monta o contexto do tutor para uma pergunta: entradas pequenas inteiras +
-// os trechos mais relevantes das entradas grandes (respeitando um orçamento).
 export async function buildTutorContext(question) {
-  const entries = await readAll();
+  const entries = await loadFull();
   if (!entries.length) return "";
-
   const terms = [...new Set(normalize(question).split(" ").filter((w) => w.length >= 3 && !STOP.has(w)))];
   const out = [];
   let used = 0;
   const bigs = [];
 
-  // 1) Entradas pequenas: inteiras (são baratas e costumam ser avisos importantes)
   for (const e of entries) {
     const content = e.content || "";
     if (content.length <= SMALL_ENTRY) {
@@ -174,7 +244,6 @@ export async function buildTutorContext(question) {
     }
   }
 
-  // 2) Entradas grandes: escolhe os trechos mais relevantes à pergunta
   if (bigs.length && used < CTX_BUDGET) {
     const scored = [];
     for (const e of bigs) {
@@ -188,30 +257,26 @@ export async function buildTutorContext(question) {
         scored.push({ score, order: i, title: e.title, text: c });
       });
     }
-
     const anyHit = terms.length > 0 && scored.some((s) => s.score > 0);
     let picked;
     if (anyHit) {
       picked = scored.filter((s) => s.score > 0).sort((a, b) => b.score - a.score);
     } else {
-      // Sem termos úteis: pega o começo de cada documento grande (visão geral).
       const seen = new Set();
       picked = scored.filter((s) => { if (seen.has(s.title) || s.order !== 0) return false; seen.add(s.title); return true; });
     }
-
     for (const p of picked) {
       const block = `• ${p.title} (trecho relevante)\n${p.text}`;
       if (used + block.length > CTX_BUDGET) break;
       out.push(block); used += block.length;
     }
   }
-
   return out.join("\n\n");
 }
 
-// Mantido por compatibilidade (não usado no chat, que agora usa buildTutorContext).
+// Compat (não usado no chat).
 export async function knowledgeText() {
-  const entries = await readAll();
+  const entries = await loadFull();
   if (!entries.length) return "";
   return entries.map((e) => `• ${e.title}\n${e.content}`).join("\n\n");
 }
