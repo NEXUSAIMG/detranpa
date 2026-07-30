@@ -351,7 +351,7 @@ function buildDoc(form, values) {
   H.push(`<div class="dp-content">`);
 
   // Cabeçalho oficial: logo + órgão
-  H.push(`<div class="dp-head"><div class="dp-logo">${LOGO_SVG}</div><div class="dp-gov">Governo do Estado do Pará<br>Departamento de Trânsito do Estado do Pará<br>DETRAN-PA</div></div>`);
+  H.push(`<div class="dp-head"><div class="dp-logo"><img class="detran-mark" src="/img/detran-pa-mark.png" alt="DETRAN-PA"></div><div class="dp-gov">Governo do Estado do Pará<br>Departamento de Trânsito do Estado do Pará<br>DETRAN-PA</div></div>`);
   T.push("GOVERNO DO ESTADO DO PARÁ");
   T.push("DEPARTAMENTO DE TRÂNSITO DO ESTADO DO PARÁ");
   T.push("DETRAN-PA\n");
