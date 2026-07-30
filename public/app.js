@@ -83,14 +83,25 @@ function addBubble(role, content, formId) {
   row.className = `row ${role === "user" ? "user" : "bot"}`;
   const bubble = document.createElement("div");
   bubble.className = `bubble ${role === "user" ? "user" : "bot"}`;
-  bubble.innerHTML = role === "user" ? escapeHtml(content) : renderRich(content);
+  if (role === "user") {
+    if (content && typeof content === "object") {
+      let _h = "";
+      if (content.img) _h += `<img class="chat-img" src="${content.img}" alt="foto enviada" />`;
+      if (content.text) _h += `<div>${escapeHtml(content.text)}</div>`;
+      bubble.innerHTML = _h || "📷 foto";
+    } else {
+      bubble.innerHTML = escapeHtml(content);
+    }
+  } else {
+    bubble.innerHTML = renderRich(content);
+  }
 
   if (formId) {
     const info = (formsCache || []).find((f) => f.id === formId);
     const btn = document.createElement("button");
     btn.className = "form-suggest";
     btn.innerHTML = `<span class="fs-doc">📄</span> Abrir e preencher: ${escapeHtml(info ? info.title : "documento")}`;
-    btn.onclick = () => openForm(formId);
+    btn.onclick = () => openForm(formId, true);
     bubble.appendChild(btn);
   }
 
@@ -147,12 +158,27 @@ async function revealParts(parts, formId) {
 }
 
 async function enviar(texto) {
+  if (carregando) return;
   const pergunta = (texto ?? els.input.value).trim();
-  if (!pergunta || carregando) return;
+  const foto = window.__fotoPendente || null;
+  if (!pergunta && !foto) return;
   clearError();
-  addBubble("user", pergunta);
-  conversa.push({ role: "user", content: pergunta });
+  let content;
+  if (foto) {
+    const t = pergunta || "Pode analisar essa foto de documento pra mim?";
+    content = [
+      { type: "text", text: t },
+      { type: "image", source: { type: "base64", media_type: foto.mediaType, data: foto.data } },
+    ];
+    window.__ultTextoFoto = t + " (imagem enviada)";
+    addBubble("user", { text: pergunta, img: foto.dataUrl });
+  } else {
+    content = pergunta;
+    addBubble("user", pergunta);
+  }
+  conversa.push({ role: "user", content });
   els.input.value = ""; els.input.style.height = "auto";
+  if (window.__limparFoto) window.__limparFoto();
   carregando = true; els.send.disabled = true; showTyping();
   try {
     const resp = await fetch("/api/chat", {
@@ -165,6 +191,8 @@ async function enviar(texto) {
       showError(data.error || "Não foi possível obter a resposta. Tente novamente.");
       conversa.pop(); els.input.value = pergunta;
     } else {
+      const _ult = conversa[conversa.length - 1];
+      if (_ult && Array.isArray(_ult.content)) _ult.content = window.__ultTextoFoto || "(imagem enviada)";
       let reply = data.reply || "";
       let formId = null;
       const m = reply.match(/\[\[FORM:([a-z-]+)\]\]/i);
@@ -226,7 +254,7 @@ function renderDocList() {
   });
 }
 
-async function openForm(id) {
+async function openForm(id, fromChat) {
   els.overlay.classList.remove("hidden");
   els.docsBack.classList.remove("hidden");
   els.overlayBody.innerHTML = `<p class="doc-intro">Carregando documento…</p>`;
@@ -234,13 +262,13 @@ async function openForm(id) {
     const resp = await fetch(`/api/forms/${id}`);
     if (!resp.ok) throw new Error();
     const { form } = await resp.json();
-    renderForm(form);
+    renderForm(form, fromChat);
   } catch (e) {
     els.overlayBody.innerHTML = `<p class="doc-intro">Não foi possível abrir este documento.</p>`;
   }
 }
 
-function renderForm(form) {
+function renderForm(form, fromChat) {
   els.overlayTitle.textContent = form.title;
   const values = {};
 
@@ -289,6 +317,43 @@ function renderForm(form) {
     try { await navigator.clipboard.writeText(txt); flashCopy(); }
     catch { fallbackCopy(txt); }
   };
+
+  // ✨ Auto-preenchimento a partir da conversa
+  function aplicarValores(vals) {
+    Object.entries(vals).forEach(([key, val]) => {
+      const el = els.overlayBody.querySelector(`[data-field="${key}"]`);
+      if (!el) return;
+      if (el.classList.contains("radio-row")) {
+        values[key] = val;
+        el.querySelectorAll(".radio-chip").forEach((c) => c.classList.toggle("on", c.getAttribute("data-val") === val));
+      } else { el.value = val; values[key] = val; }
+    });
+    paint();
+  }
+  async function preencherComConversa(bFill) {
+    if (!conversa.length) return;
+    const old = bFill.innerHTML; bFill.disabled = true; bFill.innerHTML = "✨ Preenchendo…";
+    try {
+      const r = await fetch("/api/extract", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ formId: form.id, messages: conversa }),
+      });
+      const d = await r.json().catch(() => ({}));
+      const vals = d.values || {};
+      if (Object.keys(vals).length) { aplicarValores(vals); bFill.innerHTML = "✨ Preenchido — confira!"; }
+      else bFill.innerHTML = "Não achei dados na conversa";
+    } catch (_) { bFill.innerHTML = "Não deu pra preencher agora"; }
+    finally { setTimeout(() => { bFill.disabled = false; bFill.innerHTML = old; }, 2400); }
+  }
+  const _actions = els.overlayBody.querySelector(".preview-actions");
+  if (_actions && conversa.length) {
+    const bFill = document.createElement("button");
+    bFill.className = "btn btn-soft"; bFill.id = "btn-fill";
+    bFill.innerHTML = "✨ Preencher com a nossa conversa";
+    bFill.onclick = () => preencherComConversa(bFill);
+    _actions.appendChild(bFill);
+    if (fromChat) preencherComConversa(bFill);
+  }
 }
 
 function fieldControl(f) {
@@ -401,3 +466,151 @@ function buildDoc(form, values) {
 }
 
 fetch("/api/forms").then((r) => r.json()).then((d) => { formsCache = d.forms || []; }).catch(() => {});
+
+/* ═══════════════════════ VOZ (falar e ouvir) ═══════════════════════ */
+(function () {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const synth = window.speechSynthesis;
+  const composer = els.send.parentNode;
+
+  function paraFala(t) {
+    return String(t)
+      .replace(/\[\[FORM:[^\]]+\]\]/gi, "")
+      .replace(/\[\[BREAK\]\]/g, ". ")
+      .replace(/\*\*(.+?)\*\*/g, "$1")
+      .replace(/https?:\/\/\S+/g, "o link no site oficial")
+      .replace(/\s+/g, " ").trim();
+  }
+
+  // Ouvir respostas (TTS)
+  let ttsOn = false;
+  const btnFala = document.createElement("button");
+  btnFala.type = "button"; btnFala.className = "voice-btn tts";
+  btnFala.title = "Ouvir as respostas em voz"; btnFala.setAttribute("aria-label", "Ouvir as respostas");
+  btnFala.innerHTML = "🔊";
+  function falar(texto) {
+    if (!ttsOn || !synth) return;
+    const u = new SpeechSynthesisUtterance(paraFala(texto));
+    u.lang = "pt-BR"; synth.speak(u);
+  }
+  btnFala.onclick = () => {
+    ttsOn = !ttsOn; btnFala.classList.toggle("on", ttsOn);
+    if (!ttsOn && synth) synth.cancel();
+  };
+  const _addBubble = addBubble;
+  addBubble = function (role, content, formId) {
+    const b = _addBubble(role, content, formId);
+    if (role === "assistant") falar(content);
+    return b;
+  };
+
+  // Falar a pergunta (STT)
+  let rec = null, ouvindo = false, finalTxt = "";
+  const btnMic = document.createElement("button");
+  btnMic.type = "button"; btnMic.className = "voice-btn mic";
+  btnMic.title = "Perguntar falando"; btnMic.setAttribute("aria-label", "Perguntar falando");
+  btnMic.innerHTML = "🎤";
+  if (SR) {
+    rec = new SR(); rec.lang = "pt-BR"; rec.interimResults = true; rec.continuous = false;
+    rec.onstart = () => { ouvindo = true; btnMic.classList.add("on"); };
+    rec.onend = () => {
+      ouvindo = false; btnMic.classList.remove("on");
+      const t = (finalTxt || els.input.value).trim(); finalTxt = "";
+      if (t) { els.input.value = t; enviar(); }
+    };
+    rec.onerror = () => { ouvindo = false; btnMic.classList.remove("on"); };
+    rec.onresult = (e) => {
+      let interim = ""; finalTxt = "";
+      for (let i = 0; i < e.results.length; i++) {
+        const r = e.results[i];
+        if (r.isFinal) finalTxt += r[0].transcript; else interim += r[0].transcript;
+      }
+      els.input.value = finalTxt || interim;
+      els.input.dispatchEvent(new Event("input"));
+    };
+    btnMic.onclick = () => {
+      if (ouvindo) { rec.stop(); return; }
+      if (synth) synth.cancel();
+      try { finalTxt = ""; els.input.value = ""; rec.start(); } catch (_) {}
+    };
+  } else {
+    btnMic.title = "Ditado por voz não suportado neste navegador (use o Chrome).";
+    btnMic.style.opacity = ".4";
+  }
+
+  composer.insertBefore(btnMic, els.send);
+  composer.insertBefore(btnFala, els.send);
+})();
+
+/* ═══════════════════ FOTO (ler documento por imagem) ═══════════════════ */
+(function () {
+  const composer = els.send.parentNode;
+  const input = document.createElement("input");
+  input.type = "file"; input.accept = "image/*"; input.setAttribute("capture", "environment");
+  input.style.display = "none";
+  document.body.appendChild(input);
+
+  const btn = document.createElement("button");
+  btn.type = "button"; btn.className = "voice-btn foto";
+  btn.title = "Enviar foto de um documento (multa, CRLV, boleto...)";
+  btn.setAttribute("aria-label", "Enviar foto de documento");
+  btn.innerHTML = "📷";
+  btn.onclick = () => input.click();
+
+  let chip = null;
+  window.__limparFoto = function () {
+    window.__fotoPendente = null;
+    if (chip) { chip.remove(); chip = null; }
+    input.value = "";
+    els.input.placeholder = els.input.getAttribute("data-ph") || els.input.placeholder;
+    els.send.disabled = !els.input.value.trim();
+  };
+  function mostrarChip(dataUrl) {
+    if (chip) chip.remove();
+    chip = document.createElement("div");
+    chip.className = "foto-chip";
+    chip.innerHTML = '<img alt="prévia"><span>Foto pronta — escreva uma dúvida ou toque em enviar</span><button type="button" aria-label="Remover">✕</button>';
+    chip.querySelector("img").src = dataUrl;
+    chip.querySelector("button").onclick = () => window.__limparFoto();
+    composer.parentNode.insertBefore(chip, composer);
+    els.send.disabled = false;
+  }
+
+  function comprimir(file) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const MAX = 1400;
+        let w = img.width, h = img.height;
+        if (w > MAX || h > MAX) { const k = Math.min(MAX / w, MAX / h); w = Math.round(w * k); h = Math.round(h * k); }
+        const c = document.createElement("canvas"); c.width = w; c.height = h;
+        c.getContext("2d").drawImage(img, 0, 0, w, h);
+        const dataUrl = c.toDataURL("image/jpeg", 0.82);
+        resolve({ dataUrl, mediaType: "image/jpeg", data: dataUrl.split(",")[1] });
+      };
+      img.onerror = reject; img.src = url;
+    });
+  }
+
+  input.onchange = async () => {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    try {
+      const foto = await comprimir(file);
+      window.__fotoPendente = foto;
+      mostrarChip(foto.dataUrl);
+      if (!els.input.getAttribute("data-ph")) els.input.setAttribute("data-ph", els.input.placeholder);
+      els.input.placeholder = "Escreva uma dúvida sobre a foto (ou toque em enviar)…";
+      els.input.focus();
+    } catch (_) {
+      showError("Não consegui ler essa imagem. Tente outra foto.");
+    }
+  };
+
+  // mantém o enviar habilitado quando há foto pendente
+  els.input.addEventListener("input", () => { if (window.__fotoPendente) els.send.disabled = false; });
+
+  composer.insertBefore(btn, composer.firstChild);
+})();

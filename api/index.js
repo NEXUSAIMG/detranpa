@@ -15,7 +15,7 @@ import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { FORMS, FORM_INDEX } from "../forms-data.js";
-import { storageMode, listEntries, addEntry, updateEntry, deleteEntry, buildTutorContext } from "../store.js";
+import { storageMode, listEntries, addEntry, updateEntry, deleteEntry, buildTutorContext, logGap, listGaps, clearGaps } from "../store.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
@@ -93,6 +93,18 @@ DOCUMENTOS QUE O USUÁRIO PODE PREENCHER NA TELA:
 A interface tem um preenchedor de documentos. Quando UM destes formulários for claramente útil para o que a pessoa pediu (ex.: vender o veículo, comunicar a venda, declarar residência, dar procuração), inclua NO FINAL da resposta, em UMA LINHA ISOLADA, o marcador [[FORM:id]] com o id correto. Esse marcador vai sozinho na ÚLTIMA linha, depois de tudo (não precisa de [[BREAK]] antes dele). Regras: no máximo um [[FORM:id]] por resposta; só quando fizer sentido; nunca explique o marcador. Ids válidos:
 ${LISTA_FORMS}
 
+ANÁLISE DE FOTOS/IMAGENS (quando o usuário enviar uma foto de documento):
+- Identifique o tipo (Notificação de Autuação ou de Penalidade de multa, CRLV, CRV, boleto/DAE, CNH, comprovante etc.).
+- Leia os dados visíveis (placa, RENAVAM, datas, valores, código/descrição da infração, prazos) e explique em linguagem simples, no tom paraense.
+- Se for MULTA: diga em que fase está (Notificação de Autuação -> cabe Defesa Prévia; Notificação de Penalidade -> cabe Recurso à JARI), destaque o PRAZO e o risco de perdê-lo, e confira o órgão autuador (o Portal Venus só trata multas do próprio DETRAN-PA).
+- Se for boleto/DAE: explique de que é a taxa e como pagar, lembrando que os valores mudam.
+- NUNCA invente o que não estiver visível. Se algo estiver ilegível ou cortado, peça uma foto mais nítida ou de perto.
+
+
+REGISTRO INTERNO (o usuário NÃO vê):
+- Quando você NÃO encontrar a informação pedida na BASE DE CONHECIMENTO e tiver que orientar a pessoa a confirmar no portal oficial ou no telefone 154, acrescente ao final, sozinho em uma linha, o marcador [[SEMBASE]]. Ele é retirado antes de chegar ao usuário e serve só para o DETRAN mapear as dúvidas que faltam na base. NÃO use [[SEMBASE]] quando você respondeu com base na informação disponível.
+
+
 BASE DE CONHECIMENTO:
 ${BASE_CONHECIMENTO}`;
 
@@ -111,7 +123,7 @@ ${tutorTexto}`;
 
 // ── App ─────────────────────────────────────────────────────────────────────
 const app = express();
-app.use(express.json({ limit: "2mb" }));
+app.use(express.json({ limit: "10mb" }));
 app.use(express.static(join(ROOT, "public")));
 
 const hits = new Map();
@@ -133,6 +145,75 @@ app.get("/api/forms/:id", (req, res) => {
   const form = FORMS.find((f) => f.id === req.params.id);
   if (!form) return res.status(404).json({ error: "Documento não encontrado." });
   res.json({ form });
+});
+
+// ── Extrair dados da conversa para pré-preencher um documento ────────────────
+app.post("/api/extract", async (req, res) => {
+  if (!API_KEY) return res.status(500).json({ error: "Servidor sem ANTHROPIC_API_KEY." });
+  const { formId, messages } = req.body || {};
+  const form = FORMS.find((f) => f.id === formId);
+  if (!form) return res.status(404).json({ error: "Documento não encontrado." });
+
+  const hist = (Array.isArray(messages) ? messages : [])
+    .filter((m) => m && (m.role === "user" || m.role === "assistant"))
+    .map((m) => {
+      const c = typeof m.content === "string"
+        ? m.content
+        : Array.isArray(m.content) ? m.content.filter((b) => b.type === "text").map((b) => b.text).join(" ") : "";
+      return `${m.role === "user" ? "Cidadão" : "Assistente"}: ${c}`;
+    })
+    .filter((l) => l.trim().length > 12)
+    .slice(-20)
+    .join("\n");
+  if (!hist) return res.json({ values: {} });
+
+  const campos = [];
+  form.sections.forEach((sec) => sec.fields.forEach((f) => campos.push(f)));
+  const esquema = campos.map((c) => {
+    let l = `- ${c.key} (${c.label})`;
+    if (c.type === "radio" && c.options) l += ` [escolha uma: ${c.options.join(" | ")}]`;
+    if (c.type === "date") l += " [data AAAA-MM-DD]";
+    return l;
+  }).join("\n");
+
+  const sys = `Você extrai dados de uma conversa para preencher o formulário "${form.title}" do DETRAN-PA.
+Responda APENAS um objeto JSON no formato {"chave": "valor"} usando as CHAVES exatas listadas.
+Regras:
+- Use SOMENTE informações que o cidadão forneceu explicitamente. NÃO invente nem deduza.
+- Se um campo não foi informado, NÃO inclua a chave.
+- Campos de opção: use exatamente um dos valores entre colchetes.
+- Datas no formato AAAA-MM-DD. Não escreva nada além do JSON.
+
+CAMPOS DISPONÍVEIS:
+${esquema}`;
+
+  try {
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: MODEL, max_tokens: 700, system: sys,
+        messages: [{ role: "user", content: `CONVERSA:\n${hist}\n\nExtraia o JSON de preenchimento.` }] }),
+    });
+    if (!r.ok) return res.status(502).json({ error: "Falha ao extrair." });
+    const data = await r.json();
+    const txt = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("").trim();
+    const mm = txt.match(/\{[\s\S]*\}/);
+    let parsed = {};
+    if (mm) { try { parsed = JSON.parse(mm[0]); } catch (_) {} }
+    const byKey = new Map(campos.map((c) => [c.key, c]));
+    const out = {};
+    for (const [k, v] of Object.entries(parsed || {})) {
+      const campo = byKey.get(k);
+      if (!campo || v == null) continue;
+      const val = String(v).slice(0, 300);
+      if (campo.type === "radio" && campo.options && !campo.options.includes(val)) continue;
+      if (val.trim()) out[k] = val;
+    }
+    res.json({ values: out });
+  } catch (e) {
+    console.error("[extract]", e);
+    res.status(500).json({ error: "Erro ao extrair." });
+  }
 });
 
 // ── Sala do Tutor ───────────────────────────────────────────────────────────
@@ -215,6 +296,16 @@ app.delete("/api/tutor/entries/:id", tutorAuth, async (req, res) => {
 });
 
 // ── Chat ────────────────────────────────────────────────────────────────────
+// ── Painel: perguntas que o assistente não soube responder ──────────────────
+app.get("/api/tutor/gaps", tutorAuth, async (_req, res) => {
+  try { res.json({ gaps: await listGaps() }); }
+  catch (err) { persistError(res, err); }
+});
+app.delete("/api/tutor/gaps", tutorAuth, async (_req, res) => {
+  try { await clearGaps(); res.json({ ok: true }); }
+  catch (err) { persistError(res, err); }
+});
+
 app.post("/api/chat", async (req, res) => {
   if (!API_KEY) {
     return res.status(500).json({ error: "Servidor sem ANTHROPIC_API_KEY configurada. Defina a chave nas variáveis de ambiente." });
@@ -229,17 +320,46 @@ app.post("/api/chat", async (req, res) => {
   if (!Array.isArray(messages) || messages.length === 0) {
     return res.status(400).json({ error: "Envie ao menos uma mensagem." });
   }
+  const ALLOWED_IMG = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+  const MAX_IMAGES = 2;
+  const MAX_IMG_B64 = 5 * 1024 * 1024;
+  const limparConteudo = (content) => {
+    if (typeof content === "string") return content.slice(0, MAX_CHARS_PER_MSG);
+    if (Array.isArray(content)) {
+      const blocos = []; let imgs = 0;
+      for (const b of content) {
+        if (!b || typeof b !== "object") continue;
+        if (b.type === "text" && typeof b.text === "string") {
+          blocos.push({ type: "text", text: b.text.slice(0, MAX_CHARS_PER_MSG) });
+        } else if (
+          b.type === "image" && b.source && b.source.type === "base64" &&
+          ALLOWED_IMG.has(b.source.media_type) && typeof b.source.data === "string" &&
+          b.source.data.length <= MAX_IMG_B64 && imgs < MAX_IMAGES
+        ) {
+          imgs++;
+          blocos.push({ type: "image", source: { type: "base64", media_type: b.source.media_type, data: b.source.data } });
+        }
+      }
+      return blocos;
+    }
+    return "";
+  };
+
   messages = messages
-    .filter((m) => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
+    .filter((m) => m && (m.role === "user" || m.role === "assistant") && (typeof m.content === "string" || Array.isArray(m.content)))
     .slice(-MAX_MESSAGES)
-    .map((m) => ({ role: m.role, content: m.content.slice(0, MAX_CHARS_PER_MSG) }));
+    .map((m) => ({ role: m.role, content: limparConteudo(m.content) }))
+    .filter((m) => (typeof m.content === "string" ? m.content.length > 0 : m.content.length > 0));
 
   if (messages.length === 0 || messages[messages.length - 1].role !== "user") {
     return res.status(400).json({ error: "A última mensagem deve ser do usuário." });
   }
 
   // Conhecimento do tutor: só os TRECHOS relevantes à última pergunta.
-  const ultimaPergunta = messages[messages.length - 1].content;
+  const _ultima = messages[messages.length - 1].content;
+  const ultimaPergunta = typeof _ultima === "string"
+    ? _ultima
+    : (_ultima.filter((b) => b.type === "text").map((b) => b.text).join(" ").trim() || "análise de documento enviado por foto");
   let tutorTexto = "";
   try { tutorTexto = await buildTutorContext(ultimaPergunta); } catch (e) { /* segue sem o tutor se falhar */ }
 
@@ -257,7 +377,11 @@ app.post("/api/chat", async (req, res) => {
     }
 
     const data = await resposta.json();
-    const texto = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
+    let texto = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
+    if (texto.includes("[[SEMBASE]]")) {
+      texto = texto.replace(/\[\[SEMBASE\]\]/g, "").trim();
+      logGap(ultimaPergunta).catch(() => {});
+    }
     res.json({ reply: texto || "Não consegui gerar uma resposta. Pode reformular a pergunta?" });
   } catch (err) {
     console.error("[erro]", err);

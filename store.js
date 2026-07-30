@@ -280,3 +280,47 @@ export async function knowledgeText() {
   if (!entries.length) return "";
   return entries.map((e) => `• ${e.title}\n${e.content}`).join("\n\n");
 }
+
+/* ── Perguntas sem resposta (lacunas) — para o DETRAN ── */
+const GAPS_KEY = "detranpa:gaps";
+const GAPS_FILE = join(DATA_DIR, "gaps.json");
+
+export async function logGap(question) {
+  const q = String(question || "").trim().slice(0, 300);
+  if (!q) return;
+  const item = { q, at: Date.now() };
+  const mode = storageMode();
+  try {
+    if (mode === "kv") {
+      const raw = await kvGet(GAPS_KEY);
+      const arr = raw ? JSON.parse(raw) : [];
+      arr.push(item);
+      if (arr.length > 500) arr.splice(0, arr.length - 500);
+      await kvSet(GAPS_KEY, JSON.stringify(arr));
+    } else if (mode === "file") {
+      let arr = [];
+      if (existsSync(GAPS_FILE)) { try { arr = JSON.parse(readFileSync(GAPS_FILE, "utf8")); } catch { arr = []; } }
+      arr.push(item);
+      if (arr.length > 500) arr.splice(0, arr.length - 500);
+      if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
+      writeFileSync(GAPS_FILE, JSON.stringify(arr, null, 2), "utf8");
+    }
+  } catch (_) {}
+}
+
+export async function listGaps() {
+  const mode = storageMode();
+  try {
+    if (mode === "kv") { const raw = await kvGet(GAPS_KEY); return raw ? JSON.parse(raw) : []; }
+    if (mode === "file" && existsSync(GAPS_FILE)) { try { return JSON.parse(readFileSync(GAPS_FILE, "utf8")); } catch { return []; } }
+  } catch (_) {}
+  return [];
+}
+
+export async function clearGaps() {
+  const mode = storageMode();
+  try {
+    if (mode === "kv") await kvDel(GAPS_KEY);
+    else if (mode === "file" && existsSync(GAPS_FILE)) writeFileSync(GAPS_FILE, "[]", "utf8");
+  } catch (_) {}
+}
