@@ -14,6 +14,7 @@ const el = {
   testInput: $("test-input"), testSend: $("test-send"), testAnswer: $("test-answer"),
   file: $("file"), pickFile: $("pick-file"), upStatus: $("up-status"),
 };
+Object.assign(el, { gapsList: $("gaps-list"), gapsCount: $("gaps-count"), gapsReload: $("gaps-reload"), gapsClear: $("gaps-clear") });
 
 const MAX_CHARS = 120000;      // documentos bem maiores são aceitos
 const MAX_PDF_PAGES = 200;     // teto de páginas lidas de um PDF
@@ -70,6 +71,7 @@ function showPanel(storage) {
   el.logout.classList.remove("hidden");
   renderBanner(storage);
   loadEntries();
+  loadGaps();
 }
 
 function renderBanner(storage) {
@@ -241,6 +243,38 @@ async function testar() {
     el.testAnswer.innerHTML = `<div class="t-msg err">Não foi possível conectar ao servidor.</div>`;
   } finally { el.testSend.disabled = false; }
 }
+
+/* ── Perguntas sem resposta ── */
+async function loadGaps() {
+  if (!el.gapsList) return;
+  const { ok, data } = await api("/api/tutor/gaps");
+  if (!ok) { el.gapsCount.textContent = data.error || "Não foi possível carregar."; return; }
+  const gaps = data.gaps || [];
+  if (!gaps.length) { el.gapsCount.textContent = "Nenhuma por enquanto — o assistente respondeu tudo pela base. 👏"; el.gapsList.innerHTML = ""; return; }
+  const mapa = new Map();
+  for (const g of gaps) {
+    const k = String(g.q || "").trim().toLowerCase();
+    if (!k) continue;
+    const cur = mapa.get(k) || { q: g.q, n: 0, at: 0 };
+    cur.n++; if ((g.at || 0) > cur.at) cur.at = g.at || 0;
+    mapa.set(k, cur);
+  }
+  const linhas = [...mapa.values()].sort((a, b) => b.n - a.n || b.at - a.at);
+  el.gapsCount.textContent = `${linhas.length} ${linhas.length === 1 ? "dúvida distinta" : "dúvidas distintas"} sem resposta (${gaps.length} no total).`;
+  el.gapsList.innerHTML = linhas.map((l) => `
+    <div class="entry">
+      <h4>${l.n > 1 ? `<span class="tag-doc" style="background:#F4E4DC;color:#9A4B1B">${l.n}×</span> ` : ""}${escapeHtml(l.q)}</h4>
+      <div class="meta"><span>Última vez: ${fmtDate(l.at)}</span></div>
+    </div>`).join("");
+}
+async function limparGaps() {
+  if (!confirm("Limpar todas as perguntas sem resposta?")) return;
+  const { ok, data } = await api("/api/tutor/gaps", { method: "DELETE" });
+  if (!ok) { alert(data.error || "Não foi possível limpar."); return; }
+  loadGaps();
+}
+if (el.gapsReload) el.gapsReload.onclick = loadGaps;
+if (el.gapsClear) el.gapsClear.onclick = limparGaps;
 
 /* ── Início ── */
 (async function init() {
