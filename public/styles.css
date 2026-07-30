@@ -305,3 +305,9 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visib
   #print-holder .dp-notes li { font-size: 9.5pt; color: #222; }
   @page { margin: 1.6cm; }
 }
+
+
+/* logo oficial DETRAN-PA */
+.logo{ background:#fff; padding:6px; }
+.brand-mark{ width:100%; height:100%; object-fit:contain; display:block; }
+.welcome-logo{ display:block; height:92px; width:auto; margin:4px auto 18px; }
