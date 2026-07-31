@@ -775,6 +775,78 @@ function abrirDefesa(texto) {
         { t: "Protocolar no Portal Venus", d: "Login gov.br (prata/ouro). Redija com fundamentação e anexe as provas. (Dica: peça ao assistente um rascunho de defesa!)", link: "https://cidadao.detran.pa.gov.br", linkLabel: "Portal Venus" },
         { t: "Guardar o protocolo e acompanhar", d: "Anote o número e acompanhe o resultado." }
       ]
+    },
+    {
+      id: "primeira_hab", icon: "🚦", title: "Tirar a primeira CNH",
+      desc: "Primeira habilitação (ACC, A e/ou B).",
+      intro: "Maior de 18 anos, alfabetizado, residente no PA.",
+      steps: [
+        { t: "Emitir o boleto da 1ª fase", d: "Exames clínicos. Emita no site, na sede ou na CIRETRAN.", link: "https://www.detran.pa.gov.br/servicos", linkLabel: "Portal de serviços" },
+        { t: "Agendar a coleta biométrica", d: "Com documento original e cópia." },
+        { t: "Fazer exame médico e psicotécnico", d: "Em clínica credenciada. Agende pelo Call Center 154." },
+        { t: "Curso teórico (~45h)", d: "Em CFC credenciado ou pelo app CNH do Brasil." },
+        { t: "Prova teórica", d: "30 questões, mínimo de 21 acertos. Chegue 30 min antes." },
+        { t: "LADV + aulas práticas", d: "Cumpra a carga horária de direção da categoria." },
+        { t: "Prova prática de direção", d: "Agendada pelo CFC ou por você no site/CIRETRAN." },
+        { t: "Receber a PPD e depois a CNH", d: "Desde 06/2026, categorias A e B também fazem toxicológico antes da PPD." }
+      ]
+    },
+    {
+      id: "segunda_via_cnh", icon: "🪪", title: "2ª via da CNH",
+      desc: "Perdi, furtaram ou danifiquei a carteira.",
+      intro: "Nova via sem alterar os dados de habilitação.",
+      steps: [
+        { t: "Boletim de ocorrência (se furto/roubo)", d: "Guarde o BO — mas ele não substitui a CNH para dirigir." },
+        { t: "Abrir o serviço de 2ª via", d: "No portal, com identidade, CPF e comprovante de residência.", link: "https://www.detran.pa.gov.br/servicos", linkLabel: "Portal de serviços" },
+        { t: "Pagar o boleto", d: "Em regra não há novo exame." },
+        { t: "Emissão", d: "A CNH-e fica no app CDT e/ou a via física chega pelos Correios." }
+      ]
+    },
+    {
+      id: "mudanca_cat", icon: "🚛", title: "Mudar ou incluir categoria",
+      desc: "Ex.: B → C/D/E, ou adicionar A.",
+      intro: "Conferir os requisitos de idade e tempo de categoria.",
+      steps: [
+        { t: "Conferir idade e tempo mínimos", d: "C: 1 ano na B. D: 21 anos + 2 anos na B (ou 1 na C). E: 21 anos + 1 ano na C ou D." },
+        { t: "Emitir o boleto", d: "Na sede, CIRETRAN ou site.", link: "https://www.detran.pa.gov.br/servicos", linkLabel: "Portal de serviços" },
+        { t: "Validação documental", d: "CNH original + cópia, identidade, CPF e comprovante de residência." },
+        { t: "Exames", d: "Médico + toxicológico (obrigatório para C, D e E) + psicotécnico se for atividade remunerada." },
+        { t: "Curso/aulas e prova prática", d: "Na nova categoria." },
+        { t: "Receber a CNH", d: "Enviada pelos Correios." }
+      ]
+    },
+    {
+      id: "licenciar", icon: "🧾", title: "Licenciar o veículo (anual)",
+      desc: "Regularizar o licenciamento do ano.",
+      intro: "Habilita a circulação e gera o CRLV-e do ano.",
+      steps: [
+        { t: "Pagar o IPVA (é da SEFA)", d: "O DETRAN não licencia com IPVA em aberto.", link: "https://app.sefa.pa.gov.br/consulta-ipva", linkLabel: "Consultar IPVA (SEFA)" },
+        { t: "Emitir o DAE de licenciamento", d: "No portal, informando placa e RENAVAM.", link: "https://www.detran.pa.gov.br/sistransito/detran-web/servicos/b/dadosBLicencAnoAtual.jsf", linkLabel: "Boleto de licenciamento" },
+        { t: "Pagar o boleto", d: "Há calendário por final de placa." },
+        { t: "Baixar o CRLV-e", d: "Fica no app CDT em ~72h; pode imprimir em papel comum pelo site.", link: "https://www.detran.pa.gov.br/sistransito/detran-web/servicos/crlv/indexCRLVe.jsf", linkLabel: "CRLV-e" }
+      ]
+    },
+    {
+      id: "emplacar", icon: "🆕", title: "Emplacar veículo 0km",
+      desc: "Primeiro emplacamento (placa Mercosul).",
+      intro: "Documentos: nota fiscal, identidade/CPF, comprovante de residência e laudo de vistoria.",
+      steps: [
+        { t: "Pagar as guias (IPVA e licenciamento)", d: "Necessárias para o registro." },
+        { t: "Fazer a vistoria", d: "Em ECV credenciada ou no DETRAN." },
+        { t: "Registro no DETRAN", d: "Com a documentação e as guias pagas.", link: "https://www.detran.pa.gov.br/servicos", linkLabel: "Portal de serviços" },
+        { t: "Receber a placa Mercosul e o CRV/CRLV-e", d: "Emplacamento Mercosul ~R$ 45,78 (referência)." }
+      ]
+    },
+    {
+      id: "reciclagem", icon: "⚠️", title: "CNH suspensa (reciclagem)",
+      desc: "Regularizar a carteira suspensa.",
+      intro: "Curso de reciclagem quando há suspensão do direito de dirigir.",
+      steps: [
+        { t: "Conferir a penalidade e o prazo", d: "Veja a notificação de suspensão e o período a cumprir." },
+        { t: "Fazer o curso de reciclagem", d: "Carga de 45 horas-aula, em CFC credenciado (e/ou EAD conforme credenciamento)." },
+        { t: "Cumprir o prazo da suspensão", d: "A CNH só é liberada após o prazo E a conclusão do curso." },
+        { t: "Entregar o certificado", d: "O desbloqueio costuma sair em ~72h." }
+      ]
     }
   ];
 
