@@ -148,12 +148,16 @@ function splitReply(text) {
 
 function delayFor(part) { return Math.min(1500, 400 + part.length * 12); }
 
-async function revealParts(parts, formId) {
+async function revealParts(parts, formId, wantsDefesa) {
   for (let i = 0; i < parts.length; i++) {
     showTyping();
     await sleep(i === 0 ? 300 : delayFor(parts[i]));
     hideTyping();
-    addBubble("assistant", parts[i], i === parts.length - 1 ? formId : null);
+    const _bb = addBubble("assistant", parts[i], i === parts.length - 1 ? formId : null);
+    if (i === parts.length - 1) {
+      if (wantsDefesa && window.__defesaButton) window.__defesaButton(_bb);
+      if (window.__feedback) window.__feedback(_bb);
+    }
   }
 }
 
@@ -197,10 +201,12 @@ async function enviar(texto) {
       let formId = null;
       const m = reply.match(/\[\[FORM:([a-z-]+)\]\]/i);
       if (m) { formId = m[1].toLowerCase(); reply = reply.replace(m[0], "").trim(); }
+      const wantsDefesa = /\[\[DEFESA\]\]/i.test(reply);
+      if (wantsDefesa) reply = reply.replace(/\[\[DEFESA\]\]/gi, "").trim();
       const limpo = reply.replace(/\[\[BREAK\]\]/g, "\n\n").replace(/\n{3,}/g, "\n\n").trim();
       conversa.push({ role: "assistant", content: limpo });
       const parts = splitReply(reply);
-      await revealParts(parts, formId);
+      await revealParts(parts, formId, wantsDefesa);
     }
   } catch (e) {
     hideTyping();
@@ -613,4 +619,233 @@ fetch("/api/forms").then((r) => r.json()).then((d) => { formsCache = d.forms || 
   els.input.addEventListener("input", () => { if (window.__fotoPendente) els.send.disabled = false; });
 
   composer.insertBefore(btn, composer.firstChild);
+})();
+
+/* ═══════════════════ ACESSIBILIDADE (fonte + contraste) ═══════════════════ */
+(function () {
+  const actions = els.reset ? els.reset.parentNode : document.querySelector(".topbar-actions");
+  if (!actions) return;
+  let pref = {};
+  try { pref = JSON.parse(localStorage.getItem("detranpa_a11y") || "{}"); } catch (_) {}
+  const ZOOMS = [1, 1.15, 1.3];
+  let zi = ZOOMS.indexOf(pref.zoom); if (zi < 0) zi = 0;
+  let hc = !!pref.hc;
+
+  function salvar() { try { localStorage.setItem("detranpa_a11y", JSON.stringify({ zoom: ZOOMS[zi], hc })); } catch (_) {} }
+  function aplicar() {
+    document.documentElement.style.zoom = ZOOMS[zi];
+    document.body.classList.toggle("hc", hc);
+    bHc.classList.toggle("on", hc);
+    bFont.classList.toggle("on", zi > 0);
+  }
+
+  const bFont = document.createElement("button");
+  bFont.type = "button"; bFont.className = "ghost-btn a11y"; bFont.title = "Aumentar o tamanho da letra";
+  bFont.setAttribute("aria-label", "Aumentar a letra"); bFont.textContent = "A+";
+  bFont.onclick = () => { zi = (zi + 1) % ZOOMS.length; salvar(); aplicar(); };
+
+  const bHc = document.createElement("button");
+  bHc.type = "button"; bHc.className = "ghost-btn a11y"; bHc.title = "Alto contraste";
+  bHc.setAttribute("aria-label", "Alto contraste"); bHc.textContent = "◐";
+  bHc.onclick = () => { hc = !hc; salvar(); aplicar(); };
+
+  actions.insertBefore(bFont, actions.firstChild);
+  actions.insertBefore(bHc, actions.firstChild);
+  aplicar();
+})();
+
+/* ═══════════════════ FEEDBACK 👍/👎 (painel do gestor) ═══════════════════ */
+window.__feedback = function (bubble) {
+  if (!bubble) return;
+  const row = document.createElement("div");
+  row.className = "fb-row";
+  row.innerHTML = '<span>Ajudou?</span><button type="button" class="fb-btn" data-up="1" aria-label="Ajudou">👍</button><button type="button" class="fb-btn" data-up="0" aria-label="Não ajudou">👎</button>';
+  row.querySelectorAll(".fb-btn").forEach((b) => {
+    b.onclick = () => {
+      const up = b.getAttribute("data-up") === "1";
+      row.querySelectorAll(".fb-btn").forEach((x) => { x.disabled = true; });
+      b.classList.add("chosen");
+      row.querySelector("span").textContent = "Valeu pelo retorno!";
+      fetch("/api/feedback", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ up }) }).catch(() => {});
+    };
+  });
+  bubble.appendChild(row);
+};
+
+/* ═══════════════════ DEFESA (rascunho de multa) ═══════════════════ */
+window.__defesaButton = function (bubble) {
+  if (!bubble) return;
+  const btn = document.createElement("button");
+  btn.type = "button"; btn.className = "form-suggest defesa";
+  btn.innerHTML = '<span class="fs-doc">📝</span> Gerar rascunho de defesa da multa';
+  btn.onclick = () => gerarDefesa(btn);
+  bubble.appendChild(btn);
+};
+async function gerarDefesa(btn) {
+  const old = btn.innerHTML; btn.disabled = true; btn.innerHTML = "📝 Gerando o rascunho…";
+  try {
+    const r = await fetch("/api/defesa", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: conversa }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.defesa) { btn.innerHTML = "Não deu pra gerar agora"; setTimeout(() => { btn.disabled = false; btn.innerHTML = old; }, 2400); return; }
+    abrirDefesa(d.defesa);
+    btn.innerHTML = "📝 Rascunho gerado ✓"; setTimeout(() => { btn.disabled = false; btn.innerHTML = old; }, 2600);
+  } catch (_) { btn.innerHTML = "Erro ao gerar"; setTimeout(() => { btn.disabled = false; btn.innerHTML = old; }, 2400); }
+}
+function abrirDefesa(texto) {
+  els.overlay.classList.remove("hidden");
+  els.overlayTitle.textContent = "Rascunho de defesa de multa";
+  els.docsBack.classList.add("hidden");
+  els.overlayBody.innerHTML = ''
+    + '<div class="doc-screen defesa-screen">'
+    + '  <div class="preview-actions">'
+    + '    <button class="btn btn-primary" id="def-print">🖨️ Imprimir / Salvar PDF</button>'
+    + '    <button class="btn btn-soft" id="def-copy">📋 Copiar texto</button>'
+    + '  </div>'
+    + '  <div id="def-paper" class="def-paper"></div>'
+    + '</div>';
+  document.getElementById("def-paper").textContent = texto;
+  document.getElementById("def-copy").onclick = async () => {
+    try { await navigator.clipboard.writeText(texto); const b = document.getElementById("def-copy"); const o = b.textContent; b.textContent = "✓ Copiado!"; setTimeout(() => { b.textContent = o; }, 1600); }
+    catch { fallbackCopy(texto); }
+  };
+  document.getElementById("def-print").onclick = () => {
+    let holder = document.getElementById("print-holder"); if (holder) holder.remove();
+    holder = document.createElement("div"); holder.id = "print-holder";
+    const pre = document.createElement("pre");
+    pre.style.whiteSpace = "pre-wrap"; pre.style.fontFamily = "Georgia, 'Times New Roman', serif"; pre.style.fontSize = "13px"; pre.style.lineHeight = "1.6";
+    pre.textContent = texto; holder.appendChild(pre); document.body.appendChild(holder);
+    document.body.classList.add("is-printing");
+    const cleanup = () => { holder.remove(); document.body.classList.remove("is-printing"); window.removeEventListener("afterprint", cleanup); };
+    window.addEventListener("afterprint", cleanup);
+    setTimeout(() => window.print(), 60); setTimeout(cleanup, 4000);
+  };
+}
+
+/* ═══════════════════ TE LEVO PELA MÃO (guias) ═══════════════════ */
+(function () {
+  const GUIAS = [
+    {
+      id: "comprar", icon: "🚗", title: "Comprei um veículo usado",
+      desc: "Passar o carro/moto para o meu nome.",
+      intro: "Transferência de propriedade — quem faz é o comprador.",
+      prazoDias: 30, prazoLabel: "Transferência em até 30 dias da assinatura da ATPV",
+      steps: [
+        { t: "Conferir débitos e impedimentos", d: "IPVA, multas e licenciamento têm que estar quitados e sem bloqueios.", link: "https://www.detran.pa.gov.br/servicosWeb/consultaVeiculoInfracao_detalhada_V.php", linkLabel: "Consultar o veículo" },
+        { t: "Checar o gravame", d: "Se o carro era financiado, o gravame precisa estar baixado (a financeira informa)." },
+        { t: "Gerar e assinar a ATPV-e", d: "O vendedor gera a ATPV-e; comprador e vendedor assinam no app Carteira Digital de Trânsito (login gov.br). Dispensa cartório para registros a partir de 04/01/2021." },
+        { t: "Fazer a vistoria", d: "Em ECV credenciada ou no DETRAN — confere chassi e motor (decalque)." },
+        { t: "Pagar o DAE", d: "Pague a taxa de transferência (boleto DAE) gerada no portal." },
+        { t: "Emitir o CRLV-e", d: "Em ~2 dias úteis após o pagamento, o novo documento fica no app CDT.", link: "https://www.detran.pa.gov.br/sistransito/detran-web/servicos/crlv/indexCRLVe.jsf", linkLabel: "CRLV-e" }
+      ]
+    },
+    {
+      id: "vender", icon: "🤝", title: "Vou vender meu veículo",
+      desc: "Comunicar a venda e me proteger de multas futuras.",
+      intro: "Comunicação de venda — quem faz é o vendedor.",
+      prazoDias: 30, prazoLabel: "Comunicação de venda em até 30 dias da venda",
+      steps: [
+        { t: "Preencher a intenção/ATPV com o comprador", d: "Reúna os dados completos do comprador (nome, CPF, endereço, contato).", docs: true },
+        { t: "Fazer a Comunicação de Venda", d: "No portal, aba Veículos → Formulário de Comunicação de Venda → preencher, anexar e protocolar.", link: "https://www.detran.pa.gov.br/servicos", linkLabel: "Portal de serviços" },
+        { t: "Guardar o protocolo e acompanhar", d: "A partir do registro, multas e débitos do novo dono deixam de vir no seu nome." }
+      ]
+    },
+    {
+      id: "renovar", icon: "🪪", title: "Renovar a CNH",
+      desc: "Renovar a carteira quando vence.",
+      intro: "Renovação de CNH (cadastro no PA).",
+      steps: [
+        { t: "Emitir o boleto de renovação", d: "Abra o serviço no portal e emita o boleto.", link: "https://www.detran.pa.gov.br/servicos", linkLabel: "Portal de serviços" },
+        { t: "Pagar e aguardar a compensação", d: "Leva cerca de 72h úteis." },
+        { t: "Validação documental + foto", d: "Presencial, com identidade e comprovante de residência." },
+        { t: "Exame médico", d: "Obrigatório para todas as categorias. Agende pelo Call Center 154." },
+        { t: "Psicotécnico (se EAR)", d: "Só para quem exerce atividade remunerada." },
+        { t: "Toxicológico (se C, D ou E)", d: "Obrigatório nessas categorias; validade de 90 dias." },
+        { t: "Receber a CNH em casa", d: "A carteira é enviada pelos Correios; a CNH-e fica no app CDT." }
+      ]
+    },
+    {
+      id: "multa", icon: "⚖️", title: "Recorrer de uma multa",
+      desc: "Contestar uma autuação ou multa.",
+      intro: "Defesa/Recurso pelo Portal Venus.",
+      prazoDias: 30, prazoLabel: "Protocole dentro do prazo da notificação (mínimo 30 dias)",
+      steps: [
+        { t: "Identificar a fase", d: "Notificação de Autuação = cabe Defesa Prévia. Notificação de Penalidade = cabe Recurso à JARI." },
+        { t: "Conferir o órgão autuador", d: "O Portal Venus só trata multas do próprio DETRAN-PA. Rodovia estadual → DER-PA; federal → PRF; via municipal → Prefeitura/SEMOB." },
+        { t: "Reunir as provas", d: "Notificação, RG/CNH, CRLV-e, fotos, vídeos, recibos — o que ajudar a fundamentar." },
+        { t: "Protocolar no Portal Venus", d: "Login gov.br (prata/ouro). Redija com fundamentação e anexe as provas. (Dica: peça ao assistente um rascunho de defesa!)", link: "https://cidadao.detran.pa.gov.br", linkLabel: "Portal Venus" },
+        { t: "Guardar o protocolo e acompanhar", d: "Anote o número e acompanhe o resultado." }
+      ]
+    }
+  ];
+
+  if (els.emptyDocs) {
+    const cta = document.createElement("button");
+    cta.className = "docs-cta guia-cta";
+    cta.innerHTML = '<span class="docs-cta-icon">🧭</span><span><strong>Te levo pela mão</strong><small>O passo a passo de um serviço inteiro, com prazos e documentos.</small></span>';
+    cta.onclick = abrirGuias;
+    els.emptyDocs.insertAdjacentElement("afterend", cta);
+  }
+
+  function done(id) { try { return JSON.parse(localStorage.getItem("detranpa_guia_" + id) || "[]"); } catch (_) { return []; } }
+  function setDone(id, arr) { try { localStorage.setItem("detranpa_guia_" + id, JSON.stringify(arr)); } catch (_) {} }
+
+  function abrirGuias() {
+    els.overlay.classList.remove("hidden");
+    els.overlayTitle.textContent = "Te levo pela mão";
+    els.docsBack.classList.add("hidden");
+    const cards = GUIAS.map((g) => {
+      const d = done(g.id).length, tot = g.steps.length;
+      const prog = d ? `<div class="doc-sub">${d}/${tot} etapas concluídas</div>` : "";
+      return `<button class="doc-card" data-g="${g.id}"><h4>${g.icon} ${g.title}</h4><p>${g.desc}</p>${prog}</button>`;
+    }).join("");
+    els.overlayBody.innerHTML = `<p class="doc-intro">Escolha uma jornada. Eu te levo etapa por etapa, com os links certos, os documentos e o prazo.</p><div class="doc-grid">${cards}</div>`;
+    els.overlayBody.querySelectorAll("[data-g]").forEach((b) => { b.onclick = () => abrirGuia(b.getAttribute("data-g")); });
+  }
+
+  function abrirGuia(id) {
+    const g = GUIAS.find((x) => x.id === id); if (!g) return;
+    els.overlayTitle.textContent = g.title;
+    const feitos = new Set(done(id));
+    function render() {
+      const steps = g.steps.map((s, i) => {
+        const isDone = feitos.has(i);
+        const link = s.link ? `<a class="gs-link" href="${s.link}" target="_blank" rel="noopener">↗ ${s.linkLabel || "Abrir link oficial"}</a>` : "";
+        const doc = s.docs ? '<button class="gs-doc" data-docs="1">📄 Ver documentos</button>' : "";
+        return `<div class="guia-step ${isDone ? "done" : ""}" data-i="${i}"><button class="guia-check" aria-label="marcar etapa">${isDone ? "✓" : ""}</button><div><div class="gs-title">${s.t}</div><div class="gs-desc">${s.d}</div>${(link || doc) ? `<div class="gs-actions">${link}${doc}</div>` : ""}</div></div>`;
+      }).join("");
+      const prazo = g.prazoDias ? `<div class="guia-prazo">⏰ <span>${g.prazoLabel}</span> <button class="btn btn-soft" id="guia-ics">📅 Adicionar prazo ao calendário</button></div>` : "";
+      els.overlayBody.innerHTML = `<button class="guia-back">← Voltar aos guias</button><div class="guia-head"><div class="doc-intro" style="margin:0">${g.intro || ""}</div><div class="guia-prog">${feitos.size}/${g.steps.length} concluídas</div></div>${prazo}<div class="guia-steps">${steps}</div>`;
+      els.overlayBody.querySelector(".guia-back").onclick = abrirGuias;
+      els.overlayBody.querySelectorAll(".guia-step").forEach((st) => {
+        st.querySelector(".guia-check").onclick = () => {
+          const i = +st.getAttribute("data-i");
+          if (feitos.has(i)) feitos.delete(i); else feitos.add(i);
+          setDone(id, [...feitos]); render();
+        };
+      });
+      els.overlayBody.querySelectorAll("[data-docs]").forEach((b) => { b.onclick = () => openDocs(); });
+      const ics = els.overlayBody.querySelector("#guia-ics");
+      if (ics) ics.onclick = () => baixarICS(g);
+    }
+    render();
+  }
+
+  function pad(n) { return String(n).padStart(2, "0"); }
+  function baixarICS(g) {
+    const d = new Date(); d.setDate(d.getDate() + g.prazoDias);
+    const ymd = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
+    const dn = new Date(d); dn.setDate(dn.getDate() + 1);
+    const ymd2 = `${dn.getFullYear()}${pad(dn.getMonth() + 1)}${pad(dn.getDate())}`;
+    const n = new Date();
+    const stamp = `${n.getFullYear()}${pad(n.getMonth() + 1)}${pad(n.getDate())}T${pad(n.getHours())}${pad(n.getMinutes())}${pad(n.getSeconds())}`;
+    const ics = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//DETRAN-PA//Assistente//PT-BR", "BEGIN:VEVENT",
+      `UID:${g.id}-${ymd}@detranpa`, `DTSTAMP:${stamp}`, `DTSTART;VALUE=DATE:${ymd}`, `DTEND;VALUE=DATE:${ymd2}`,
+      `SUMMARY:Prazo DETRAN — ${g.title}`, `DESCRIPTION:${g.prazoLabel}. Confirme sempre no portal detran.pa.gov.br`,
+      "BEGIN:VALARM", "TRIGGER:-P1D", "ACTION:DISPLAY", "DESCRIPTION:Lembrete de prazo DETRAN", "END:VALARM",
+      "END:VEVENT", "END:VCALENDAR"].join("\r\n");
+    const blob = new Blob([ics], { type: "text/calendar" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+    a.download = `prazo-detran-${g.id}.ics`; document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  }
 })();

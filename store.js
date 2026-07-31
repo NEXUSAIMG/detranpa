@@ -324,3 +324,48 @@ export async function clearGaps() {
     else if (mode === "file" && existsSync(GAPS_FILE)) writeFileSync(GAPS_FILE, "[]", "utf8");
   } catch (_) {}
 }
+
+/* ── Analytics (painel do gestor) ── */
+const EV_KEY = "detranpa:events";
+const EV_FILE = join(DATA_DIR, "events.json");
+const EV_MAX = 3000;
+
+async function evLoad() {
+  const mode = storageMode();
+  try {
+    if (mode === "kv") { const raw = await kvGet(EV_KEY); return raw ? JSON.parse(raw) : []; }
+    if (mode === "file" && existsSync(EV_FILE)) { try { return JSON.parse(readFileSync(EV_FILE, "utf8")); } catch { return []; } }
+  } catch (_) {}
+  return [];
+}
+async function evSave(arr) {
+  const mode = storageMode();
+  if (arr.length > EV_MAX) arr.splice(0, arr.length - EV_MAX);
+  try {
+    if (mode === "kv") await kvSet(EV_KEY, JSON.stringify(arr));
+    else if (mode === "file") { if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true }); writeFileSync(EV_FILE, JSON.stringify(arr), "utf8"); }
+  } catch (_) {}
+}
+export async function logEvent(ev) {
+  const item = Object.assign({ at: Date.now() }, ev || {});
+  const arr = await evLoad(); arr.push(item); await evSave(arr);
+}
+export async function getStats() {
+  const arr = await evLoad();
+  const st = { total: 0, resolved: 0, unresolved: 0, up: 0, down: 0, byTheme: {}, byHour: {} };
+  for (const e of arr) {
+    if (e.k === "fb") { if (e.up) st.up++; else st.down++; continue; }
+    st.total++;
+    if (e.r) st.resolved++; else st.unresolved++;
+    const t = e.t || "outros"; st.byTheme[t] = (st.byTheme[t] || 0) + 1;
+    const h = new Date(e.at).getHours(); st.byHour[h] = (st.byHour[h] || 0) + 1;
+  }
+  return st;
+}
+export async function resetStats() {
+  const mode = storageMode();
+  try {
+    if (mode === "kv") await kvDel(EV_KEY);
+    else if (mode === "file" && existsSync(EV_FILE)) writeFileSync(EV_FILE, "[]", "utf8");
+  } catch (_) {}
+}

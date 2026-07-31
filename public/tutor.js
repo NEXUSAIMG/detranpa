@@ -15,6 +15,7 @@ const el = {
   file: $("file"), pickFile: $("pick-file"), upStatus: $("up-status"),
 };
 Object.assign(el, { gapsList: $("gaps-list"), gapsCount: $("gaps-count"), gapsReload: $("gaps-reload"), gapsClear: $("gaps-clear") });
+Object.assign(el, { dashTiles: $("dash-tiles"), dashThemes: $("dash-themes"), dashHours: $("dash-hours"), dashReload: $("dash-reload") });
 
 const MAX_CHARS = 120000;      // documentos bem maiores são aceitos
 const MAX_PDF_PAGES = 200;     // teto de páginas lidas de um PDF
@@ -70,6 +71,7 @@ function showPanel(storage) {
   el.panel.classList.remove("hidden");
   el.logout.classList.remove("hidden");
   renderBanner(storage);
+  loadDash();
   loadEntries();
   loadGaps();
 }
@@ -243,6 +245,37 @@ async function testar() {
     el.testAnswer.innerHTML = `<div class="t-msg err">Não foi possível conectar ao servidor.</div>`;
   } finally { el.testSend.disabled = false; }
 }
+
+/* ── Painel do gestor ── */
+async function loadDash() {
+  if (!el.dashTiles) return;
+  const { ok, data } = await api("/api/tutor/stats");
+  if (!ok) return;
+  const s = data.stats || {};
+  const total = s.total || 0;
+  const taxa = total ? Math.round(((s.resolved || 0) / total) * 100) : 0;
+  const fb = (s.up || 0) + (s.down || 0);
+  const sat = fb ? Math.round(((s.up || 0) / fb) * 100) : null;
+  el.dashTiles.innerHTML = `
+    <div class="dash-tile"><div class="num">${total}</div><div class="lbl">perguntas feitas</div></div>
+    <div class="dash-tile"><div class="num">${taxa}%</div><div class="lbl">respondidas pela base</div></div>
+    <div class="dash-tile"><div class="num">${sat == null ? "—" : sat + "%"}</div><div class="lbl">satisfação · 👍 ${s.up || 0} / 👎 ${s.down || 0}</div></div>`;
+  const temas = { cnh: "Habilitação", veiculos: "Veículos", multas: "Multas", ipva: "IPVA", outros: "Outros" };
+  const bt = s.byTheme || {};
+  const maxT = Math.max(1, ...Object.keys(temas).map((k) => bt[k] || 0));
+  el.dashThemes.innerHTML = '<div class="t-label">Demanda por tema</div>' + Object.keys(temas).map((k) => {
+    const v = bt[k] || 0;
+    return `<div class="dash-bar"><span class="cap">${temas[k]}</span><span class="track"><span class="fill" style="width:${Math.round((v / maxT) * 100)}%"></span></span><span class="val">${v}</span></div>`;
+  }).join("");
+  const bh = s.byHour || {};
+  const periodos = [["Madrugada (0–5h)", 0, 5], ["Manhã (6–11h)", 6, 11], ["Tarde (12–17h)", 12, 17], ["Noite (18–23h)", 18, 23]];
+  const somas = periodos.map(([lbl, a, b]) => { let n = 0; for (let h = a; h <= b; h++) n += bh[h] || 0; return { lbl, n }; });
+  const maxH = Math.max(1, ...somas.map((x) => x.n));
+  el.dashHours.innerHTML = '<div class="t-label">Movimento por horário</div>' + somas.map((x) =>
+    `<div class="dash-bar"><span class="cap">${x.lbl}</span><span class="track"><span class="fill" style="width:${Math.round((x.n / maxH) * 100)}%"></span></span><span class="val">${x.n}</span></div>`
+  ).join("");
+}
+if (el.dashReload) el.dashReload.onclick = loadDash;
 
 /* ── Perguntas sem resposta ── */
 async function loadGaps() {

@@ -15,7 +15,7 @@ import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { FORMS, FORM_INDEX } from "../forms-data.js";
-import { storageMode, listEntries, addEntry, updateEntry, deleteEntry, buildTutorContext, logGap, listGaps, clearGaps } from "../store.js";
+import { storageMode, listEntries, addEntry, updateEntry, deleteEntry, buildTutorContext, logGap, listGaps, clearGaps, logEvent, getStats, resetStats } from "../store.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
@@ -103,6 +103,10 @@ ANÁLISE DE FOTOS/IMAGENS (quando o usuário enviar uma foto de documento):
 
 REGISTRO INTERNO (o usuário NÃO vê):
 - Quando você NÃO encontrar a informação pedida na BASE DE CONHECIMENTO e tiver que orientar a pessoa a confirmar no portal oficial ou no telefone 154, acrescente ao final, sozinho em uma linha, o marcador [[SEMBASE]]. Ele é retirado antes de chegar ao usuário e serve só para o DETRAN mapear as dúvidas que faltam na base. NÃO use [[SEMBASE]] quando você respondeu com base na informação disponível.
+
+
+DEFESA DE MULTA:
+- Quando a pessoa quiser contestar ou recorrer de uma multa (defesa prévia ou recurso), responda normalmente e inclua, sozinho na ÚLTIMA linha, o marcador [[DEFESA]]. A interface mostra um botão que gera um rascunho da peça. No máximo um [[DEFESA]] por resposta; nunca explique o marcador.
 
 
 BASE DE CONHECIMENTO:
@@ -296,6 +300,90 @@ app.delete("/api/tutor/entries/:id", tutorAuth, async (req, res) => {
 });
 
 // ── Chat ────────────────────────────────────────────────────────────────────
+app.post("/api/defesa", async (req, res) => {
+  if (!API_KEY) return res.status(500).json({ error: "Servidor sem ANTHROPIC_API_KEY." });
+  let { messages } = req.body || {};
+  if (!Array.isArray(messages)) messages = [];
+  const IMGS = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+  const limpa = (content) => {
+    if (typeof content === "string") return content.slice(0, 4000);
+    if (Array.isArray(content)) {
+      const out = []; let n = 0;
+      for (const b of content) {
+        if (!b || typeof b !== "object") continue;
+        if (b.type === "text" && typeof b.text === "string") out.push({ type: "text", text: b.text.slice(0, 4000) });
+        else if (b.type === "image" && b.source && b.source.type === "base64" && IMGS.has(b.source.media_type) && typeof b.source.data === "string" && b.source.data.length <= 5 * 1024 * 1024 && n < 2) { n++; out.push({ type: "image", source: { type: "base64", media_type: b.source.media_type, data: b.source.data } }); }
+      }
+      return out.length ? out : "";
+    }
+    return "";
+  };
+  const hist = messages
+    .filter((m) => m && (m.role === "user" || m.role === "assistant") && (typeof m.content === "string" || Array.isArray(m.content)))
+    .slice(-24)
+    .map((m) => ({ role: m.role, content: limpa(m.content) }))
+    .filter((m) => (typeof m.content === "string" ? m.content.length > 0 : m.content.length > 0));
+  if (!hist.length || hist[hist.length - 1].role !== "user") hist.push({ role: "user", content: "Redija o rascunho da defesa com base na conversa acima." });
+
+  const sys = `Você redige um RASCUNHO de peça de defesa de multa de trânsito para o cidadão do Pará apresentar no DETRAN-PA (Portal Venus). Baseie-se na conversa e, se houver, na imagem da notificação.
+
+1. Escolha o tipo conforme a fase:
+   - Notificação de AUTUAÇÃO -> "DEFESA PRÉVIA (DEFESA DA AUTUAÇÃO)".
+   - Notificação de PENALIDADE -> "RECURSO À JARI".
+   Se não der para saber, faça a Defesa Prévia e avise numa linha.
+2. Estrutura:
+   - Endereçamento (À Autoridade de Trânsito do DETRAN-PA, ou À JARI).
+   - IDENTIFICAÇÃO: nome, CPF, nº da CNH, placa/RENAVAM, nº do Auto de Infração (AIT), data e local. Use os dados fornecidos; onde faltar, escreva [PREENCHER].
+   - DOS FATOS: relate conforme a pessoa contou.
+   - DO DIREITO: fundamente com o CTB e Resoluções do CONTRAN pertinentes ao caso (ex.: prazo/regularidade da notificação, art. 281 do CTB; aferição do equipamento pelo INMETRO; correta tipificação; Res. CONTRAN 918/2022). Use só o que couber.
+   - DO PEDIDO: cancelamento da autuação/penalidade e arquivamento.
+   - Fecho: local, data e linha de assinatura.
+3. Regras: tom formal e respeitoso; NÃO invente dados (use [PREENCHER]); não prometa resultado.
+Comece com UMA linha de aviso: "RASCUNHO — revise, preencha os campos [PREENCHER] e confira antes de protocolar. Não substitui orientação jurídica." Depois, a peça.`;
+
+  try {
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: MODEL, max_tokens: 2500, system: sys, messages: hist }),
+    });
+    if (!r.ok) return res.status(502).json({ error: "Não foi possível gerar agora. Tente de novo." });
+    const data = await r.json();
+    const texto = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
+    res.json({ defesa: texto });
+  } catch (e) {
+    console.error("[defesa]", e);
+    res.status(500).json({ error: "Erro ao gerar a defesa." });
+  }
+});
+
+function classificarTema(q) {
+  const s = String(q || "").toLowerCase();
+  const has = (arr) => arr.some((w) => s.includes(w));
+  if (has(["multa", "infrac", "infraç", "recurso", "jari", "pontos", "autuac", "autuaç", "penalidade"])) return "multas";
+  if (has(["cnh", "habilit", "carteira", "renovar", "categoria", "exame", "toxicol", "reciclagem", "psicot"])) return "cnh";
+  if (has(["ipva"])) return "ipva";
+  if (has(["veic", "veíc", "carro", "moto", "transfer", "licenciamento", "placa", "crlv", "crv", "vistoria", "emplac", "gravame", "venda"])) return "veiculos";
+  return "outros";
+}
+
+// Feedback do cidadão (público) — alimenta o painel do gestor
+app.post("/api/feedback", (req, res) => {
+  const up = !!(req.body && req.body.up);
+  logEvent({ k: "fb", up: up ? 1 : 0 }).catch(() => {});
+  res.json({ ok: true });
+});
+
+// Estatísticas de uso (protegido)
+app.get("/api/tutor/stats", tutorAuth, async (_req, res) => {
+  try { res.json({ stats: await getStats() }); }
+  catch (err) { persistError(res, err); }
+});
+app.delete("/api/tutor/stats", tutorAuth, async (_req, res) => {
+  try { await resetStats(); res.json({ ok: true }); }
+  catch (err) { persistError(res, err); }
+});
+
 // ── Painel: perguntas que o assistente não soube responder ──────────────────
 app.get("/api/tutor/gaps", tutorAuth, async (_req, res) => {
   try { res.json({ gaps: await listGaps() }); }
@@ -378,10 +466,13 @@ app.post("/api/chat", async (req, res) => {
 
     const data = await resposta.json();
     let texto = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
+    let semBase = false;
     if (texto.includes("[[SEMBASE]]")) {
+      semBase = true;
       texto = texto.replace(/\[\[SEMBASE\]\]/g, "").trim();
       logGap(ultimaPergunta).catch(() => {});
     }
+    logEvent({ k: "q", t: classificarTema(ultimaPergunta), r: semBase ? 0 : 1 }).catch(() => {});
     res.json({ reply: texto || "Não consegui gerar uma resposta. Pode reformular a pergunta?" });
   } catch (err) {
     console.error("[erro]", err);
