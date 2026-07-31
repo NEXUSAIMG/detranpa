@@ -29,7 +29,7 @@ const OLD_KEY = "detranpa:tutor:knowledge"; // formato antigo (array único)
 const cKey = (id) => "detranpa:tutor:c:" + id;
 
 const PREVIEW = 600;       // caracteres guardados no índice para pré-visualização
-const CTX_BUDGET = 8000;   // teto do que vai no prompt por pergunta
+const CTX_BUDGET = 12000;   // teto do que vai no prompt por pergunta
 const SMALL_ENTRY = 1600;  // entradas até isso vão inteiras
 const CHUNK_SIZE = 750;    // tamanho de cada trecho de documento grande
 
@@ -230,46 +230,48 @@ export async function buildTutorContext(question) {
   const entries = await loadFull();
   if (!entries.length) return "";
   const terms = [...new Set(normalize(question).split(" ").filter((w) => w.length >= 3 && !STOP.has(w)))];
-  const out = [];
-  let used = 0;
-  const bigs = [];
 
+  // Candidatos rankeáveis: entradas pequenas inteiras + trechos das grandes.
+  // TUDO é pontuado por relevância à pergunta — assim a base pode ter centenas de
+  // itens e só os mais relevantes entram no prompt (não os mais antigos por ordem).
+  const cands = [];
   for (const e of entries) {
     const content = e.content || "";
+    const titleNorm = normalize(e.title);
+    const titleHit = terms.reduce((a, t) => a + (titleNorm.includes(t) ? 2 : 0), 0);
+    const upd = e.updatedAt || e.createdAt || 0;
     if (content.length <= SMALL_ENTRY) {
-      const block = `• ${e.title}\n${content}`;
-      if (used + block.length <= CTX_BUDGET) { out.push(block); used += block.length; }
+      const nc = normalize(content);
+      let score = titleHit;
+      for (const t of terms) score += countTerm(nc, t);
+      cands.push({ score, upd, title: e.title, text: content });
     } else {
-      bigs.push(e);
+      const chunks = chunkText(content, CHUNK_SIZE);
+      chunks.forEach((c, i) => {
+        const ncc = normalize(c);
+        let score = titleHit;
+        for (const t of terms) score += countTerm(ncc, t);
+        cands.push({ score, upd, order: i, title: e.title + " (trecho relevante)", text: c });
+      });
     }
   }
 
-  if (bigs.length && used < CTX_BUDGET) {
-    const scored = [];
-    for (const e of bigs) {
-      const titleNorm = normalize(e.title);
-      const titleHit = terms.some((t) => titleNorm.includes(t)) ? 2 : 0;
-      const chunks = chunkText(e.content, CHUNK_SIZE);
-      chunks.forEach((c, i) => {
-        const nc = normalize(c);
-        let score = titleHit;
-        for (const t of terms) score += countTerm(nc, t);
-        scored.push({ score, order: i, title: e.title, text: c });
-      });
-    }
-    const anyHit = terms.length > 0 && scored.some((s) => s.score > 0);
-    let picked;
-    if (anyHit) {
-      picked = scored.filter((s) => s.score > 0).sort((a, b) => b.score - a.score);
-    } else {
-      const seen = new Set();
-      picked = scored.filter((s) => { if (seen.has(s.title) || s.order !== 0) return false; seen.add(s.title); return true; });
-    }
-    for (const p of picked) {
-      const block = `• ${p.title} (trecho relevante)\n${p.text}`;
-      if (used + block.length > CTX_BUDGET) break;
-      out.push(block); used += block.length;
-    }
+  const anyHit = terms.length > 0 && cands.some((c) => c.score > 0);
+  let picked;
+  if (anyHit) {
+    picked = cands.filter((c) => c.score > 0).sort((a, b) => (b.score - a.score) || (b.upd - a.upd));
+  } else {
+    picked = cands.filter((c) => c.order === undefined || c.order === 0).sort((a, b) => b.upd - a.upd);
+  }
+
+  const out = [];
+  let used = 0;
+  for (const p of picked) {
+    const block = `• ${p.title}\n${p.text}`;
+    if (used + block.length > CTX_BUDGET) continue;
+    out.push(block);
+    used += block.length;
+    if (used >= CTX_BUDGET) break;
   }
   return out.join("\n\n");
 }
