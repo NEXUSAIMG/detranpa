@@ -383,3 +383,36 @@ body.hc .foot, body.hc .dp-sub{ color:#222; }
 .gs-link{ background:#EAF1FB; color:#0b3d91; }
 .gs-doc{ background:#EEF6F2; color:var(--moss-deep); }
 .guia-cta{ margin-top:10px; }
+
+/* calculadoras */
+.calc-cta{ margin-top:10px; }
+.calc-card{ background:var(--surface); border:1px solid var(--paper-edge); border-radius:12px; padding:16px; margin-bottom:14px; }
+.calc-card h4{ margin:0 0 3px; font-size:15px; color:#1B2D26; }
+.calc-sub{ font-size:12.5px; color:var(--ink-soft); margin:0 0 12px; }
+.calc-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.calc-grid label, .calc-inline{ display:flex; flex-direction:column; gap:5px; font-size:12.5px; color:#2C3A34; }
+.calc-inline{ flex-direction:row; align-items:center; gap:8px; }
+.calc-grid input, .calc-inline input{ padding:9px 11px; border:1px solid #D9D4C8; border-radius:9px; font-size:14px; font-family:inherit; background:#fff; }
+.calc-out{ margin-top:12px; }
+.calc-big{ font-size:24px; font-weight:800; color:var(--moss-deep); }
+.calc-track{ height:12px; background:#EAE6DC; border-radius:6px; overflow:hidden; margin:8px 0; }
+.calc-fill{ display:block; height:100%; border-radius:6px; }
+.calc-note{ font-size:13px; color:#48564f; line-height:1.5; }
+.calc-check{ display:flex; align-items:center; gap:8px; font-size:13.5px; padding:8px 0; border-bottom:1px solid var(--paper-edge); }
+.calc-check span{ margin-left:auto; color:var(--ink-soft); font-weight:600; }
+
+/* meu veículo */
+.mv-cta{ margin-top:10px; }
+.mv-fields{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+.mv-fields label{ display:flex; flex-direction:column; gap:5px; font-size:12.5px; color:#2C3A34; }
+.mv-fields input{ padding:10px 12px; border:1px solid #D9D4C8; border-radius:9px; font-size:15px; background:#fff; text-transform:uppercase; }
+.mv-fields input#mv-cpf{ text-transform:none; }
+.mv-chips{ display:flex; gap:8px; flex-wrap:wrap; margin:12px 0 16px; }
+.mv-chip{ background:var(--chip); border:0; border-radius:20px; padding:8px 14px; font-size:12.5px; font-weight:600; cursor:pointer; color:#2A3A33; }
+.mv-chip:hover{ background:#E6DFD2; }
+.mv-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.mv-card{ display:flex; align-items:center; gap:11px; text-decoration:none; background:var(--surface); border:1px solid var(--paper-edge); border-radius:12px; padding:13px 14px; color:#1B2D26; }
+.mv-card:hover{ border-color:var(--moss-pale); }
+.mv-card .ic{ font-size:20px; flex-shrink:0; }
+.mv-card b{ font-size:13.5px; display:block; }
+.mv-card small{ font-size:11.5px; color:var(--ink-soft); }

@@ -15,7 +15,7 @@ import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { FORMS, FORM_INDEX } from "../forms-data.js";
-import { storageMode, listEntries, addEntry, updateEntry, deleteEntry, buildTutorContext, logGap, listGaps, clearGaps, logEvent, getStats, resetStats } from "../store.js";
+import { storageMode, listEntries, addEntry, updateEntry, deleteEntry, buildTutorContext, logGap, listGaps, clearGaps, logEvent, getStats, resetStats, reindexEmbeddings, semanticEnabled } from "../store.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
@@ -140,7 +140,7 @@ function rateLimited(ip) {
 }
 
 app.get("/api/health", (_req, res) => {
-  res.json({ ok: true, model: MODEL, keyConfigured: Boolean(API_KEY), tutor: Boolean(TUTOR_PASSWORD), storage: storageMode() });
+  res.json({ ok: true, model: MODEL, keyConfigured: Boolean(API_KEY), tutor: Boolean(TUTOR_PASSWORD), storage: storageMode(), semantica: semanticEnabled() });
 });
 
 // ── Catálogo de documentos preenchíveis ─────────────────────────────────────
@@ -392,6 +392,47 @@ app.get("/api/tutor/gaps", tutorAuth, async (_req, res) => {
 app.delete("/api/tutor/gaps", tutorAuth, async (_req, res) => {
   try { await clearGaps(); res.json({ ok: true }); }
   catch (err) { persistError(res, err); }
+});
+
+// Busca semântica: gera embeddings dos itens (protegido)
+app.post("/api/tutor/reindex", tutorAuth, async (_req, res) => {
+  try { res.json(await reindexEmbeddings()); }
+  catch (err) { console.error("[reindex]", err); res.status(500).json({ error: "Falha ao reindexar." }); }
+});
+
+// Curadoria automática da base (protegido)
+app.get("/api/tutor/curadoria", tutorAuth, async (_req, res) => {
+  if (!API_KEY) return res.status(500).json({ error: "Servidor sem ANTHROPIC_API_KEY." });
+  try {
+    const entries = await listEntries();
+    if (!entries.length) return res.json({ curadoria: { resumo: "A base ainda está vazia.", duplicados: [], desatualizados: [], sugestoes: [] } });
+    const gaps = await listGaps();
+    const lista = entries.slice(0, 300).map((e) => `#${e.id} | ${e.title} | ${String(e.preview || "").slice(0, 180).replace(/\s+/g, " ")}`).join("\n");
+    const gapsTxt = [...new Set(gaps.map((g) => String(g.q || "").trim()).filter(Boolean))].slice(0, 60).join("\n");
+    const sys = `Você é um curador da base de conhecimento de um assistente do DETRAN-PA. Recebe a lista de itens (id | título | trecho) e as perguntas que o assistente não soube responder. Analise e responda APENAS um JSON válido no formato:
+{
+ "resumo": "1-2 frases sobre a saúde geral da base",
+ "duplicados": [{"tema": "assunto", "ids": ["id1","id2"], "motivo": "por que parecem repetidos"}],
+ "desatualizados": [{"id": "id", "titulo": "título", "motivo": "por que pode estar velho ou superado"}],
+ "sugestoes": [{"titulo": "novo tópico sugerido", "porque": "baseado em qual lacuna/pergunta"}]
+}
+Regras: seja conservador (só marque duplicado quando for claramente o mesmo assunto); no máximo 8 itens por lista; NÃO invente ids que não estejam na lista; as sugestões devem vir das perguntas sem resposta ou de lacunas óbvias de cobertura. Responda somente o JSON, sem texto fora dele.`;
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: MODEL, max_tokens: 1600, system: sys, messages: [{ role: "user", content: `ITENS DA BASE:\n${lista}\n\nPERGUNTAS SEM RESPOSTA:\n${gapsTxt || "(nenhuma)"}` }] }),
+    });
+    if (!r.ok) return res.status(502).json({ error: "Não foi possível analisar agora." });
+    const data = await r.json();
+    const txt = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("").trim();
+    const m = txt.match(/\{[\s\S]*\}/);
+    let curadoria = { resumo: "", duplicados: [], desatualizados: [], sugestoes: [] };
+    if (m) { try { curadoria = Object.assign(curadoria, JSON.parse(m[0])); } catch (_) {} }
+    res.json({ curadoria });
+  } catch (err) {
+    console.error("[curadoria]", err);
+    res.status(500).json({ error: "Erro ao analisar a base." });
+  }
 });
 
 app.post("/api/chat", async (req, res) => {

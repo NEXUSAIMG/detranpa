@@ -921,3 +921,145 @@ function abrirDefesa(texto) {
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
   }
 })();
+
+/* ═══════════════════ CALCULADORAS ═══════════════════ */
+(function () {
+  if (els.emptyDocs) {
+    const cta = document.createElement("button");
+    cta.className = "docs-cta calc-cta";
+    cta.innerHTML = '<span class="docs-cta-icon">🧮</span><span><strong>Calculadoras</strong><small>Pontos na CNH, prazo da defesa e custo de um serviço.</small></span>';
+    cta.onclick = abrirCalc;
+    els.emptyDocs.insertAdjacentElement("afterend", cta);
+  }
+  const brl = (n) => "R$ " + n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const pad = (n) => String(n).padStart(2, "0");
+
+  function abrirCalc() {
+    els.overlay.classList.remove("hidden");
+    els.overlayTitle.textContent = "Calculadoras";
+    els.docsBack.classList.add("hidden");
+    els.overlayBody.innerHTML = ''
+      + '<p class="doc-intro">Ferramentas rápidas — nada é enviado pela internet, tudo é calculado aqui no navegador.</p>'
+      + '<div class="calc-card"><h4>🚦 Pontos na CNH</h4><p class="calc-sub">Informe quantas infrações você tem em 12 meses, por gravidade.</p>'
+      + '<div class="calc-grid">'
+      + '<label>Leve (3 pts)<input type="number" min="0" value="0" id="c-leve"></label>'
+      + '<label>Média (4 pts)<input type="number" min="0" value="0" id="c-media"></label>'
+      + '<label>Grave (5 pts)<input type="number" min="0" value="0" id="c-grave"></label>'
+      + '<label>Gravíssima (7 pts)<input type="number" min="0" value="0" id="c-gravi"></label>'
+      + '</div><div id="c-pts-out" class="calc-out"></div></div>'
+      + '<div class="calc-card"><h4>⏰ Prazo da defesa</h4><p class="calc-sub">Data em que você recebeu a notificação. O prazo é de 30 dias.</p>'
+      + '<label class="calc-inline">Recebi em: <input type="date" id="c-data"></label><div id="c-prazo-out" class="calc-out"></div></div>'
+      + '<div class="calc-card"><h4>💰 Custo de um serviço (referência)</h4><p class="calc-sub">Marque as taxas. Valores são referência — o final é o do boleto/DAE.</p>'
+      + '<div id="c-taxas"></div><div id="c-custo-out" class="calc-out"></div></div>';
+
+    const calcPts = () => {
+      const l = +document.getElementById("c-leve").value || 0;
+      const m = +document.getElementById("c-media").value || 0;
+      const g = +document.getElementById("c-grave").value || 0;
+      const gv = +document.getElementById("c-gravi").value || 0;
+      const pts = 3 * l + 4 * m + 5 * g + 7 * gv;
+      const limite = gv >= 2 ? 20 : gv === 1 ? 30 : 40;
+      const pct = Math.min(100, Math.round((pts / limite) * 100));
+      const suspenso = pts >= limite;
+      const cor = suspenso ? "#c0392b" : pct >= 70 ? "#c77d0a" : "#0E6B57";
+      const nota = suspenso
+        ? `⚠️ Você atingiu o limite (${limite} pts) — sujeito à <strong>suspensão</strong> do direito de dirigir.`
+        : `Limite no seu caso: <strong>${limite} pontos</strong> (${gv >= 2 ? "2+ gravíssimas" : gv === 1 ? "1 gravíssima" : "nenhuma gravíssima"}). Faltam ${limite - pts} pts.`;
+      document.getElementById("c-pts-out").innerHTML = `<div class="calc-big" style="color:${cor}">${pts} pontos</div><div class="calc-track"><span class="calc-fill" style="width:${pct}%;background:${cor}"></span></div><div class="calc-note">${nota}</div>`;
+    };
+    ["c-leve", "c-media", "c-grave", "c-gravi"].forEach((id) => document.getElementById(id).addEventListener("input", calcPts));
+    calcPts();
+
+    const calcPrazo = () => {
+      const v = document.getElementById("c-data").value;
+      const out = document.getElementById("c-prazo-out");
+      if (!v) { out.innerHTML = ""; return; }
+      const d = new Date(v + "T00:00:00");
+      const limite = new Date(d); limite.setDate(limite.getDate() + 30);
+      const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+      const dias = Math.round((limite - hoje) / 86400000);
+      const ld = `${pad(limite.getDate())}/${pad(limite.getMonth() + 1)}/${limite.getFullYear()}`;
+      let cor, txt;
+      if (dias < 0) { cor = "#c0392b"; txt = `Prazo <strong>vencido</strong> há ${-dias} dia(s). O limite era ${ld}.`; }
+      else if (dias === 0) { cor = "#c0392b"; txt = `<strong>Último dia!</strong> O prazo termina hoje (${ld}).`; }
+      else { cor = dias <= 7 ? "#c77d0a" : "#0E6B57"; txt = `Prazo final: <strong>${ld}</strong> — faltam <strong>${dias} dia(s)</strong>.`; }
+      out.innerHTML = `<div class="calc-note" style="color:${cor}">${txt}</div>`;
+    };
+    document.getElementById("c-data").addEventListener("input", calcPrazo);
+
+    const TAXAS = [
+      { n: "Transferência de propriedade", v: 274.69 },
+      { n: "Vistoria veicular", v: 68.67 },
+      { n: "Emplacamento Mercosul (0km)", v: 45.78 },
+      { n: "Licenciamento anual (TRLAV)", v: 214.51 },
+      { n: "Transferência de jurisdição (CNH)", v: 149.72 },
+    ];
+    document.getElementById("c-taxas").innerHTML = TAXAS.map((t, i) => `<label class="calc-check"><input type="checkbox" data-v="${t.v}" id="tx${i}"> ${t.n} <span>${brl(t.v)}</span></label>`).join("");
+    const calcCusto = () => {
+      let tot = 0;
+      document.querySelectorAll("#c-taxas input:checked").forEach((c) => { tot += +c.getAttribute("data-v"); });
+      document.getElementById("c-custo-out").innerHTML = tot ? `<div class="calc-big">${brl(tot)}</div><div class="calc-note">Total de referência. Confirme no boleto/DAE do portal.</div>` : "";
+    };
+    document.querySelectorAll("#c-taxas input").forEach((c) => c.addEventListener("change", calcCusto));
+  }
+})();
+
+/* ═══════════════════ MEU VEÍCULO ═══════════════════ */
+(function () {
+  if (els.emptyDocs) {
+    const cta = document.createElement("button");
+    cta.className = "docs-cta mv-cta";
+    cta.innerHTML = '<span class="docs-cta-icon">🚗</span><span><strong>Meu veículo</strong><small>Guarde placa e RENAVAM e tenha os atalhos oficiais na mão.</small></span>';
+    cta.onclick = abrirVeiculo;
+    els.emptyDocs.insertAdjacentElement("afterend", cta);
+  }
+  const load = () => { try { return JSON.parse(localStorage.getItem("detranpa_veiculo") || "{}"); } catch (_) { return {}; } };
+  const save = (v) => { try { localStorage.setItem("detranpa_veiculo", JSON.stringify(v)); } catch (_) {} };
+
+  const ATALHOS = [
+    { ic: "🚨", n: "Consultar multas", s: "RENAVAM + placa", u: "https://www.detran.pa.gov.br/servicosWeb/consultadeInfracoes_V.php" },
+    { ic: "🔎", n: "Veículo (detalhada)", s: "RENAVAM + placa + CPF", u: "https://www.detran.pa.gov.br/servicosWeb/consultaVeiculoInfracao_detalhada_V.php" },
+    { ic: "🧾", n: "Boleto de licenciamento", s: "placa + RENAVAM", u: "https://www.detran.pa.gov.br/sistransito/detran-web/servicos/b/dadosBLicencAnoAtual.jsf" },
+    { ic: "📄", n: "CRLV-e (baixar)", s: "placa/RENAVAM", u: "https://www.detran.pa.gov.br/sistransito/detran-web/servicos/crlv/indexCRLVe.jsf" },
+    { ic: "📦", n: "Acompanhar documento", s: "dados do processo", u: "https://www.detran.pa.gov.br/servicosWeb/acompanheSeuDocumento_V.php" },
+    { ic: "💰", n: "IPVA (SEFA)", s: "RENAVAM", u: "https://app.sefa.pa.gov.br/consulta-ipva" },
+  ];
+
+  function copiar(txt, btn) {
+    if (!txt) return;
+    const done = () => { const o = btn.textContent; btn.textContent = "✓ copiado"; setTimeout(() => { btn.textContent = o; }, 1400); };
+    (navigator.clipboard ? navigator.clipboard.writeText(txt).then(done).catch(() => fallbackCopy(txt)) : fallbackCopy(txt));
+    if (!navigator.clipboard) done();
+  }
+
+  function abrirVeiculo() {
+    const v = load();
+    els.overlay.classList.remove("hidden");
+    els.overlayTitle.textContent = "Meu veículo";
+    els.docsBack.classList.add("hidden");
+    els.overlayBody.innerHTML = ''
+      + '<p class="doc-intro">Guarde seus dados (ficam só neste aparelho) e use os atalhos oficiais. Nos portais do DETRAN você cola a placa/RENAVAM no formulário — por isso os botões de copiar.</p>'
+      + '<div class="mv-fields">'
+      + '  <label>Placa<input id="mv-placa" maxlength="8" placeholder="ABC1D23" value="' + (v.placa || "") + '"></label>'
+      + '  <label>RENAVAM<input id="mv-renavam" maxlength="12" placeholder="00000000000" value="' + (v.renavam || "") + '"></label>'
+      + '  <label>CPF/CNPJ (opcional)<input id="mv-cpf" placeholder="para a consulta detalhada" value="' + (v.cpf || "") + '"></label>'
+      + '</div>'
+      + '<div class="mv-chips" id="mv-chips"></div>'
+      + '<div class="mv-grid">' + ATALHOS.map((a) => '<a class="mv-card" href="' + a.u + '" target="_blank" rel="noopener"><span class="ic">' + a.ic + '</span><span><b>' + a.n + '</b><small>' + a.s + '</small></span></a>').join("") + '</div>';
+
+    const elP = document.getElementById("mv-placa"), elR = document.getElementById("mv-renavam"), elC = document.getElementById("mv-cpf");
+    const persist = () => save({ placa: elP.value.trim().toUpperCase(), renavam: elR.value.trim(), cpf: elC.value.trim() });
+    [elP, elR, elC].forEach((e) => e.addEventListener("input", () => { persist(); renderChips(); }));
+
+    function renderChips() {
+      const cur = load();
+      const chips = [];
+      if (cur.placa) chips.push('<button class="mv-chip" data-c="' + cur.placa + '">📋 Copiar placa: ' + cur.placa + '</button>');
+      if (cur.renavam) chips.push('<button class="mv-chip" data-c="' + cur.renavam + '">📋 Copiar RENAVAM</button>');
+      const box = document.getElementById("mv-chips");
+      box.innerHTML = chips.join("");
+      box.querySelectorAll("[data-c]").forEach((b) => b.onclick = () => copiar(b.getAttribute("data-c"), b));
+    }
+    renderChips();
+  }
+})();

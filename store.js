@@ -134,6 +134,7 @@ export async function addEntry({ title, content, source }) {
   } else {
     throw new Error("PERSIST_NONE");
   }
+  try { await embedAndStore(id, m.title, content); } catch (_) {}
   return m;
 }
 
@@ -147,6 +148,7 @@ export async function updateEntry(id, { title, content }) {
     if (content != null) { const c = String(content); await kvSet(cKey(id), c); m.chars = c.length; m.preview = c.slice(0, PREVIEW); }
     m.updatedAt = Date.now();
     await kvSet(IDX_KEY, JSON.stringify(idx));
+    try { if (content != null) await embedAndStore(id, m.title, String(content)); } catch (_) {}
     return m;
   } else if (mode === "file") {
     const data = fileRead();
@@ -156,6 +158,7 @@ export async function updateEntry(id, { title, content }) {
     if (content != null) { const c = String(content); data.contents[id] = c; m.chars = c.length; m.preview = c.slice(0, PREVIEW); }
     m.updatedAt = Date.now();
     fileSave(data);
+    try { if (content != null) await embedAndStore(id, m.title, String(content)); } catch (_) {}
     return m;
   }
   throw new Error("PERSIST_NONE");
@@ -231,6 +234,13 @@ export async function buildTutorContext(question) {
   if (!entries.length) return "";
   const terms = [...new Set(normalize(question).split(" ").filter((w) => w.length >= 3 && !STOP.has(w)))];
 
+  // Camada semântica (embeddings) — opcional. Casa por SIGNIFICADO, não só palavra.
+  let qVec = null, embMap = {};
+  if (VOYAGE_KEY) {
+    try { const vs = await voyageEmbed([question]); qVec = (vs && vs[0]) || null; if (qVec) embMap = await loadEmbeddings(entries.map((e) => e.id)); } catch (_) { qVec = null; }
+  }
+  const semScore = (e) => { if (!qVec) return 0; const ev = embMap[e.id]; return ev ? cosine(qVec, ev) * SEM_WEIGHT : 0; };
+
   // Candidatos rankeáveis: entradas pequenas inteiras + trechos das grandes.
   // TUDO é pontuado por relevância à pergunta — assim a base pode ter centenas de
   // itens e só os mais relevantes entram no prompt (não os mais antigos por ordem).
@@ -240,16 +250,17 @@ export async function buildTutorContext(question) {
     const titleNorm = normalize(e.title);
     const titleHit = terms.reduce((a, t) => a + (titleNorm.includes(t) ? 2 : 0), 0);
     const upd = e.updatedAt || e.createdAt || 0;
+    const sem = semScore(e);
     if (content.length <= SMALL_ENTRY) {
       const nc = normalize(content);
-      let score = titleHit;
+      let score = titleHit + sem;
       for (const t of terms) score += countTerm(nc, t);
       cands.push({ score, upd, title: e.title, text: content });
     } else {
       const chunks = chunkText(content, CHUNK_SIZE);
       chunks.forEach((c, i) => {
         const ncc = normalize(c);
-        let score = titleHit;
+        let score = titleHit + sem;
         for (const t of terms) score += countTerm(ncc, t);
         cands.push({ score, upd, order: i, title: e.title + " (trecho relevante)", text: c });
       });
@@ -370,4 +381,72 @@ export async function resetStats() {
     if (mode === "kv") await kvDel(EV_KEY);
     else if (mode === "file" && existsSync(EV_FILE)) writeFileSync(EV_FILE, "[]", "utf8");
   } catch (_) {}
+}
+
+
+/* ── Busca semântica (embeddings via Voyage AI) — opcional ── */
+const VOYAGE_KEY = process.env.VOYAGE_API_KEY || "";
+const VOYAGE_MODEL = process.env.VOYAGE_MODEL || "voyage-3-lite";
+const SEM_WEIGHT = 14;
+const eKey = (id) => "detranpa:tutor:e:" + id;
+const EMB_FILE = join(DATA_DIR, "tutor-embeddings.json");
+
+export function semanticEnabled() { return !!VOYAGE_KEY; }
+
+function cosine(a, b) {
+  let d = 0, na = 0, nb = 0; const n = Math.min(a.length, b.length);
+  for (let i = 0; i < n; i++) { d += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
+  return (na && nb) ? d / (Math.sqrt(na) * Math.sqrt(nb)) : 0;
+}
+
+async function voyageEmbed(texts) {
+  if (!VOYAGE_KEY || !texts.length) return null;
+  const res = await fetch("https://api.voyageai.com/v1/embeddings", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + VOYAGE_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify({ input: texts, model: VOYAGE_MODEL }),
+  });
+  if (!res.ok) throw new Error("VOYAGE_" + res.status);
+  const data = await res.json();
+  return (data.data || []).slice().sort((a, b) => a.index - b.index).map((d) => d.embedding);
+}
+
+function embFileLoad() { if (existsSync(EMB_FILE)) { try { return JSON.parse(readFileSync(EMB_FILE, "utf8")); } catch { return {}; } } return {}; }
+function embFileSave(o) { if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true }); writeFileSync(EMB_FILE, JSON.stringify(o), "utf8"); }
+
+async function storeEmbedding(id, vec) {
+  const mode = storageMode();
+  if (mode === "kv") await kvSet(eKey(id), JSON.stringify(vec));
+  else if (mode === "file") { const o = embFileLoad(); o[id] = vec; embFileSave(o); }
+}
+async function loadEmbeddings(ids) {
+  const mode = storageMode(); const out = {};
+  if (!ids.length) return out;
+  if (mode === "kv") {
+    const vals = await kvMGet(ids.map(eKey));
+    ids.forEach((id, i) => { const raw = vals && vals[i]; if (raw) { try { out[id] = JSON.parse(raw); } catch (_) {} } });
+  } else if (mode === "file") {
+    const o = embFileLoad(); ids.forEach((id) => { if (o[id]) out[id] = o[id]; });
+  }
+  return out;
+}
+async function embedAndStore(id, title, content) {
+  if (!VOYAGE_KEY) return;
+  const vecs = await voyageEmbed([(String(title || "") + "\n" + String(content || "")).slice(0, 2000)]);
+  if (vecs && vecs[0]) await storeEmbedding(id, vecs[0]);
+}
+
+// Gera embeddings para os itens que ainda não têm (botão de reindexar).
+export async function reindexEmbeddings() {
+  if (!VOYAGE_KEY) return { enabled: false };
+  const entries = await loadFull();
+  const have = await loadEmbeddings(entries.map((e) => e.id));
+  const todo = entries.filter((e) => !have[e.id]);
+  let feitos = 0;
+  for (let i = 0; i < todo.length; i += 32) {
+    const batch = todo.slice(i, i + 32);
+    const vecs = await voyageEmbed(batch.map((e) => (e.title + "\n" + (e.content || "")).slice(0, 2000)));
+    if (vecs) { for (let j = 0; j < batch.length; j++) { if (vecs[j]) { await storeEmbedding(batch[j].id, vecs[j]); feitos++; } } }
+  }
+  return { enabled: true, total: entries.length, feitos, jaTinham: entries.length - todo.length };
 }

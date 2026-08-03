@@ -16,6 +16,8 @@ const el = {
 };
 Object.assign(el, { gapsList: $("gaps-list"), gapsCount: $("gaps-count"), gapsReload: $("gaps-reload"), gapsClear: $("gaps-clear") });
 Object.assign(el, { dashTiles: $("dash-tiles"), dashThemes: $("dash-themes"), dashHours: $("dash-hours"), dashReload: $("dash-reload") });
+Object.assign(el, { curRun: $("cur-run"), curOut: $("cur-out") });
+Object.assign(el, { semRun: $("sem-run"), semOut: $("sem-out") });
 
 const MAX_CHARS = 120000;      // documentos bem maiores são aceitos
 const MAX_PDF_PAGES = 200;     // teto de páginas lidas de um PDF
@@ -245,6 +247,38 @@ async function testar() {
     el.testAnswer.innerHTML = `<div class="t-msg err">Não foi possível conectar ao servidor.</div>`;
   } finally { el.testSend.disabled = false; }
 }
+
+async function runReindex() {
+  if (!el.semOut) return;
+  const old = el.semRun.textContent; el.semRun.disabled = true; el.semRun.textContent = "Gerando…";
+  el.semOut.innerHTML = '<div class="t-msg ok">Gerando embeddings… (pode levar alguns segundos com a base grande)</div>';
+  const { ok, data } = await api("/api/tutor/reindex", { method: "POST" });
+  el.semRun.disabled = false; el.semRun.textContent = old;
+  if (!ok) { el.semOut.innerHTML = `<div class="t-msg err">${escapeHtml(data.error || "Falha ao reindexar.")}</div>`; return; }
+  if (data.enabled === false) {
+    el.semOut.innerHTML = '<div class="t-msg err">A chave <strong>VOYAGE_API_KEY</strong> ainda não está configurada no ambiente. A busca segue funcionando por palavra-chave (nada quebra) — configure a chave no Vercel e clique de novo.</div>';
+    return;
+  }
+  el.semOut.innerHTML = `<div class="t-msg ok">Pronto! <strong>${data.feitos}</strong> embedding(s) novo(s) de ${data.total} itens (${data.jaTinham} já tinham). A busca semântica está ativa. 🔎</div>`;
+}
+if (el.semRun) el.semRun.onclick = runReindex;
+
+async function runCuradoria() {
+  if (!el.curOut) return;
+  const old = el.curRun.textContent; el.curRun.disabled = true; el.curRun.textContent = "Analisando…";
+  el.curOut.innerHTML = '<div class="t-msg ok">Analisando os itens da base… (alguns segundos)</div>';
+  const { ok, data } = await api("/api/tutor/curadoria");
+  el.curRun.disabled = false; el.curRun.textContent = old;
+  if (!ok) { el.curOut.innerHTML = `<div class="t-msg err">${escapeHtml(data.error || "Não foi possível analisar.")}</div>`; return; }
+  const c = data.curadoria || {};
+  const sec = (titulo, arr, fn) => (arr && arr.length) ? `<div class="t-label">${titulo}</div>` + arr.map(fn).join("") : "";
+  let h = `<div class="t-msg ok">${escapeHtml(c.resumo || "Análise concluída.")}</div>`;
+  h += sec("Possíveis duplicados", c.duplicados, (d) => `<div class="entry"><h4>${escapeHtml(d.tema || "")}</h4><div class="meta"><span>itens: ${escapeHtml((d.ids || []).join(", "))}</span></div><div class="body">${escapeHtml(d.motivo || "")}</div></div>`);
+  h += sec("Podem estar desatualizados", c.desatualizados, (d) => `<div class="entry"><h4>${escapeHtml(d.titulo || "")} <span class="tag-doc" style="background:#F4E4DC;color:#9A4B1B">#${escapeHtml(d.id || "")}</span></h4><div class="body">${escapeHtml(d.motivo || "")}</div></div>`);
+  h += sec("Sugestões de novos tópicos", c.sugestoes, (sg) => `<div class="entry"><h4>➕ ${escapeHtml(sg.titulo || "")}</h4><div class="body">${escapeHtml(sg.porque || "")}</div></div>`);
+  el.curOut.innerHTML = h;
+}
+if (el.curRun) el.curRun.onclick = runCuradoria;
 
 /* ── Painel do gestor ── */
 async function loadDash() {

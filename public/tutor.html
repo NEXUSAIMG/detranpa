@@ -105,6 +105,12 @@
         </div>
 
         <div class="t-card">
+          <h3>💼 Painel executivo de custos</h3>
+          <p class="sub">Custo de operação da IA por modelo e cenário de adoção no Pará, simulador de volume e formação de preço (custos administrativos + lucro + impostos) com o valor total a cobrar.</p>
+          <a href="/painel-custos.html" class="t-btn primary" style="text-decoration:none">Abrir painel executivo</a>
+        </div>
+
+        <div class="t-card">
           <h3>✍️ Ensinar algo novo</h3>
           <p class="sub">Envie um documento OU escreva você mesmo. Pode ser um texto bem grande (uma instrução inteira, por exemplo) — o assistente guarda tudo e, em cada pergunta, usa só os trechos que interessam.</p>
 
@@ -159,6 +165,20 @@
           </div>
           <p class="sub" id="gaps-count">Carregando…</p>
           <div id="gaps-list"></div>
+        </div>
+
+        <div class="t-card">
+          <h3>🧹 Curadoria da base</h3>
+          <p class="sub">A IA analisa os itens ensinados: possíveis duplicados, o que pode estar desatualizado e sugestões de novos tópicos a partir das lacunas.</p>
+          <div class="t-row" style="margin-bottom:8px"><button id="cur-run" class="t-btn primary">Analisar base</button></div>
+          <div id="cur-out"></div>
+        </div>
+
+        <div class="t-card">
+          <h3>🔎 Busca semântica</h3>
+          <p class="sub">Faz o assistente entender o <strong>significado</strong> da pergunta, não só as palavras. Requer a chave <strong>VOYAGE_API_KEY</strong> no ambiente. Depois de configurar (ou de ensinar itens novos em massa), clique para gerar os embeddings.</p>
+          <div class="t-row" style="margin-bottom:8px"><button id="sem-run" class="t-btn soft">Gerar / atualizar embeddings</button></div>
+          <div id="sem-out"></div>
         </div>
       </div>
     </main>
