@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Copiloto do Balcão — DETRAN-PA</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+ .bx-wrap{max-width:900px;margin:0 auto;min-height:100dvh;display:flex;flex-direction:column;background:var(--paper);border-left:1px solid var(--paper-edge);border-right:1px solid var(--paper-edge);}
+ .bx-main{flex:1;display:flex;flex-direction:column;min-height:0;}
+ .bx-chips{display:flex;gap:8px;flex-wrap:wrap;padding:12px 16px 0;}
+ .bx-chip{background:var(--chip);border:1px solid #cfe0d8;color:#20402f;border-radius:20px;padding:8px 13px;font-size:12.5px;font-weight:600;cursor:pointer;}
+ .bx-chip:hover{background:#e6dfd2;}
+ .bx-chat{flex:1;overflow-y:auto;padding:16px;}
+ .bx-row{display:flex;margin-bottom:12px;} .bx-row.op{justify-content:flex-end;}
+ .bx-av{width:30px;height:30px;border-radius:50%;background:var(--moss-deep);color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;margin-right:8px;}
+ .bx-b{max-width:84%;padding:12px 15px;border-radius:14px;font-size:14px;line-height:1.55;white-space:pre-wrap;box-shadow:0 1px 2px rgba(20,40,30,.06);}
+ .bx-row.bot .bx-b{background:var(--surface);border:1px solid var(--paper-edge);border-top-left-radius:4px;color:#172620;}
+ .bx-row.op .bx-b{background:var(--moss);color:#fff;border-top-right-radius:4px;}
+ .bx-b img{max-width:170px;border-radius:8px;display:block;margin-bottom:6px;}
+ .bx-b strong{font-weight:700;}
+ .bx-chipfoto{display:flex;align-items:center;gap:10px;margin:0 16px 8px;padding:6px 8px;background:var(--surface);border:1px solid var(--paper-edge);border-radius:12px;}
+ .bx-chipfoto img{width:40px;height:40px;object-fit:cover;border-radius:8px;}
+ .bx-chipfoto span{flex:1;font-size:12.5px;color:var(--ink-soft);}
+ .bx-chipfoto>button{border:0;background:#ece7dd;border-radius:50%;width:26px;height:26px;cursor:pointer;flex-shrink:0;}
+ .bx-composer{display:flex;gap:8px;padding:10px 14px calc(10px + env(safe-area-inset-bottom));border-top:1px solid var(--paper-edge);background:#fff;align-items:center;}
+ .bx-composer textarea{flex:1;border:1px solid var(--paper-edge);border-radius:12px;padding:11px 13px;font-size:14px;font-family:inherit;resize:none;max-height:120px;background:#f6f9f7;outline:none;}
+ .bx-icon{width:44px;height:44px;border:0;border-radius:12px;background:var(--chip);font-size:18px;cursor:pointer;flex-shrink:0;}
+ .bx-send{width:46px;height:46px;border:0;border-radius:50%;background:var(--moss);color:#fff;font-size:18px;cursor:pointer;flex-shrink:0;}
+ .login-box{max-width:390px;margin:13vh auto 0;padding:0 16px;}
+ .lb-card{background:var(--surface);border:1px solid var(--paper-edge);border-radius:14px;padding:20px;}
+ .lb-card h3{margin:0 0 4px;font-size:16px;color:#1B2D26;} .lb-card .sub{font-size:12.5px;color:var(--ink-soft);margin:0 0 12px;}
+ .lb-card input{width:100%;padding:11px 13px;border:1px solid var(--paper-edge);border-radius:10px;font-size:14px;outline:none;}
+ .lb-card button{margin-top:12px;border:0;border-radius:10px;background:var(--moss);color:#fff;font-weight:600;padding:11px 16px;cursor:pointer;}
+ .lb-msg{font-size:12.5px;color:var(--warn-ink);margin-top:8px;}
+
+ .bx-ov{position:fixed;inset:0;background:rgba(8,20,16,.55);display:flex;align-items:center;justify-content:center;padding:18px;z-index:50;}
+ .bx-ov.hidden{display:none;}
+ .bx-modal{background:var(--paper);border-radius:16px;max-width:640px;width:100%;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;}
+ .bx-modal-top{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:var(--moss-deep);color:#fff;font-size:15px;}
+ .bx-modal-top button{background:rgba(255,255,255,.15);color:#fff;border:0;border-radius:8px;width:30px;height:30px;font-size:15px;cursor:pointer;}
+ .bx-modal-actions{display:flex;gap:8px;padding:12px 16px;}
+ .bx-mbtn{border:0;border-radius:10px;padding:9px 14px;font-size:13px;font-weight:600;cursor:pointer;background:var(--chip);color:#2A3A33;}
+ .bx-mbtn.primary{background:var(--moss);color:#fff;}
+ .bx-paper{margin:0 16px 16px;background:#fff;border:1px solid var(--paper-edge);border-radius:10px;padding:20px 22px;overflow:auto;white-space:pre-wrap;font-family:Georgia,"Times New Roman",serif;font-size:13.5px;line-height:1.6;color:#1a2620;}
+
+ .bx-form{padding:14px 16px;display:flex;flex-direction:column;gap:10px;overflow:auto;}
+ .bx-form label{display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:#2C3A34;}
+ .bx-form input,.bx-form textarea{padding:10px 12px;border:1px solid var(--paper-edge);border-radius:9px;font-size:14px;font-family:inherit;background:#fff;resize:vertical;}
+ .bx-frow{display:flex;gap:10px;}.bx-frow label{flex:1;}
+ .bx-panel{padding:14px 16px;overflow:auto;}
+ .bx-search{width:100%;padding:10px 12px;border:1px solid var(--paper-edge);border-radius:9px;font-size:14px;margin:14px 0 10px;box-sizing:border-box;}
+ .bx-rec{border:1px solid var(--paper-edge);border-radius:10px;padding:11px 13px;margin-bottom:9px;background:#fff;}
+ .bx-rec h5{margin:0;font-size:13.5px;color:#1B2D26;}
+ .bx-rec .m{font-size:11.5px;color:#8A988F;margin-top:3px;}
+ .bx-rec .r{font-size:12.5px;color:#48564f;margin-top:6px;white-space:pre-wrap;max-height:90px;overflow:auto;}
+</style>
+</head>
+<body>
+<div class="bx-wrap">
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo"><img class="brand-mark" src="/img/detran-pa-mark.png" alt="DETRAN-PA"></div>
+      <div class="brand-text"><span class="eyebrow">DETRAN-PA · Uso interno</span><span class="title">Copiloto do Balcão</span></div>
+    </div>
+    <div class="topbar-actions"><button id="painel" class="ghost-btn hidden">Painel</button><a href="/" class="ghost-btn" title="Ir ao chat do cidadão">← Chat do cidadão</a><button id="logout" class="ghost-btn hidden">Sair</button></div>
+  </header>
+  <main class="bx-main">
+    <div id="login" class="login-box">
+      <div class="lb-card">
+        <h3>Entrar no Copiloto do Balcão</h3>
+        <p class="sub">Ferramenta de apoio ao atendente. Entre com a senha do tutor.</p>
+        <input id="pwd" type="password" placeholder="Senha">
+        <div id="login-msg" class="lb-msg"></div>
+        <button id="enter">Entrar</button>
+      </div>
+    </div>
+    <div id="console" class="hidden bx-main">
+      <div class="bx-chips" id="chips"></div>
+      <div class="bx-chat" id="chat"></div>
+      <div class="bx-composer">
+        <input id="file" type="file" accept="image/*" capture="environment" style="display:none">
+        <button class="bx-icon" id="foto" title="Fotografar documento">📷</button>
+        <button class="bx-icon" id="termo" title="Gerar termo de exigência">📄</button>
+        <button class="bx-icon" id="reg" title="Registrar atendimento">📌</button>
+        <textarea id="inp" rows="1" placeholder="Descreva o caso (ex.: transferência de veículo) ou fotografe os documentos…"></textarea>
+        <button class="bx-send" id="send" aria-label="Enviar">➤</button>
+      </div>
+    </div>
+  </main>
+</div>
+<div id="reg-ov" class="bx-ov hidden">
+  <div class="bx-modal">
+    <div class="bx-modal-top"><span>Registrar atendimento</span><button id="reg-x" aria-label="Fechar">✕</button></div>
+    <div class="bx-form">
+      <div class="bx-frow"><label>Guichê<input id="reg-guiche"></label><label>Atendente<input id="reg-atendente"></label></div>
+      <label>Serviço<input id="reg-servico" placeholder="Ex.: Transferência de propriedade"></label>
+      <div class="bx-frow"><label>Protocolo<input id="reg-protocolo"></label><label>CPF do cidadão<input id="reg-cpf"></label></div>
+      <label>Resumo / pendências<textarea id="reg-resumo" rows="4"></textarea></label>
+      <div id="reg-msg" class="lb-msg"></div>
+      <div class="bx-modal-actions"><button id="reg-save" class="bx-mbtn primary">Salvar atendimento</button></div>
+    </div>
+  </div>
+</div>
+<div id="pan-ov" class="bx-ov hidden">
+  <div class="bx-modal">
+    <div class="bx-modal-top"><span>Painel do balcão</span><button id="pan-x" aria-label="Fechar">✕</button></div>
+    <div class="bx-panel">
+      <div id="pan-tiles" class="dash-tiles"></div>
+      <div id="pan-themes" class="dash-block"></div>
+      <input id="pan-search" class="bx-search" placeholder="Buscar por protocolo, CPF, nome ou serviço…">
+      <div id="pan-list"></div>
+    </div>
+  </div>
+</div>
+<div id="termo-ov" class="bx-ov hidden">
+  <div class="bx-modal">
+    <div class="bx-modal-top"><strong>Termo de exigência</strong><button id="termo-x" aria-label="Fechar">✕</button></div>
+    <div class="bx-modal-actions"><button id="termo-print" class="bx-mbtn primary">🖨️ Imprimir / PDF</button><button id="termo-copy" class="bx-mbtn">📋 Copiar</button></div>
+    <pre id="termo-paper" class="bx-paper"></pre>
+  </div>
+</div>
+<script src="balcao.js"></script>
+</body>
+</html>

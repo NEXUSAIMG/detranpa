@@ -450,3 +450,31 @@ export async function reindexEmbeddings() {
   }
   return { enabled: true, total: entries.length, feitos, jaTinham: entries.length - todo.length };
 }
+
+/* ── Atendimentos do balcão (registro + painel) ── */
+const BALCAO_KEY = "detranpa:balcao";
+const BALCAO_FILE = join(DATA_DIR, "balcao.json");
+const BALCAO_MAX = 2000;
+async function balcaoLoad() {
+  const mode = storageMode();
+  try {
+    if (mode === "kv") { const raw = await kvGet(BALCAO_KEY); return raw ? JSON.parse(raw) : []; }
+    if (mode === "file" && existsSync(BALCAO_FILE)) { try { return JSON.parse(readFileSync(BALCAO_FILE, "utf8")); } catch { return []; } }
+  } catch (_) {}
+  return [];
+}
+async function balcaoSave(arr) {
+  const mode = storageMode();
+  if (arr.length > BALCAO_MAX) arr.splice(0, arr.length - BALCAO_MAX);
+  try {
+    if (mode === "kv") await kvSet(BALCAO_KEY, JSON.stringify(arr));
+    else if (mode === "file") { if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true }); writeFileSync(BALCAO_FILE, JSON.stringify(arr), "utf8"); }
+  } catch (_) {}
+}
+export async function logAtendimento(rec) {
+  const item = Object.assign({ id: genId(), at: Date.now() }, rec);
+  const arr = await balcaoLoad(); arr.push(item); await balcaoSave(arr); return item;
+}
+export async function listAtendimentos() {
+  const arr = await balcaoLoad(); return arr.slice().sort((a, b) => b.at - a.at);
+}

@@ -15,7 +15,7 @@ import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { FORMS, FORM_INDEX } from "../forms-data.js";
-import { storageMode, listEntries, addEntry, updateEntry, deleteEntry, buildTutorContext, logGap, listGaps, clearGaps, logEvent, getStats, resetStats, reindexEmbeddings, semanticEnabled } from "../store.js";
+import { storageMode, listEntries, addEntry, updateEntry, deleteEntry, buildTutorContext, logGap, listGaps, clearGaps, logEvent, getStats, resetStats, reindexEmbeddings, semanticEnabled, logAtendimento, listAtendimentos } from "../store.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
@@ -433,6 +433,131 @@ Regras: seja conservador (só marque duplicado quando for claramente o mesmo ass
     console.error("[curadoria]", err);
     res.status(500).json({ error: "Erro ao analisar a base." });
   }
+});
+
+const OPERATOR_PROMPT = `Você é o COPILOTO DE ATENDIMENTO do DETRAN-PA, para uso do ATENDENTE de balcão (servidor público) — NÃO do cidadão.
+
+PÚBLICO: servidor que já conhece os termos técnicos. Seja direto, técnico e organizado.
+
+PARA CADA CASO, entregue de forma objetiva:
+1. CHECKLIST de documentos exigidos (com observações e exceções).
+2. PASSO A PASSO do procedimento.
+3. BASE LEGAL pertinente (artigos do CTB, Resoluções do CONTRAN, IN 01/2018 DETRAN-PA), quando houver.
+4. PONTOS DE ATENÇÃO / erros comuns que fazem o processo voltar.
+
+TRIAGEM DE DOCUMENTOS POR FOTO: se o atendente enviar fotos de documentos, confira validade e completude — comprovante de residência com data de até 90 dias, CNH dentro da validade, firma reconhecida por autenticidade quando exigida, decalque de chassi/motor legível, sinais de débito/bloqueio. Depois responda de forma inequívoca: comece com "PODE DAR ENTRADA" ou com "PENDÊNCIAS:" seguido da lista objetiva do que falta ou precisa corrigir. NUNCA invente o que não estiver visível na imagem; se estiver ilegível, peça foto melhor.
+
+REGRAS: baseie-se na BASE DE CONHECIMENTO abaixo; se algo não estiver nela, diga com franqueza e oriente confirmar. Valores de taxas são referência (o final é o do boleto/DAE). Encaminhe corretamente: IPVA/impostos -> SEFA-PA; multa de rodovia estadual -> DER-PA, federal -> PRF, via municipal -> Prefeitura/SEMOB. Responda em texto corrido e listas; NÃO use marcadores como [[BREAK]] ou [[FORM]].`;
+
+// Registro e painel de atendimentos do balcão — protegido
+app.post("/api/atendimento", tutorAuth, async (req, res) => {
+  const b = req.body || {};
+  if (!b.servico && !b.resumo) return res.status(400).json({ error: "Informe ao menos o serviço." });
+  const rec = {
+    guiche: String(b.guiche || "").slice(0, 40), atendente: String(b.atendente || "").slice(0, 60),
+    servico: String(b.servico || "").slice(0, 120), cidadao: String(b.cidadao || "").slice(0, 80),
+    cpf: String(b.cpf || "").slice(0, 20), protocolo: String(b.protocolo || "").slice(0, 40),
+    resumo: String(b.resumo || "").slice(0, 1500),
+  };
+  try { const r = await logAtendimento(rec); res.json({ ok: true, id: r.id }); }
+  catch (err) { persistError(res, err); }
+});
+app.get("/api/balcao", tutorAuth, async (_req, res) => {
+  try { res.json({ atendimentos: await listAtendimentos() }); }
+  catch (err) { persistError(res, err); }
+});
+
+// Termo de exigência (balcão) — protegido
+app.post("/api/termo", tutorAuth, async (req, res) => {
+  if (!API_KEY) return res.status(500).json({ error: "Servidor sem ANTHROPIC_API_KEY." });
+  let { messages } = req.body || {};
+  if (!Array.isArray(messages)) messages = [];
+  const IMGS = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+  const limpa = (content) => {
+    if (typeof content === "string") return content.slice(0, 4000);
+    if (Array.isArray(content)) {
+      const out = []; let n = 0;
+      for (const b of content) {
+        if (!b || typeof b !== "object") continue;
+        if (b.type === "text" && typeof b.text === "string") out.push({ type: "text", text: b.text.slice(0, 4000) });
+        else if (b.type === "image" && b.source && b.source.type === "base64" && IMGS.has(b.source.media_type) && typeof b.source.data === "string" && b.source.data.length <= 5 * 1024 * 1024 && n < 3) { n++; out.push({ type: "image", source: { type: "base64", media_type: b.source.media_type, data: b.source.data } }); }
+      }
+      return out;
+    }
+    return "";
+  };
+  const hist = messages
+    .filter((m) => m && (m.role === "user" || m.role === "assistant") && (typeof m.content === "string" || Array.isArray(m.content)))
+    .slice(-24)
+    .map((m) => ({ role: m.role, content: limpa(m.content) }))
+    .filter((m) => (typeof m.content === "string" ? m.content.length > 0 : m.content.length > 0));
+  if (!hist.length || hist[hist.length - 1].role !== "user") hist.push({ role: "user", content: "Gere o termo de exigência com base no atendimento acima." });
+
+  const sys = `Você redige um TERMO DE EXIGÊNCIA do DETRAN-PA, para o ATENDENTE entregar ao cidadão, listando o que falta para dar entrada no serviço. Baseie-se na conversa (e nas fotos, se houver).
+
+Estrutura:
+- Cabeçalho: "GOVERNO DO ESTADO DO PARÁ / DEPARTAMENTO DE TRÂNSITO DO ESTADO DO PARÁ - DETRAN-PA" e o título "TERMO DE EXIGÊNCIA".
+- Serviço pretendido: identifique conforme a conversa.
+- Identificação: Cidadão [PREENCHER], CPF [PREENCHER], Protocolo [PREENCHER].
+- "Para prosseguir com o serviço, é necessário apresentar/corrigir:" seguido de uma lista NUMERADA apenas com o que realmente falta ou precisa corrigir (conforme a conversa). Para cada item, cite a base legal quando pertinente (CTB, Resoluções do CONTRAN, IN 01/2018 DETRAN-PA).
+- Prazo para cumprimento: [PREENCHER].
+- Local e data: Belém/PA, [PREENCHER]. Atendente: [PREENCHER] (matrícula [PREENCHER]).
+
+Regras: linguagem formal e objetiva; NÃO invente exigências que não constem na conversa; se não houver pendências, escreva que a documentação está apta para dar entrada. Comece com UMA linha: "MODELO — confira e preencha os campos [PREENCHER] antes de entregar." Depois o termo.`;
+
+  try {
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: MODEL, max_tokens: 1600, system: sys, messages: hist }),
+    });
+    if (!r.ok) return res.status(502).json({ error: "Não foi possível gerar agora." });
+    const data = await r.json();
+    const texto = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
+    res.json({ termo: texto });
+  } catch (e) { console.error("[termo]", e); res.status(500).json({ error: "Erro ao gerar o termo." }); }
+});
+
+// Copiloto do Balcão (modo operador) — protegido
+app.post("/api/atendente", tutorAuth, async (req, res) => {
+  if (!API_KEY) return res.status(500).json({ error: "Servidor sem ANTHROPIC_API_KEY." });
+  let { messages } = req.body || {};
+  if (!Array.isArray(messages) || !messages.length) return res.status(400).json({ error: "Envie ao menos uma mensagem." });
+  const IMGS = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+  const limpa = (content) => {
+    if (typeof content === "string") return content.slice(0, MAX_CHARS_PER_MSG);
+    if (Array.isArray(content)) {
+      const out = []; let n = 0;
+      for (const b of content) {
+        if (!b || typeof b !== "object") continue;
+        if (b.type === "text" && typeof b.text === "string") out.push({ type: "text", text: b.text.slice(0, MAX_CHARS_PER_MSG) });
+        else if (b.type === "image" && b.source && b.source.type === "base64" && IMGS.has(b.source.media_type) && typeof b.source.data === "string" && b.source.data.length <= 5 * 1024 * 1024 && n < 3) { n++; out.push({ type: "image", source: { type: "base64", media_type: b.source.media_type, data: b.source.data } }); }
+      }
+      return out;
+    }
+    return "";
+  };
+  messages = messages
+    .filter((m) => m && (m.role === "user" || m.role === "assistant") && (typeof m.content === "string" || Array.isArray(m.content)))
+    .slice(-MAX_MESSAGES)
+    .map((m) => ({ role: m.role, content: limpa(m.content) }))
+    .filter((m) => (typeof m.content === "string" ? m.content.length > 0 : m.content.length > 0));
+  if (!messages.length || messages[messages.length - 1].role !== "user") return res.status(400).json({ error: "A última mensagem deve ser do atendente." });
+  const _u = messages[messages.length - 1].content;
+  const ultima = typeof _u === "string" ? _u : (_u.filter((b) => b.type === "text").map((b) => b.text).join(" ").trim() || "triagem de documentos");
+  let tutorTexto = ""; try { tutorTexto = await buildTutorContext(ultima); } catch (_) {}
+  const sys = OPERATOR_PROMPT + "\n\nBASE DE CONHECIMENTO:\n" + BASE_CONHECIMENTO + (tutorTexto ? ("\n\n===== CONHECIMENTO DO TUTOR (trechos relevantes) =====\n" + tutorTexto) : "");
+  try {
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: MODEL, max_tokens: Math.max(MAX_TOKENS, 1800), system: sys, messages }),
+    });
+    if (!r.ok) { const d = await r.text(); console.error("[atendente]", r.status, d); return res.status(502).json({ error: "Não foi possível responder agora." }); }
+    const data = await r.json();
+    const texto = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
+    res.json({ reply: texto || "Sem resposta. Reformule a pergunta." });
+  } catch (e) { console.error("[atendente]", e); res.status(500).json({ error: "Erro interno." }); }
 });
 
 app.post("/api/chat", async (req, res) => {
