@@ -66,12 +66,14 @@ el.logout.onclick = () => {
   tutorKey = ""; sessionStorage.removeItem("tutorKey");
   el.panel.classList.add("hidden"); el.login.classList.remove("hidden");
   el.logout.classList.add("hidden"); el.pwd.value = ""; msg(el.loginMsg, "", "");
+  { var _gb = document.getElementById("go-balcao"); if (_gb) _gb.classList.add("hidden"); }
 };
 
 function showPanel(storage) {
   el.login.classList.add("hidden");
   el.panel.classList.remove("hidden");
   el.logout.classList.remove("hidden");
+  { var _gb = document.getElementById("go-balcao"); if (_gb) _gb.classList.remove("hidden"); }
   renderBanner(storage);
   loadDash();
   loadEntries();
