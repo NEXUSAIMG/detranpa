@@ -7,8 +7,11 @@ O backend roda como função serverless (`api/index.js`) e a interface (`public/
 
 | Nome | Obrigatória | Para quê |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | Sim | Chave da Anthropic (`sk-ant-...`). Gere uma nova em https://console.anthropic.com/settings/keys |
-| `ANTHROPIC_MODEL` | Não | Modelo (padrão `claude-sonnet-4-6`). |
+| `DEEPSEEK_API_KEY` | Sim | Chave da DeepSeek. Gere em https://platform.deepseek.com/api_keys |
+| `LLM_PROVIDER` | Não | `deepseek` (padrão) ou `anthropic`. Vazio = usa o provedor cuja chave existir (DeepSeek primeiro). |
+| `DEEPSEEK_MODEL` | Não | Modelo (padrão `deepseek-flash`). `deepseek-v4-pro` não lê imagens — a análise de fotos deixa de funcionar. |
+| `DEEPSEEK_THINKING` | Não | `1` liga o raciocínio do modelo (mais lento e mais caro). Padrão: desligado. |
+| `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` | Só com `LLM_PROVIDER=anthropic` | Alternativa: chave e modelo da Anthropic (padrão `claude-sonnet-4-6`). |
 | `MAX_TOKENS` | Não | Tamanho máx. da resposta (padrão `2048`). |
 | `TUTOR_PASSWORD` | Para a Sala do Tutor | Senha que a pessoa tutora usa para entrar em `/tutor`. Use uma senha forte. |
 | `KV_REST_API_URL` + `KV_REST_API_TOKEN` | Para salvar o que o tutor ensina | Criadas automaticamente ao conectar o armazenamento (passo abaixo). |
@@ -20,7 +23,7 @@ O backend roda como função serverless (`api/index.js`) e a interface (`public/
 1. Suba o projeto no GitHub (já está em github.com/marciogoes/detranpa).
 2. Em https://vercel.com → **Add New → Project** → importe o repositório.
 3. **Framework Preset:** deixe **Other**.
-4. Em **Environment Variables**, adicione pelo menos `ANTHROPIC_API_KEY` e, se for usar
+4. Em **Environment Variables**, adicione pelo menos `DEEPSEEK_API_KEY` e, se for usar
    a Sala do Tutor, `TUTOR_PASSWORD`.
 5. **Deploy**. No fim, o Vercel dá a URL pública (ex.: `https://detranpa.vercel.app`).
 
@@ -51,7 +54,7 @@ Pronto: a Sala do Tutor mostra "Memória permanente (KV) ativada" e tudo fica sa
 
 ```bash
 npm install
-# no .env, defina ANTHROPIC_API_KEY e (opcional) TUTOR_PASSWORD
+# no .env, defina DEEPSEEK_API_KEY e (opcional) TUTOR_PASSWORD
 npm start            # http://localhost:3000  e  http://localhost:3000/tutor
 ```
 
@@ -63,7 +66,9 @@ Localmente, o que o tutor ensina é salvo no arquivo `data/tutor-knowledge.json`
 - **Atualizar a base fixa:** edite `knowledge/*.md` ou `forms-data.js` e dê `git push`.
 - **Conhecimento do tutor:** é dinâmico, fica no banco; não precisa de deploy.
 - **Custo:** cada pergunta no chat (inclusive o "testar" da sala) usa a API paga da
-  Anthropic. Consulta e preenchimento de documentos NÃO usam a API. Defina um teto
-  de gastos no console da Anthropic.
+  DeepSeek. Consulta e preenchimento de documentos NÃO usam a API. Acompanhe o
+  saldo e o consumo no painel da DeepSeek (platform.deepseek.com).
+- **Trocar de provedor:** mude `LLM_PROVIDER` (e a chave correspondente) no Vercel e
+  faça um Redeploy. `/api/health` mostra o provedor e o modelo em uso.
 - **Segurança:** a senha do tutor protege a área administrativa; use uma senha forte
   e troque-a se vazar (basta mudar `TUTOR_PASSWORD` no Vercel e redeployar).

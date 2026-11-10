@@ -3,13 +3,14 @@
 // No Vercel este arquivo não é usado — lá o app roda como função serverless.
 
 import "dotenv/config";
-import app, { MODEL, FORMS } from "./api/index.js";
+import app, { MODEL, FORMS, PROVIDER } from "./api/index.js";
 
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
   console.log(`\nAssistente DETRAN-PA rodando em http://localhost:${PORT}`);
+  console.log(`Provedor de IA: ${PROVIDER.nome}`);
   console.log(`Modelo: ${MODEL}`);
   console.log(`Documentos preenchíveis: ${FORMS.length}`);
-  console.log(`Chave configurada: ${process.env.ANTHROPIC_API_KEY ? "sim" : "NÃO — defina ANTHROPIC_API_KEY no .env"}\n`);
+  console.log(`Chave configurada: ${process.env[PROVIDER.keyVar] ? "sim" : `NÃO — defina ${PROVIDER.keyVar} no .env`}\n`);
 });

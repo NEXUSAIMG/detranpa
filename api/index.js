@@ -2,7 +2,8 @@
 // Aplicação Express do Assistente DETRAN-PA.
 //
 // Roda local (server.js chama app.listen) e no Vercel (export default = função).
-// A chave da Anthropic vive só no servidor. O navegador fala apenas com /api/*.
+// A chave da IA (DeepSeek ou Anthropic) vive só no servidor. O navegador fala
+// apenas com /api/*.
 //
 // Sala do Tutor: conhecimento ensinado por senha (texto ou documento). Documentos
 // grandes são aceitos; na conversa, só os trechos relevantes à pergunta são
@@ -20,8 +21,44 @@ import { storageMode, listEntries, addEntry, updateEntry, deleteEntry, buildTuto
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
 
-const API_KEY = process.env.ANTHROPIC_API_KEY;
-const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6";
+// ── Provedor de IA ──────────────────────────────────────────────────────────
+// Padrão: DeepSeek, pelo endpoint compatível com o formato da Anthropic (mesmo
+// corpo de requisição e de resposta, então o resto do código não muda).
+// Para voltar à Anthropic: LLM_PROVIDER=anthropic.
+// Sem LLM_PROVIDER, usa o provedor cuja chave estiver definida (DeepSeek primeiro).
+const PROVIDERS = {
+  deepseek: {
+    nome: "DeepSeek",
+    keyVar: "DEEPSEEK_API_KEY",
+    url: "https://api.deepseek.com/anthropic/v1/messages",
+    // deepseek-flash lê imagens (fotos de documentos). deepseek-v4-pro NÃO lê:
+    // troca a foto pelo texto "[Unsupported Image]".
+    model: process.env.DEEPSEEK_MODEL || "deepseek-flash",
+    // Raciocínio desligado: resposta mais rápida e barata, e o max_tokens vai
+    // todo para o texto. Para ligar: DEEPSEEK_THINKING=1.
+    extra: { thinking: { type: process.env.DEEPSEEK_THINKING === "1" ? "enabled" : "disabled" } },
+  },
+  anthropic: {
+    nome: "Anthropic",
+    keyVar: "ANTHROPIC_API_KEY",
+    url: "https://api.anthropic.com/v1/messages",
+    model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6",
+    extra: {},
+  },
+};
+const PROVIDER_ID = (() => {
+  const p = String(process.env.LLM_PROVIDER || "").trim().toLowerCase();
+  if (PROVIDERS[p]) return p;
+  if (process.env.DEEPSEEK_API_KEY) return "deepseek";
+  if (process.env.ANTHROPIC_API_KEY) return "anthropic";
+  return "deepseek";
+})();
+const PROVIDER = PROVIDERS[PROVIDER_ID];
+const API_KEY = process.env[PROVIDER.keyVar];
+const API_URL = PROVIDER.url;
+const MODEL = PROVIDER.model;
+const LLM_EXTRA = PROVIDER.extra;
+const SEM_CHAVE = `Servidor sem ${PROVIDER.keyVar}.`;
 const MAX_TOKENS = Number(process.env.MAX_TOKENS || 2048);
 const TUTOR_PASSWORD = process.env.TUTOR_PASSWORD || "";
 
@@ -140,7 +177,7 @@ function rateLimited(ip) {
 }
 
 app.get("/api/health", (_req, res) => {
-  res.json({ ok: true, model: MODEL, keyConfigured: Boolean(API_KEY), tutor: Boolean(TUTOR_PASSWORD), storage: storageMode(), semantica: semanticEnabled() });
+  res.json({ ok: true, provider: PROVIDER_ID, model: MODEL, keyConfigured: Boolean(API_KEY), tutor: Boolean(TUTOR_PASSWORD), storage: storageMode(), semantica: semanticEnabled() });
 });
 
 // ── Catálogo de documentos preenchíveis ─────────────────────────────────────
@@ -153,7 +190,7 @@ app.get("/api/forms/:id", (req, res) => {
 
 // ── Extrair dados da conversa para pré-preencher um documento ────────────────
 app.post("/api/extract", async (req, res) => {
-  if (!API_KEY) return res.status(500).json({ error: "Servidor sem ANTHROPIC_API_KEY." });
+  if (!API_KEY) return res.status(500).json({ error: SEM_CHAVE });
   const { formId, messages } = req.body || {};
   const form = FORMS.find((f) => f.id === formId);
   if (!form) return res.status(404).json({ error: "Documento não encontrado." });
@@ -192,10 +229,10 @@ CAMPOS DISPONÍVEIS:
 ${esquema}`;
 
   try {
-    const r = await fetch("https://api.anthropic.com/v1/messages", {
+    const r = await fetch(API_URL, {
       method: "POST",
       headers: { "x-api-key": API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ model: MODEL, max_tokens: 700, system: sys,
+      body: JSON.stringify({ ...LLM_EXTRA, model: MODEL, max_tokens: 700, system: sys,
         messages: [{ role: "user", content: `CONVERSA:\n${hist}\n\nExtraia o JSON de preenchimento.` }] }),
     });
     if (!r.ok) return res.status(502).json({ error: "Falha ao extrair." });
@@ -301,7 +338,7 @@ app.delete("/api/tutor/entries/:id", tutorAuth, async (req, res) => {
 
 // ── Chat ────────────────────────────────────────────────────────────────────
 app.post("/api/defesa", async (req, res) => {
-  if (!API_KEY) return res.status(500).json({ error: "Servidor sem ANTHROPIC_API_KEY." });
+  if (!API_KEY) return res.status(500).json({ error: SEM_CHAVE });
   let { messages } = req.body || {};
   if (!Array.isArray(messages)) messages = [];
   const IMGS = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
@@ -342,10 +379,10 @@ app.post("/api/defesa", async (req, res) => {
 Comece com UMA linha de aviso: "RASCUNHO — revise, preencha os campos [PREENCHER] e confira antes de protocolar. Não substitui orientação jurídica." Depois, a peça.`;
 
   try {
-    const r = await fetch("https://api.anthropic.com/v1/messages", {
+    const r = await fetch(API_URL, {
       method: "POST",
       headers: { "x-api-key": API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ model: MODEL, max_tokens: 2500, system: sys, messages: hist }),
+      body: JSON.stringify({ ...LLM_EXTRA, model: MODEL, max_tokens: 2500, system: sys, messages: hist }),
     });
     if (!r.ok) return res.status(502).json({ error: "Não foi possível gerar agora. Tente de novo." });
     const data = await r.json();
@@ -402,7 +439,7 @@ app.post("/api/tutor/reindex", tutorAuth, async (_req, res) => {
 
 // Curadoria automática da base (protegido)
 app.get("/api/tutor/curadoria", tutorAuth, async (_req, res) => {
-  if (!API_KEY) return res.status(500).json({ error: "Servidor sem ANTHROPIC_API_KEY." });
+  if (!API_KEY) return res.status(500).json({ error: SEM_CHAVE });
   try {
     const entries = await listEntries();
     if (!entries.length) return res.json({ curadoria: { resumo: "A base ainda está vazia.", duplicados: [], desatualizados: [], sugestoes: [] } });
@@ -417,10 +454,10 @@ app.get("/api/tutor/curadoria", tutorAuth, async (_req, res) => {
  "sugestoes": [{"titulo": "novo tópico sugerido", "porque": "baseado em qual lacuna/pergunta"}]
 }
 Regras: seja conservador (só marque duplicado quando for claramente o mesmo assunto); no máximo 8 itens por lista; NÃO invente ids que não estejam na lista; as sugestões devem vir das perguntas sem resposta ou de lacunas óbvias de cobertura. Responda somente o JSON, sem texto fora dele.`;
-    const r = await fetch("https://api.anthropic.com/v1/messages", {
+    const r = await fetch(API_URL, {
       method: "POST",
       headers: { "x-api-key": API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ model: MODEL, max_tokens: 1600, system: sys, messages: [{ role: "user", content: `ITENS DA BASE:\n${lista}\n\nPERGUNTAS SEM RESPOSTA:\n${gapsTxt || "(nenhuma)"}` }] }),
+      body: JSON.stringify({ ...LLM_EXTRA, model: MODEL, max_tokens: 1600, system: sys, messages: [{ role: "user", content: `ITENS DA BASE:\n${lista}\n\nPERGUNTAS SEM RESPOSTA:\n${gapsTxt || "(nenhuma)"}` }] }),
     });
     if (!r.ok) return res.status(502).json({ error: "Não foi possível analisar agora." });
     const data = await r.json();
@@ -469,7 +506,7 @@ app.get("/api/balcao", tutorAuth, async (_req, res) => {
 
 // Termo de exigência (balcão) — protegido
 app.post("/api/termo", tutorAuth, async (req, res) => {
-  if (!API_KEY) return res.status(500).json({ error: "Servidor sem ANTHROPIC_API_KEY." });
+  if (!API_KEY) return res.status(500).json({ error: SEM_CHAVE });
   let { messages } = req.body || {};
   if (!Array.isArray(messages)) messages = [];
   const IMGS = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
@@ -506,10 +543,10 @@ Estrutura:
 Regras: linguagem formal e objetiva; NÃO invente exigências que não constem na conversa; se não houver pendências, escreva que a documentação está apta para dar entrada. Comece com UMA linha: "MODELO — confira e preencha os campos [PREENCHER] antes de entregar." Depois o termo.`;
 
   try {
-    const r = await fetch("https://api.anthropic.com/v1/messages", {
+    const r = await fetch(API_URL, {
       method: "POST",
       headers: { "x-api-key": API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ model: MODEL, max_tokens: 1600, system: sys, messages: hist }),
+      body: JSON.stringify({ ...LLM_EXTRA, model: MODEL, max_tokens: 1600, system: sys, messages: hist }),
     });
     if (!r.ok) return res.status(502).json({ error: "Não foi possível gerar agora." });
     const data = await r.json();
@@ -520,7 +557,7 @@ Regras: linguagem formal e objetiva; NÃO invente exigências que não constem n
 
 // Copiloto do Balcão (modo operador) — protegido
 app.post("/api/atendente", tutorAuth, async (req, res) => {
-  if (!API_KEY) return res.status(500).json({ error: "Servidor sem ANTHROPIC_API_KEY." });
+  if (!API_KEY) return res.status(500).json({ error: SEM_CHAVE });
   let { messages } = req.body || {};
   if (!Array.isArray(messages) || !messages.length) return res.status(400).json({ error: "Envie ao menos uma mensagem." });
   const IMGS = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
@@ -548,10 +585,10 @@ app.post("/api/atendente", tutorAuth, async (req, res) => {
   let tutorTexto = ""; try { tutorTexto = await buildTutorContext(ultima); } catch (_) {}
   const sys = OPERATOR_PROMPT + "\n\nBASE DE CONHECIMENTO:\n" + BASE_CONHECIMENTO + (tutorTexto ? ("\n\n===== CONHECIMENTO DO TUTOR (trechos relevantes) =====\n" + tutorTexto) : "");
   try {
-    const r = await fetch("https://api.anthropic.com/v1/messages", {
+    const r = await fetch(API_URL, {
       method: "POST",
       headers: { "x-api-key": API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ model: MODEL, max_tokens: Math.max(MAX_TOKENS, 1800), system: sys, messages }),
+      body: JSON.stringify({ ...LLM_EXTRA, model: MODEL, max_tokens: Math.max(MAX_TOKENS, 1800), system: sys, messages }),
     });
     if (!r.ok) { const d = await r.text(); console.error("[atendente]", r.status, d); return res.status(502).json({ error: "Não foi possível responder agora." }); }
     const data = await r.json();
@@ -562,7 +599,7 @@ app.post("/api/atendente", tutorAuth, async (req, res) => {
 
 app.post("/api/chat", async (req, res) => {
   if (!API_KEY) {
-    return res.status(500).json({ error: "Servidor sem ANTHROPIC_API_KEY configurada. Defina a chave nas variáveis de ambiente." });
+    return res.status(500).json({ error: `Servidor sem ${PROVIDER.keyVar} configurada. Defina a chave nas variáveis de ambiente.` });
   }
 
   const ip = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket?.remoteAddress || "anon";
@@ -618,15 +655,15 @@ app.post("/api/chat", async (req, res) => {
   try { tutorTexto = await buildTutorContext(ultimaPergunta); } catch (e) { /* segue sem o tutor se falhar */ }
 
   try {
-    const resposta = await fetch("https://api.anthropic.com/v1/messages", {
+    const resposta = await fetch(API_URL, {
       method: "POST",
       headers: { "x-api-key": API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ model: MODEL, max_tokens: MAX_TOKENS, system: buildSystem(tutorTexto), messages }),
+      body: JSON.stringify({ ...LLM_EXTRA, model: MODEL, max_tokens: MAX_TOKENS, system: buildSystem(tutorTexto), messages }),
     });
 
     if (!resposta.ok) {
       const detalhe = await resposta.text();
-      console.error("[anthropic]", resposta.status, detalhe);
+      console.error(`[${PROVIDER_ID}]`, resposta.status, detalhe);
       return res.status(502).json({ error: "Não foi possível obter a resposta agora. Tente novamente em instantes." });
     }
 
@@ -647,5 +684,5 @@ app.post("/api/chat", async (req, res) => {
 });
 
 export default app;
-export { MODEL, FORMS, TUTOR_PASSWORD };
+export { MODEL, FORMS, TUTOR_PASSWORD, PROVIDER };
 export { storageMode };
