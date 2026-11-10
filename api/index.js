@@ -165,7 +165,7 @@ ${tutorTexto}`;
 // ── App ─────────────────────────────────────────────────────────────────────
 const app = express();
 app.use(express.json({ limit: "10mb" }));
-app.use(express.static(join(ROOT, "public")));
+app.use(express.static(join(ROOT, "public"), { extensions: ["html"] }));
 
 const hits = new Map();
 function rateLimited(ip) {
