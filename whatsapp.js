@@ -11,12 +11,12 @@
 // Zapayio (OnZap) usa a mesma estrutura de rotas da Z-API; só muda a URL base.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { kvSetNxEx, kvGetStr, kvSetEx } from "./store.js";
+import { kvSetNxEx, kvGetStr, kvSetEx, kvDel } from "./store.js";
 import { comTenant, integracoes, statusIntegracoes } from "./lib/tenants.js";
 import { exigir } from "./lib/auth.js";
 import { mesmoSegredo } from "./lib/cripto.js";
 import { perguntarAoBot, textoComBotoes } from "./lib/botayio.js";
-import { registrarTroca, registrarEvento } from "./lib/registro.js";
+import { registrarTroca, registrarEvento, buscarConversa, registrarEntradaHumano } from "./lib/registro.js";
 
 const SESSAO_HORAS = Number(process.env.WHATSAPP_SESSAO_HORAS || 12);
 const FALLBACK_ERRO = "Tivemos uma instabilidade momentânea no atendimento automático. Pode reenviar tua mensagem em instantes, por favor?";
@@ -67,7 +67,21 @@ export function lerMensagem(p) {
     p.buttonsResponseMessage?.message || p.listResponseMessage?.title || ""
   ).trim();
   const temMidia = Boolean(p.audio || p.image || p.video || p.document || p.sticker);
-  return { phone, texto, temMidia, messageId: String(p.messageId || ""), nome: p.senderName || p.chatName || "" };
+  // Descrição da mídia para o atendente humano ver (os links do WhatsApp expiram em horas).
+  const midia = p.image ? `📷 Imagem: ${p.image.imageUrl || ""}` : p.audio ? `🎤 Áudio: ${p.audio.audioUrl || ""}`
+    : p.video ? `🎬 Vídeo: ${p.video.videoUrl || ""}` : p.document ? `📎 ${p.document.fileName || "Documento"}: ${p.document.documentUrl || ""}`
+    : p.sticker ? "(figurinha)" : "";
+  return { phone, texto, temMidia, midia: midia.trim(), messageId: String(p.messageId || ""), nome: p.senderName || p.chatName || "" };
+}
+
+// Usado pela tela de atendimento: o atendente responde pelo WhatsApp do DETRAN.
+export async function enviarWhatsApp(tenant, phone, texto) {
+  const { zapayio: z } = integracoes(tenant);
+  return enviarTexto(z, phone, texto);
+}
+// Ao devolver a conversa para o bot, a próxima mensagem começa uma sessão nova.
+export async function reiniciarSessao(tenant, phone) {
+  await kvDel(`detran:${tenant.slug}:wa:last:${phone}`).catch(() => {});
 }
 
 // Marcadores do bot que no WhatsApp viram texto comum (ou somem).
@@ -82,6 +96,16 @@ export function adaptarParaWhatsApp(texto, { slug }) {
 async function processarMensagem(tenant, m) {
   const { zapayio: z, botayio: b } = integracoes(tenant);
   const { phone, texto } = m;
+  const conv = await buscarConversa(tenant.id, "WHATSAPP", phone);
+
+  // Conversa com atendente humano: nada vai para o bot; a mensagem (ou a
+  // mídia) fica na fila da tela de atendimento.
+  if (conv?.status === "HUMANO") {
+    const conteudo = [texto, m.midia].filter(Boolean).join("\n") || "(mensagem sem texto)";
+    await registrarEntradaHumano(conv, { texto: conteudo, nome: m.nome });
+    return { status: "humano" };
+  }
+
   if (!texto) {
     if (m.temMidia) await enviarTexto(z, phone, AVISO_SO_TEXTO).catch((e) => console.warn("[Zapayio]", e.message));
     return { status: "sem texto" };
@@ -89,7 +113,8 @@ async function processarMensagem(tenant, m) {
   const sessionId = `detran-${tenant.slug}-${phone}`;
   const lastKey = `detran:${tenant.slug}:wa:last:${phone}`;
   const anterior = await kvGetStr(lastKey).catch(() => null);
-  const restart = !anterior;
+  const reabrindo = conv?.status === "ENCERRADA";
+  const restart = !anterior || reabrindo;
   await kvSetEx(lastKey, String(Date.now()), Math.round(SESSAO_HORAS * 3600)).catch(() => {});
 
   digitando(z, phone, true);
@@ -119,7 +144,7 @@ async function processarMensagem(tenant, m) {
   }
   const transbordo = Boolean(resp.handed_off);
   await Promise.all([
-    registrarTroca({ tenantId: tenant.id, canal: "WHATSAPP", contato: phone, nome: m.nome, pergunta: texto, respostas: enviadosTxt, categoria: resp.categoria, transbordo }),
+    registrarTroca({ tenantId: tenant.id, canal: "WHATSAPP", contato: phone, nome: m.nome, pergunta: texto, respostas: enviadosTxt, categoria: resp.categoria, transbordo, status: reabrindo ? "BOT" : undefined }),
     registrarEvento({ tenantId: tenant.id, tipo: "PERGUNTA", canal: "WHATSAPP", tema: resp.categoria || "outros", resolvido: true, transbordo }),
   ]);
   return { status: "ok", restart, enviados, handedOff: transbordo, categoria: resp.categoria || null };

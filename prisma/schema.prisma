@@ -167,19 +167,25 @@ model Conversa {
   nome       String?    @db.VarChar(120)
   status     String     @default("BOT") @db.VarChar(12)
   categoria  String?    @db.VarChar(60)
+  // Atendimento humano (transbordo): quem assumiu e quando
+  atendenteId   String?   @db.VarChar(30)
+  atendenteNome String?   @db.VarChar(120)
+  transbordoEm  DateTime?
   iniciadaEm DateTime   @default(now())
   ultimaEm   DateTime   @default(now())
   mensagens  Mensagem[]
 
   @@unique([tenantId, canal, contato])
   @@index([tenantId, ultimaEm])
+  @@index([tenantId, status, ultimaEm])
 }
 
 model Mensagem {
   id         String   @id @default(cuid())
   conversaId String
   conversa   Conversa @relation(fields: [conversaId], references: [id], onDelete: Cascade)
-  autor      String   @db.VarChar(12) // CIDADAO | BOT | ATENDENTE
+  autor      String   @db.VarChar(12) // CIDADAO | BOT | ATENDENTE | SISTEMA
+  autorNome  String?  @db.VarChar(120) // nome do atendente
   texto      String   @db.Text
   criadoEm   DateTime @default(now())
 

@@ -29,6 +29,7 @@ import { promptCidadao, promptOperador, promptDefesa, promptTermo, promptExtraca
 import { registrarTroca, registrarEvento, estatisticas, classificarTema } from "../lib/registro.js";
 import { registrarWhatsApp } from "../whatsapp.js";
 import { registrarAdmin } from "../lib/admin.js";
+import { registrarAtendimento } from "../lib/atendimento.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_TENANT = String(process.env.DEFAULT_TENANT || "pa").toLowerCase();
@@ -279,8 +280,11 @@ registrarWhatsApp(app);
 // Administração: /api/admin (equipe Ayio) e /api/t/<slug>/admin (admin do DETRAN)
 registrarAdmin(app, { limitar: (chave, max) => rateLimited(chave, max) });
 
+// Atendimento humano (transbordo do bot) por DETRAN
+registrarAtendimento(app);
+
 // ═════════════════════════ PÁGINAS ═════════════════════════
-const PAGINAS = { chat: "index.html", tutor: "tutor.html", balcao: "balcao.html", painel: "painel-custos.html", admin: "admin.html" };
+const PAGINAS = { chat: "index.html", tutor: "tutor.html", balcao: "balcao.html", painel: "painel-custos.html", admin: "admin.html", atendimento: "atendimento.html" };
 const htmlCache = new Map();
 const lerHtml = (arq) => {
   if (!htmlCache.has(arq) || process.env.NODE_ENV === "development") htmlCache.set(arq, readFileSync(join(ROOT, "public", arq), "utf8"));
@@ -338,6 +342,7 @@ app.get("/admin", (_req, res) => {
 
 app.get("/:slug", (req, res) => pagina(req, res, "chat"));
 app.get("/:slug/admin", (req, res) => pagina(req, res, "admin"));
+app.get("/:slug/atendimento", (req, res) => pagina(req, res, "atendimento"));
 app.get("/:slug/tutor", (req, res) => pagina(req, res, "tutor"));
 app.get("/:slug/balcao", (req, res) => pagina(req, res, "balcao"));
 app.get("/:slug/painel", (req, res) => pagina(req, res, "painel"));

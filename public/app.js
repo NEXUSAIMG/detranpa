@@ -841,7 +841,7 @@ function abrirDefesa(texto) {
       const limite = gv >= 2 ? 20 : gv === 1 ? 30 : 40;
       const pct = Math.min(100, Math.round((pts / limite) * 100));
       const suspenso = pts >= limite;
-      const cor = suspenso ? "#c0392b" : pct >= 70 ? "#c77d0a" : "#0E6B57";
+      const cor = suspenso ? "#c0392b" : pct >= 70 ? "#c77d0a" : "#167D70";
       const nota = suspenso
         ? `⚠️ Você atingiu o limite (${limite} pts) — sujeito à <strong>suspensão</strong> do direito de dirigir.`
         : `Limite no seu caso: <strong>${limite} pontos</strong> (${gv >= 2 ? "2+ gravíssimas" : gv === 1 ? "1 gravíssima" : "nenhuma gravíssima"}). Faltam ${limite - pts} pts.`;
@@ -862,7 +862,7 @@ function abrirDefesa(texto) {
       let cor, txt;
       if (dias < 0) { cor = "#c0392b"; txt = `Prazo <strong>vencido</strong> há ${-dias} dia(s). O limite era ${ld}.`; }
       else if (dias === 0) { cor = "#c0392b"; txt = `<strong>Último dia!</strong> O prazo termina hoje (${ld}).`; }
-      else { cor = dias <= 7 ? "#c77d0a" : "#0E6B57"; txt = `Prazo final: <strong>${ld}</strong> — faltam <strong>${dias} dia(s)</strong>.`; }
+      else { cor = dias <= 7 ? "#c77d0a" : "#167D70"; txt = `Prazo final: <strong>${ld}</strong> — faltam <strong>${dias} dia(s)</strong>.`; }
       out.innerHTML = `<div class="calc-note" style="color:${cor}">${txt}</div>`;
     };
     document.getElementById("c-data").addEventListener("input", calcPrazo);

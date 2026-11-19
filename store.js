@@ -46,6 +46,11 @@ export async function kvGetStr(key) {
   if (storageMode() === "kv") return kvCmd(["GET", key]);
   return memGet(key);
 }
+export async function kvDel(key) {
+  if (storageMode() === "kv") return kvCmd(["DEL", key]);
+  mem.delete(key);
+  return 1;
+}
 export async function kvSetEx(key, value, ttlSec) {
   if (storageMode() === "kv") return kvCmd(["SET", key, value, "EX", String(ttlSec)]);
   mem.set(key, { v: value, exp: Date.now() + ttlSec * 1000 });
