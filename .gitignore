@@ -9,3 +9,5 @@ data/
 
 # Relatórios da migração do legado (contêm perguntas de cidadãos)
 migracao-*-lacunas.md
+
+.vercel
