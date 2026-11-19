@@ -6,3 +6,6 @@ node_modules/
 
 # Dados locais da Sala do Tutor (em produção use o Vercel KV / Upstash)
 data/
+
+# Relatórios da migração do legado (contêm perguntas de cidadãos)
+migracao-*-lacunas.md

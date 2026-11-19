@@ -67,6 +67,28 @@ enquanto o DETRAN ainda não tem bot ligado.
 6. Com um usuário ADMIN logado, chame `POST /api/t/pa/zapayio/configurar-webhook`
    para apontar a instância do Zapayio para o app.
 
+## Migrar o que existia antes (DETRAN-PA)
+
+A versão antiga guardava no Redis (Upstash) o que o Tutor ensinou, as perguntas sem
+resposta, os indicadores e os atendimentos do balcão. Depois do passo 5 acima
+(bot do PA já ligado), com o `.env` apontando para o Railway e para o Upstash antigo:
+
+```bash
+# simulação: só mostra o que seria migrado
+npm run migrar -- --tenant pa
+
+# aplica (BotAyio: usuário editor/admin do painel)
+BOTAYIO_EMAIL=... BOTAYIO_SENHA=... npm run migrar -- --tenant pa --aplicar
+```
+
+- Indicadores e balcão vão para o MySQL do PA.
+- A base oficial (`knowledge/pa/*.md`) e o que o Tutor antigo ensinou vão para a base
+  do bot do PA no BotAyio, em trechos de ~900 caracteres (`[Base DETRAN-PA] ...` e
+  `[Tutor] ...`).
+- As perguntas sem resposta viram o relatório `migracao-pa-lacunas.md` (fora do Git),
+  para o tutor completar a base na tutoria do bot.
+- O Redis antigo é só lido. Rodar de novo não duplica (cada etapa fica registrada).
+
 ## Novo DETRAN
 
 Crie `tenants/<slug>.json` (modelo: `tenants/pa.json`) e, se quiser, `tenants/<slug>.conteudo.json`

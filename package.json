@@ -9,7 +9,8 @@
     "dev": "node --watch server.js",
     "postinstall": "prisma generate",
     "db:migrate": "prisma migrate deploy",
-    "tenant": "node scripts/tenant-cli.js"
+    "tenant": "node scripts/tenant-cli.js",
+    "migrar": "node scripts/migrar-legado.js"
   },
   "engines": {
     "node": ">=18.17"

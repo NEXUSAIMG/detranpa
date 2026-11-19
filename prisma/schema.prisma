@@ -17,10 +17,10 @@ datasource db {
 
 enum Perfil {
   SUPERADMIN // equipe Ayio: todos os DETRANs
-  ADMIN      // administrador de um DETRAN
-  GESTOR     // painel e indicadores
-  TUTOR      // acesso à tutoria do bot (BotAyio)
-  BALCAO     // copiloto do balcão
+  ADMIN // administrador de um DETRAN
+  GESTOR // painel e indicadores
+  TUTOR // acesso à tutoria do bot (BotAyio)
+  BALCAO // copiloto do balcão
 }
 
 enum Canal {
@@ -58,6 +58,21 @@ model Tenant {
   eventos     Evento[]
   balcao      AtendimentoBalcao[]
   conversas   Conversa[]
+  migracoes   MigracaoLegado[]
+}
+
+// Registro das etapas já migradas do sistema antigo (Redis/arquivos), para a
+// migração poder rodar de novo sem duplicar nada.
+model MigracaoLegado {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  etapa       String   @db.VarChar(40) // eventos | balcao | conhecimento
+  total       Int      @default(0)
+  detalhe     String?  @db.Text
+  executadaEm DateTime @default(now())
+
+  @@unique([tenantId, etapa])
 }
 
 // Credenciais por DETRAN. Tudo que termina em "Enc" é criptografado (AES-GCM)
