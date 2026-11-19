@@ -372,6 +372,7 @@ app.get("/admin", (_req, res) => {
 app.get("/:slug", (req, res) => pagina(req, res, "chat"));
 app.get("/:slug/admin", (req, res) => pagina(req, res, "admin"));
 app.get("/:slug/atendimento", (req, res) => pagina(req, res, "atendimento"));
+app.get("/:slug/gestao", (req, res) => pagina(req, res, "gestao"));
 app.get("/:slug/tutor", (req, res) => pagina(req, res, "tutor"));
 app.get("/:slug/balcao", (req, res) => pagina(req, res, "balcao"));
 app.get("/:slug/painel", (req, res) => pagina(req, res, "painel"));

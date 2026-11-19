@@ -17,6 +17,8 @@ import { exigir } from "./lib/auth.js";
 import { mesmoSegredo } from "./lib/cripto.js";
 import { perguntarAoBot, textoComBotoes } from "./lib/botayio.js";
 import { registrarTroca, registrarEvento, buscarConversa, registrarEntradaHumano } from "./lib/registro.js";
+import { tratarAvaliacao, tratarConsultaProtocolo } from "./lib/gestao.js";
+import { configDe, dentroDoHorario } from "./lib/gestao-config.js";
 
 const SESSAO_HORAS = Number(process.env.WHATSAPP_SESSAO_HORAS || 12);
 const FALLBACK_ERRO = "Tivemos uma instabilidade momentânea no atendimento automático. Pode reenviar tua mensagem em instantes, por favor?";
@@ -98,6 +100,19 @@ async function processarMensagem(tenant, m) {
   const { phone, texto } = m;
   const conv = await buscarConversa(tenant.id, "WHATSAPP", phone);
 
+  // Nota da pesquisa de satisfação (1 a 5) depois de um atendimento encerrado.
+  if (texto && (await tratarAvaliacao(tenant, conv, texto).catch((e) => { console.error("[gestao] avaliacao:", e.message); return false; }))) {
+    return { status: "avaliacao" };
+  }
+  // "protocolo XX-AAAA-NNNNNN": responde a situação do chamado sem passar pelo bot.
+  const situacao = texto ? await tratarConsultaProtocolo(tenant, phone, texto).catch((e) => { console.error("[gestao] protocolo:", e.message); return null; }) : null;
+  if (situacao) {
+    await enviarTexto(z, phone, situacao).catch((e) => console.warn("[Zapayio]", e.message));
+    if (conv?.status === "HUMANO") await registrarEntradaHumano(conv, { texto, nome: m.nome });
+    else await registrarTroca({ tenantId: tenant.id, canal: "WHATSAPP", contato: phone, nome: m.nome, pergunta: texto, respostas: [situacao], categoria: "protocolo" });
+    return { status: "protocolo" };
+  }
+
   // Conversa com atendente humano: nada vai para o bot; a mensagem (ou a
   // mídia) fica na fila da tela de atendimento.
   if (conv?.status === "HUMANO") {
@@ -143,6 +158,14 @@ async function processarMensagem(tenant, m) {
     }
   }
   const transbordo = Boolean(resp.handed_off);
+  // Pediu atendente fora do expediente: avisa (a conversa fica na fila mesmo assim).
+  if (transbordo) {
+    const cfg = configDe(tenant);
+    if (!dentroDoHorario(cfg)) {
+      await enviarTexto(z, phone, cfg.horario.mensagemFora).catch((e) => console.warn("[Zapayio]", e.message));
+      enviadosTxt.push(cfg.horario.mensagemFora);
+    }
+  }
   await Promise.all([
     registrarTroca({ tenantId: tenant.id, canal: "WHATSAPP", contato: phone, nome: m.nome, pergunta: texto, respostas: enviadosTxt, categoria: resp.categoria, transbordo, status: reabrindo ? "BOT" : undefined }),
     registrarEvento({ tenantId: tenant.id, tipo: "PERGUNTA", canal: "WHATSAPP", tema: resp.categoria || "outros", resolvido: true, transbordo }),
