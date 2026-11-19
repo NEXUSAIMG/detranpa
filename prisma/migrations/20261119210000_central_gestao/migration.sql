@@ -2,17 +2,17 @@
 -- etiquetas, status do atendente e indicadores de atendimento.
 -- Nomes de tabela com maiúscula: o MySQL do Railway (Linux) diferencia.
 -- AlterTable
-ALTER TABLE `conversa` ADD COLUMN `avaliacao` INTEGER NULL,
+ALTER TABLE `Conversa` ADD COLUMN `avaliacao` INTEGER NULL,
     ADD COLUMN `avaliacaoPendente` BOOLEAN NOT NULL DEFAULT false,
     ADD COLUMN `encerradaEm` DATETIME(3) NULL,
     ADD COLUMN `primeiraRespostaEm` DATETIME(3) NULL;
 
 -- AlterTable
-ALTER TABLE `tenant` ADD COLUMN `configGestao` JSON NULL,
+ALTER TABLE `Tenant` ADD COLUMN `configGestao` JSON NULL,
     ADD COLUMN `protocoloSeq` INTEGER NOT NULL DEFAULT 0;
 
 -- AlterTable
-ALTER TABLE `usuario` ADD COLUMN `statusAtendimento` VARCHAR(12) NOT NULL DEFAULT 'OFFLINE',
+ALTER TABLE `Usuario` ADD COLUMN `statusAtendimento` VARCHAR(12) NOT NULL DEFAULT 'OFFLINE',
     ADD COLUMN `statusEm` DATETIME(3) NULL;
 
 -- CreateTable
