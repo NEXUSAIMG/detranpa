@@ -63,6 +63,98 @@ model Tenant {
   conversas   Conversa[]
   migracoes   MigracaoLegado[]
   arquivos    TenantArquivo[]
+
+  // Central de Gestão
+  protocoloSeq     Int              @default(0) // último número de protocolo usado
+  configGestao     Json? // horário, pesquisa de satisfação, categorias e prazos
+  chamados         Chamado[]
+  contatos         Contato[]
+  respostasRapidas RespostaRapida[]
+  etiquetas        Etiqueta[]
+}
+
+// Chamado com protocolo (ex.: PA-2026-000123), aberto pela equipe do DETRAN,
+// em geral a partir de uma conversa.
+model Chamado {
+  id              String          @id @default(cuid())
+  tenantId        String
+  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  numero          Int
+  protocolo       String          @db.VarChar(30)
+  conversaId      String?         @db.VarChar(30)
+  canal           Canal?
+  contato         String?         @db.VarChar(80)
+  nome            String?         @db.VarChar(120)
+  assunto         String          @db.VarChar(160)
+  descricao       String?         @db.Text
+  categoria       String?         @db.VarChar(60)
+  prioridade      String          @default("NORMAL") @db.VarChar(10) // BAIXA | NORMAL | ALTA | URGENTE
+  status          String          @default("ABERTO") @db.VarChar(20) // ABERTO | EM_ANDAMENTO | AGUARDANDO_CIDADAO | RESOLVIDO | CANCELADO
+  responsavelId   String?         @db.VarChar(30)
+  responsavelNome String?         @db.VarChar(120)
+  prazoEm         DateTime?
+  avisarCidadao   Boolean         @default(true)
+  criadoPorNome   String?         @db.VarChar(120)
+  criadoEm        DateTime        @default(now())
+  atualizadoEm    DateTime        @updatedAt
+  resolvidoEm     DateTime?
+  eventos         ChamadoEvento[]
+
+  @@unique([tenantId, numero])
+  @@unique([tenantId, protocolo])
+  @@index([tenantId, status, atualizadoEm])
+  @@index([tenantId, contato])
+}
+
+// Linha do tempo do chamado. publico=true aparece para o cidadão.
+model ChamadoEvento {
+  id        String   @id @default(cuid())
+  chamadoId String
+  chamado   Chamado  @relation(fields: [chamadoId], references: [id], onDelete: Cascade)
+  tipo      String   @db.VarChar(20) // ABERTURA | COMENTARIO | NOTA | STATUS | RESPONSAVEL | PRIORIDADE
+  autorNome String?  @db.VarChar(120)
+  texto     String   @db.Text
+  publico   Boolean  @default(false)
+  criadoEm  DateTime @default(now())
+
+  @@index([chamadoId, criadoEm])
+}
+
+// Ficha do cidadão (por telefone ou sessão do site): etiquetas e anotações.
+model Contato {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contato      String   @db.VarChar(80)
+  nome         String?  @db.VarChar(120)
+  notas        String?  @db.Text
+  etiquetas    Json? // [idEtiqueta, ...]
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  @@unique([tenantId, contato])
+}
+
+model RespostaRapida {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  atalho   String @db.VarChar(40) // usado com "/" na caixa de resposta
+  titulo   String @db.VarChar(120)
+  texto    String @db.Text
+  ordem    Int    @default(0)
+
+  @@unique([tenantId, atalho])
+}
+
+model Etiqueta {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  nome     String @db.VarChar(40)
+  cor      String @db.VarChar(9)
+
+  @@unique([tenantId, nome])
 }
 
 // Identidade visual guardada no próprio banco (logo, marca pequena).
@@ -124,6 +216,9 @@ model Usuario {
   ativo        Boolean   @default(true)
   ultimoAcesso DateTime?
   criadoEm     DateTime  @default(now())
+  // Central de Gestão: ONLINE | PAUSA | OFFLINE (para a fila e a equipe)
+  statusAtendimento String    @default("OFFLINE") @db.VarChar(12)
+  statusEm          DateTime?
 
   @@unique([tenantId, login])
   @@index([login])
@@ -188,6 +283,11 @@ model Conversa {
   atendenteId   String?   @db.VarChar(30)
   atendenteNome String?   @db.VarChar(120)
   transbordoEm  DateTime?
+  // Indicadores da Central de Gestão
+  primeiraRespostaEm DateTime? // 1ª resposta humana depois do transbordo
+  encerradaEm        DateTime?
+  avaliacao          Int? // 1 a 5 (pesquisa de satisfação)
+  avaliacaoPendente  Boolean   @default(false)
   iniciadaEm DateTime   @default(now())
   ultimaEm   DateTime   @default(now())
   mensagens  Mensagem[]
