@@ -41,7 +41,10 @@ model Tenant {
   telefone     String   @db.VarChar(40) // call center
   logoUrl      String?  @db.VarChar(255)
   marcaUrl     String?  @db.VarChar(255)
-  corPrimaria  String?  @db.VarChar(9)
+  corPrimaria  String?  @db.VarChar(9) // cor de marca (topo, botões, balões)
+  corDestaque  String?  @db.VarChar(9) // cor de destaque (enviar, realces, barras)
+  // Demonstração: DETRAN ainda sem contrato -> faixa de aviso e fora do Google
+  demonstracao Boolean  @default(true)
   // Jeito de falar com o cidadão (ex.: tom paraense). Vai nos prompts locais.
   personaTom   String?  @db.Text
   // Regras do estado: órgão do IPVA, multas por órgão, portais. Vai nos prompts.
@@ -59,6 +62,20 @@ model Tenant {
   balcao      AtendimentoBalcao[]
   conversas   Conversa[]
   migracoes   MigracaoLegado[]
+  arquivos    TenantArquivo[]
+}
+
+// Identidade visual guardada no próprio banco (logo, marca pequena).
+model TenantArquivo {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tipo         String   @db.VarChar(20) // logo | marca
+  mime         String   @db.VarChar(40)
+  dados        Bytes    @db.MediumBlob
+  atualizadoEm DateTime @updatedAt
+
+  @@unique([tenantId, tipo])
 }
 
 // Registro das etapas já migradas do sistema antigo (Redis/arquivos), para a

@@ -1,0 +1,32 @@
+{
+  "_leia": "DETRANs de todo o Brasil. Usado por: node scripts/tenant-cli.js seed-brasil. Cria os que faltam em modo demonstração (faixa de aviso + noindex). Cores tiradas da bandeira de cada estado (primaria = cor mais escura, destaque = a cor de realce). Telefones só onde conferido; os demais ficam vazios até o DETRAN confirmar. Logos oficiais NÃO vêm daqui: enviar pelo /admin com autorização do órgão.",
+  "detrans": [
+    { "slug": "ac", "uf": "AC", "estado": "Acre", "prep": "do", "cidadeSede": "Rio Branco", "portalUrl": "https://www.detran.ac.gov.br", "corPrimaria": "#00753A", "corDestaque": "#F9D616" },
+    { "slug": "al", "uf": "AL", "estado": "Alagoas", "prep": "de", "cidadeSede": "Maceió", "portalUrl": "https://www.detran.al.gov.br", "corPrimaria": "#1C3F94", "corDestaque": "#D52B1E" },
+    { "slug": "ap", "uf": "AP", "estado": "Amapá", "prep": "do", "cidadeSede": "Macapá", "portalUrl": "https://www.detran.ap.gov.br", "corPrimaria": "#00529B", "corDestaque": "#00A651" },
+    { "slug": "am", "uf": "AM", "estado": "Amazonas", "prep": "do", "cidadeSede": "Manaus", "portalUrl": "https://www.detran.am.gov.br", "corPrimaria": "#1F3A93", "corDestaque": "#D7262B" },
+    { "slug": "ba", "uf": "BA", "estado": "Bahia", "prep": "da", "cidadeSede": "Salvador", "portalUrl": "https://www.ba.gov.br/detran", "corPrimaria": "#1A3E8C", "corDestaque": "#D7262B" },
+    { "slug": "ce", "uf": "CE", "estado": "Ceará", "prep": "do", "cidadeSede": "Fortaleza", "portalUrl": "https://www.detran.ce.gov.br", "corPrimaria": "#00843D", "corDestaque": "#F5C400" },
+    { "slug": "df", "uf": "DF", "estado": "Distrito Federal", "prep": "do", "cidadeSede": "Brasília", "portalUrl": "https://www.detran.df.gov.br", "telefone": "154", "nome": "Departamento de Trânsito do Distrito Federal", "governo": "Governo do Distrito Federal", "corPrimaria": "#006B3F", "corDestaque": "#F7C600" },
+    { "slug": "es", "uf": "ES", "estado": "Espírito Santo", "prep": "do", "cidadeSede": "Vitória", "portalUrl": "https://detran.es.gov.br", "telefone": "154", "corPrimaria": "#1A4B8C", "corDestaque": "#E58FA8" },
+    { "slug": "go", "uf": "GO", "estado": "Goiás", "prep": "de", "cidadeSede": "Goiânia", "portalUrl": "https://www.goias.gov.br/detran", "corPrimaria": "#00843D", "corDestaque": "#F7D417" },
+    { "slug": "ma", "uf": "MA", "estado": "Maranhão", "prep": "do", "cidadeSede": "São Luís", "portalUrl": "https://www.detran.ma.gov.br", "corPrimaria": "#1F3A8F", "corDestaque": "#D52B1E" },
+    { "slug": "mt", "uf": "MT", "estado": "Mato Grosso", "prep": "de", "cidadeSede": "Cuiabá", "portalUrl": "https://www.detran.mt.gov.br", "corPrimaria": "#1B3F94", "corDestaque": "#00843D" },
+    { "slug": "ms", "uf": "MS", "estado": "Mato Grosso do Sul", "prep": "de", "cidadeSede": "Campo Grande", "portalUrl": "https://www.detran.ms.gov.br", "corPrimaria": "#1C3F94", "corDestaque": "#00A651" },
+    { "slug": "mg", "uf": "MG", "estado": "Minas Gerais", "prep": "de", "cidadeSede": "Belo Horizonte", "portalUrl": "https://www.mg.gov.br", "corPrimaria": "#9E1B22", "corDestaque": "#E0464C" },
+    { "slug": "pb", "uf": "PB", "estado": "Paraíba", "prep": "da", "cidadeSede": "João Pessoa", "portalUrl": "https://detran.pb.gov.br", "corPrimaria": "#2B2B2B", "corDestaque": "#C8102E" },
+    { "slug": "pr", "uf": "PR", "estado": "Paraná", "prep": "do", "cidadeSede": "Curitiba", "portalUrl": "https://www.detran.pr.gov.br", "corPrimaria": "#00703C", "corDestaque": "#1C3F94" },
+    { "slug": "pe", "uf": "PE", "estado": "Pernambuco", "prep": "de", "cidadeSede": "Recife", "portalUrl": "https://www.detran.pe.gov.br", "corPrimaria": "#1B4F9C", "corDestaque": "#F7C600" },
+    { "slug": "pi", "uf": "PI", "estado": "Piauí", "prep": "do", "cidadeSede": "Teresina", "portalUrl": "https://www.detran.pi.gov.br", "corPrimaria": "#00843D", "corDestaque": "#F7C600" },
+    { "slug": "rj", "uf": "RJ", "estado": "Rio de Janeiro", "prep": "do", "cidadeSede": "Rio de Janeiro", "portalUrl": "https://www.detran.rj.gov.br", "corPrimaria": "#1D3F8F", "corDestaque": "#2E7CC4" },
+    { "slug": "rn", "uf": "RN", "estado": "Rio Grande do Norte", "prep": "do", "cidadeSede": "Natal", "portalUrl": "https://www.detran.rn.gov.br", "corPrimaria": "#00843D", "corDestaque": "#F7C600" },
+    { "slug": "rs", "uf": "RS", "estado": "Rio Grande do Sul", "prep": "do", "cidadeSede": "Porto Alegre", "portalUrl": "https://www.detran.rs.gov.br", "corPrimaria": "#00843D", "corDestaque": "#E32118" },
+    { "slug": "ro", "uf": "RO", "estado": "Rondônia", "prep": "de", "cidadeSede": "Porto Velho", "portalUrl": "https://www.detran.ro.gov.br", "corPrimaria": "#1B3F94", "corDestaque": "#00A651" },
+    { "slug": "rr", "uf": "RR", "estado": "Roraima", "prep": "de", "cidadeSede": "Boa Vista", "portalUrl": "https://www.detran.rr.gov.br", "corPrimaria": "#1E50A2", "corDestaque": "#00A651" },
+    { "slug": "sc", "uf": "SC", "estado": "Santa Catarina", "prep": "de", "cidadeSede": "Florianópolis", "portalUrl": "https://www.detran.sc.gov.br", "corPrimaria": "#00843D", "corDestaque": "#D52B1E" },
+    { "slug": "sp", "uf": "SP", "estado": "São Paulo", "prep": "de", "cidadeSede": "São Paulo", "portalUrl": "https://www.detran.sp.gov.br", "corPrimaria": "#222222", "corDestaque": "#D52B1E" },
+    { "slug": "se", "uf": "SE", "estado": "Sergipe", "prep": "de", "cidadeSede": "Aracaju", "portalUrl": "https://www.detran.se.gov.br", "corPrimaria": "#1B4F9C", "corDestaque": "#00843D" },
+    { "slug": "to", "uf": "TO", "estado": "Tocantins", "prep": "do", "cidadeSede": "Palmas", "portalUrl": "https://www.to.gov.br/detran", "corPrimaria": "#1B4F9C", "corDestaque": "#F7C600" }
+  ],
+  "pa": { "corPrimaria": "#1B3F94", "corDestaque": "#D52B1E" }
+}

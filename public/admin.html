@@ -9,7 +9,7 @@
     .ad-wrap { max-width: 1040px; margin: 0 auto; min-height: 100dvh; display: flex; flex-direction: column; background: var(--paper); border-left: 1px solid var(--paper-edge); border-right: 1px solid var(--paper-edge); }
     .ad-main { flex: 1; overflow-y: auto; padding: 20px; }
     .card { background: var(--surface); border: 1px solid var(--paper-edge); border-radius: 14px; padding: 18px; margin-bottom: 16px; }
-    .card h3 { margin: 0 0 4px; font-size: 15px; color: #192662; }
+    .card h3 { margin: 0 0 4px; font-size: 15px; color: var(--ayio-navy); }
     .card .sub { font-size: 12.5px; color: var(--ink-soft); margin: 0 0 14px; }
     label.f { display: block; font-size: 12px; color: var(--ink-soft); margin: 10px 0 0; }
     .in, .ta, .sel { width: 100%; padding: 10px 12px; font-size: 14px; font-family: inherit; border: 1px solid #D3DCE6; border-radius: 10px; background: #fff; color: var(--ink); margin-top: 4px; }
@@ -25,13 +25,18 @@
     .btn:disabled { opacity: .5; cursor: default; }
     .msg { font-size: 13px; padding: 9px 12px; border-radius: 9px; margin-top: 10px; }
     .msg.err { background: var(--warn-bg); color: var(--warn-ink); }
-    .msg.ok { background: #E3F6F2; color: var(--moss-deep); }
+    .msg.ok { background: var(--t-claro, #E3F6F2); color: var(--moss-deep); }
     table.lst { width: 100%; border-collapse: collapse; font-size: 13.5px; }
     table.lst th { text-align: left; font-size: 11.5px; color: var(--ink-soft); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--paper-edge); }
     table.lst td { padding: 9px 8px; border-bottom: 1px solid var(--paper-edge); vertical-align: middle; }
     table.lst tr.click { cursor: pointer; } table.lst tr.click:hover { background: #F6F4EE; }
     .pill { display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; background: #EEE; color: #555; margin-right: 4px; }
-    .pill.ok { background: #E3F6F2; color: var(--moss-deep); } .pill.no { background: #F6E9E2; color: #9A4B1B; }
+    .pill.ok { background: var(--t-claro, #E3F6F2); color: var(--moss-deep); } .pill.no { background: #F6E9E2; color: #9A4B1B; }
+    .img-prev { height: 76px; border: 1px dashed #CBD2DC; border-radius: 10px; display: flex; align-items: center; justify-content: center; margin: 4px 0 8px; background: #FAFBFC; overflow: hidden; }
+    .img-prev img { max-height: 64px; max-width: 90%; object-fit: contain; }
+    .img-prev img:not([src]), .img-prev img[src=""] { display: none; }
+    .lst-marca { display: inline-flex; width: 26px; height: 26px; vertical-align: middle; margin-right: 8px; }
+    .lst-marca img { width: 26px; height: 26px; object-fit: contain; border-radius: 6px; }
     .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
     .tab { cursor: pointer; border: 1px solid var(--paper-edge); background: #fff; border-radius: 999px; padding: 7px 14px; font-size: 13px; font-weight: 600; color: #24304F; }
     .tab.on { background: var(--moss); color: #fff; border-color: var(--moss); }
@@ -122,7 +127,20 @@
               <div><label class="f">Portal oficial</label><input id="t-portalUrl" class="in" /></div>
               <div><label class="f">Logo (endereço da imagem)</label><input id="t-logoUrl" class="in" placeholder="/img/... ou https://..." /></div>
               <div><label class="f">Marca pequena (endereço da imagem)</label><input id="t-marcaUrl" class="in" /></div>
-            </div>
+          </div>
+          <h4 style="margin:18px 0 6px">Identidade visual</h4>
+          <p class="hint" style="margin:0 0 10px">As cores e a marca deste DETRAN aparecem no site, no WhatsApp e nas áreas internas. Envie imagens PNG, JPG ou WEBP de até 600 KB; ao enviar, o endereço fixo acima é ignorado.</p>
+          <div class="grid2">
+            <div><label class="f">Cor principal</label><div class="row" style="gap:8px"><input id="t-corPrimaria-pick" type="color" style="width:46px;height:38px;border:0;background:none;padding:0" /><input id="t-corPrimaria" class="in" placeholder="#192662" maxlength="7" style="flex:1" /></div></div>
+            <div><label class="f">Cor de destaque</label><div class="row" style="gap:8px"><input id="t-corDestaque-pick" type="color" style="width:46px;height:38px;border:0;background:none;padding:0" /><input id="t-corDestaque" class="in" placeholder="#14AD92" maxlength="7" style="flex:1" /></div></div>
+            <div><label class="f">Logo (cabeçalho)</label>
+              <div class="img-prev"><img id="img-logo" alt="" /></div>
+              <div class="row" style="gap:8px"><input type="file" id="up-logo" accept="image/png,image/jpeg,image/webp" class="hidden" /><button type="button" class="btn soft" data-up="logo">Enviar logo</button><button type="button" class="btn soft" data-del="logo">Remover</button></div></div>
+            <div><label class="f">Marca pequena (ícone)</label>
+              <div class="img-prev"><img id="img-marca" alt="" /></div>
+              <div class="row" style="gap:8px"><input type="file" id="up-marca" accept="image/png,image/jpeg,image/webp" class="hidden" /><button type="button" class="btn soft" data-up="marca">Enviar marca</button><button type="button" class="btn soft" data-del="marca">Remover</button></div></div>
+          </div>
+          <div id="img-msg"></div>
             <label class="f">Tom de voz com o cidadão (usado pela IA local: fotos, defesa, plano B)</label>
             <textarea id="t-personaTom" class="ta"></textarea>
             <label class="f">Orientações do estado (órgão do IPVA, multas por órgão, portais, normas)</label>
@@ -130,7 +148,8 @@
             <label class="f">Conteúdo da tela (JSON: boasVindasTitulo, boasVindasTexto, canais, sugestoes, guias, atalhos)</label>
             <textarea id="t-conteudo" class="ta mono" spellcheck="false"></textarea>
             <div class="hint">O tom e a base do bot do WhatsApp e do site ficam no BotAyio; estes textos valem para a tela e para a IA local.</div>
-            <label class="f hidden" id="t-ativo-wrap"><input type="checkbox" id="t-ativo" /> DETRAN ativo (desmarcar tira o site do ar)</label>
+            <label class="f hidden" id="t-demo-wrap"><input type="checkbox" id="t-demonstracao" /> Demonstração (mostra uma faixa de aviso e o site não aparece no Google). Desmarque quando o DETRAN virar cliente.</label>
+          <label class="f hidden" id="t-ativo-wrap"><input type="checkbox" id="t-ativo" /> DETRAN ativo (desmarcar tira o site do ar)</label>
             <div id="dados-msg"></div>
             <div class="row"><button id="dados-ok" class="btn pri">Salvar dados</button><a id="ver-site" class="btn soft" target="_blank" rel="noopener" style="text-decoration:none">Abrir o site ↗</a></div>
           </section>

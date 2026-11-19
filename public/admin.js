@@ -58,7 +58,7 @@ async function mostrarLista() {
   tenantsCache = r.data.tenants || [];
   const pill = (ok, txt) => `<span class="pill ${ok ? "ok" : "no"}">${txt}</span>`;
   $("lista-corpo").innerHTML = tenantsCache.map((t) => `<tr class="click" data-slug="${esc(t.slug)}">
-    <td><b>/${esc(t.slug)}</b>${t.ativo ? "" : ' <span class="pill no">inativo</span>'}</td><td>${esc(t.sigla)}<div class="hint">${esc(t.nome)}</div></td>
+    <td><span class="lst-marca"><img src="${esc(t.marca || "")}" alt="" loading="lazy" /></span><b>/${esc(t.slug)}</b>${t.ativo ? "" : ' <span class="pill no">inativo</span>'}${t.demonstracao ? ' <span class="pill">demonstração</span>' : ""}</td><td>${esc(t.sigla)}<div class="hint">${esc(t.nome)}</div></td>
     <td>${pill(t.integracoes.botayio, "Bot")}${pill(t.integracoes.tutoria, "Tutoria")}${pill(t.integracoes.zapayio, "WhatsApp")}</td>
     <td>${t.usuarios}</td><td>${t.formularios}</td><td>${t.conversas}</td></tr>`).join("") || '<tr><td colspan="6">Nenhum DETRAN cadastrado.</td></tr>';
   document.querySelectorAll("#lista-corpo tr.click").forEach((tr) => (tr.onclick = () => abrirTenant(tr.dataset.slug)));
@@ -99,6 +99,10 @@ async function abrirTenant(slug) {
   CAMPOS.forEach((c) => ($(`t-${c}`).value = t[c] || ""));
   $("t-conteudo").value = JSON.stringify(t.conteudo || {}, null, 2);
   $("t-ativo-wrap").classList.toggle("hidden", !souSuper); $("t-ativo").checked = t.ativo;
+  $("t-demo-wrap").classList.toggle("hidden", !souSuper); $("t-demonstracao").checked = Boolean(t.demonstracao);
+  CORES.forEach((c) => { $(`t-${c}`).value = t[c] || ""; sincronizarCor(c); });
+  mostrarImagens(t.imagens);
+  msg("img-msg", "");
   mostrarIntegracao(r.data.integracao);
   trocarAba("dados");
 }
@@ -115,11 +119,53 @@ $("dados-ok").onclick = async () => {
   const b = {};
   CAMPOS.forEach((c) => (b[c] = $(`t-${c}`).value));
   try { b.conteudo = JSON.parse($("t-conteudo").value || "{}"); } catch (_) { return msg("dados-msg", "O conteúdo da tela não é um JSON válido."); }
-  if (souSuper) b.ativo = $("t-ativo").checked;
+  CORES.forEach((c) => (b[c] = $(`t-${c}`).value.trim()));
+  if (souSuper) { b.ativo = $("t-ativo").checked; b.demonstracao = $("t-demonstracao").checked; }
   const r = await tApi("/dados", put(b));
   if (!r.ok) return msg("dados-msg", r.data.error || "Erro ao salvar.");
   msg("dados-msg", "Dados salvos. O site atualiza em até 1 minuto.", "ok");
 };
+
+// ── Identidade visual: cores e imagens ──
+const CORES = ["corPrimaria", "corDestaque"];
+const HEX = /^#[0-9a-fA-F]{6}$/;
+function sincronizarCor(c) {
+  const v = $(`t-${c}`).value.trim();
+  $(`t-${c}-pick`).value = HEX.test(v) ? v : (c === "corPrimaria" ? "#192662" : "#14AD92");
+}
+CORES.forEach((c) => {
+  $(`t-${c}-pick`).addEventListener("input", (e) => ($(`t-${c}`).value = e.target.value.toUpperCase()));
+  $(`t-${c}`).addEventListener("input", () => sincronizarCor(c));
+});
+function mostrarImagens(im = {}) {
+  ["logo", "marca"].forEach((tipo) => { $(`img-${tipo}`).src = im[tipo] || ""; });
+}
+document.querySelectorAll("[data-up]").forEach((b) => (b.onclick = () => $(`up-${b.dataset.up}`).click()));
+["logo", "marca"].forEach((tipo) => {
+  $(`up-${tipo}`).addEventListener("change", (e) => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!f) return;
+    if (!/^image\/(png|jpeg|webp)$/.test(f.type)) return msg("img-msg", "Use uma imagem PNG, JPG ou WEBP.");
+    if (f.size > 600 * 1024) return msg("img-msg", "A imagem deve ter até 600 KB.");
+    const leitor = new FileReader();
+    leitor.onload = async () => {
+      msg("img-msg", "Enviando…", "ok");
+      const r = await tApi(`/arquivo/${tipo}`, put({ dataUrl: leitor.result }));
+      if (!r.ok) return msg("img-msg", r.data.error || "Não foi possível enviar.");
+      mostrarImagens(r.data.imagens);
+      $(`t-${tipo}Url`).value = "";
+      msg("img-msg", "Imagem salva. O site atualiza em até 1 minuto.", "ok");
+    };
+    leitor.readAsDataURL(f);
+  });
+});
+document.querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => {
+  const r = await tApi(`/arquivo/${b.dataset.del}`, { method: "DELETE" });
+  if (!r.ok) return msg("img-msg", r.data.error || "Não foi possível remover.");
+  mostrarImagens(r.data.imagens);
+  msg("img-msg", "Imagem removida. Fica a marca provisória com a sigla.", "ok");
+}));
 
 // ── Integrações ──
 const SEGREDOS = ["botayioSecret", "botayioTutorUrl", "zapayioToken", "zapayioClientToken", "zapayioWebhookSecret"];

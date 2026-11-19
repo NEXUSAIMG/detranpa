@@ -17,6 +17,10 @@
 //       ZAPAYIO_CLIENT_TOKEN, ZAPAYIO_WEBHOOK_SECRET
 //       Segredos são cifrados com APP_ENCRYPTION_KEY antes de ir ao banco.
 //
+//   node scripts/tenant-cli.js seed-brasil
+//       Cria os DETRANs de tenants/brasil.json que ainda não existem, em modo
+//       demonstração, com as cores da bandeira e os formulários do PA.
+//
 //   node scripts/tenant-cli.js listar
 // ─────────────────────────────────────────────────────────────────────────────
 import "dotenv/config";
@@ -39,7 +43,11 @@ async function seed(slug) {
   const dados = {
     uf: d.uf, sigla: d.sigla, nome: d.nome, governo: d.governo, cidadeSede: d.cidadeSede,
     assistente: d.assistente, portalUrl: d.portalUrl, telefone: d.telefone,
-    logoUrl: d.logoUrl || null, marcaUrl: d.marcaUrl || null, corPrimaria: d.corPrimaria || null,
+    logoUrl: d.logoUrl || null, marcaUrl: d.marcaUrl || null,
+    // Cores e demonstração só mudam se o arquivo disser (o /admin pode ter ajustado).
+    ...(d.corPrimaria != null && { corPrimaria: d.corPrimaria }),
+    ...(d.corDestaque != null && { corDestaque: d.corDestaque }),
+    ...(d.demonstracao != null && { demonstracao: Boolean(d.demonstracao) }),
     personaTom: d.personaTom || null, orientacoes: d.orientacoes || null, conteudo,
   };
   const t = await prisma.tenant.upsert({ where: { slug }, create: { slug, ...dados }, update: dados });
@@ -57,6 +65,63 @@ async function seed(slug) {
     });
   }
   console.log(`DETRAN "${slug}" salvo (${t.sigla}) com ${forms.length} formulário(s).`);
+}
+
+// Conteúdo de tela genérico (sem links de outro estado) para os DETRANs em demonstração.
+function conteudoGenerico(d, sigla) {
+  return {
+    boasVindasTitulo: "Olá! Como posso ajudar no seu serviço de trânsito?",
+    boasVindasTexto: `Tire suas dúvidas sobre habilitação (CNH), veículos, multas e licenciamento no ${sigla}. Comece por uma das perguntas abaixo:`,
+    canais: [{ rotulo: `Portal ${sigla}`, url: d.portalUrl }],
+    sugestoes: [
+      { area: "Habilitação", q: "Quais documentos preciso para renovar a CNH?" },
+      { area: "Habilitação", q: "Como tirar a primeira habilitação?" },
+      { area: "Veículos", q: "Comprei um carro usado. Como transfiro para o meu nome?" },
+      { area: "Veículos", q: "Como faço o licenciamento anual do veículo?" },
+      { area: "Multas", q: "Como recorrer de uma multa?" },
+      { area: "Veículos", q: "Vendi meu veículo. O que preciso comunicar?" },
+    ],
+    guias: [],
+    atalhos: [{ ic: "🌐", n: `Portal ${sigla}`, s: "Serviços on-line oficiais", u: d.portalUrl }],
+  };
+}
+
+// Cadastra todos os DETRANs de tenants/brasil.json. Só CRIA os que faltam
+// (em demonstração); nos que já existem, só preenche cores ainda vazias.
+async function seedBrasil() {
+  const arq = JSON.parse(readFileSync(join(ROOT, "tenants", "brasil.json"), "utf8"));
+  const modelo = await prisma.tenant.findUnique({ where: { slug: "pa" }, include: { formularios: true } });
+  if (!modelo) throw new Error('Cadastre o PA antes (node scripts/tenant-cli.js seed pa): os formulários dele servem de modelo.');
+  let criados = 0, atualizados = 0;
+  const lista = [...arq.detrans, { slug: "pa", ...arq.pa }];
+  for (const d of lista) {
+    const existente = await prisma.tenant.findUnique({ where: { slug: d.slug } });
+    if (existente) {
+      const cores = {};
+      if (!existente.corPrimaria && d.corPrimaria) cores.corPrimaria = d.corPrimaria;
+      if (!existente.corDestaque && d.corDestaque) cores.corDestaque = d.corDestaque;
+      if (Object.keys(cores).length) { await prisma.tenant.update({ where: { id: existente.id }, data: cores }); atualizados++; }
+      continue;
+    }
+    if (!d.uf) continue; // o "pa" do arquivo só traz cores
+    const sigla = `DETRAN-${d.uf}`;
+    const t = await prisma.tenant.create({
+      data: {
+        slug: d.slug, uf: d.uf, sigla,
+        nome: d.nome || `Departamento Estadual de Trânsito ${d.prep} ${d.estado}`,
+        governo: d.governo || `Governo do Estado ${d.prep} ${d.estado}`,
+        cidadeSede: `${d.cidadeSede}/${d.uf}`, assistente: `Assistente ${sigla}`,
+        portalUrl: d.portalUrl, telefone: d.telefone || "",
+        corPrimaria: d.corPrimaria, corDestaque: d.corDestaque, demonstracao: true,
+        conteudo: conteudoGenerico(d, sigla),
+      },
+    });
+    for (const f of modelo?.formularios || []) {
+      await prisma.formulario.create({ data: { tenantId: t.id, chave: f.chave, ordem: f.ordem, definicao: f.definicao, ativo: f.ativo } });
+    }
+    criados++;
+  }
+  console.log(`Brasil: ${criados} DETRAN(s) criado(s) em demonstração, ${atualizados} com cores preenchidas.`);
 }
 
 async function usuario(slug, login, perfil, nome) {
@@ -112,7 +177,8 @@ try {
   else if (cmd === "usuario") await usuario(...args);
   else if (cmd === "integracao") await integracao(args[0]);
   else if (cmd === "listar") await listar();
-  else console.log("Comandos: seed <slug> | usuario <slug|-> <login> <PERFIL> \"<Nome>\" | integracao <slug> | listar");
+  else if (cmd === "seed-brasil") await seedBrasil();
+  else console.log("Comandos: seed <slug> | seed-brasil | usuario <slug|-> <login> <PERFIL> \"<Nome>\" | integracao <slug> | listar");
 } catch (err) {
   console.error("Erro:", err.message);
   process.exitCode = 1;

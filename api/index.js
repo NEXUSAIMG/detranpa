@@ -30,6 +30,7 @@ import { registrarTroca, registrarEvento, estatisticas, classificarTema } from "
 import { registrarWhatsApp } from "../whatsapp.js";
 import { registrarAdmin } from "../lib/admin.js";
 import { registrarAtendimento } from "../lib/atendimento.js";
+import { cssDoTema, marcaProvisoriaSvg } from "../lib/tema.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_TENANT = String(process.env.DEFAULT_TENANT || "pa").toLowerCase();
@@ -82,6 +83,19 @@ const T = "/api/t/:slug";
 
 app.get(`${T}/config`, comTenant, async (req, res) => {
   res.json({ tenant: configPublica(req.tenant), integracoes: statusIntegracoes(req.tenant) });
+});
+
+// Identidade visual: logo e marca enviados pelo /admin (ou a marca provisória).
+app.get(`${T}/arquivo/:tipo`, comTenant, async (req, res) => {
+  const tipo = req.params.tipo;
+  if (!["logo", "marca"].includes(tipo)) return res.status(404).end();
+  try {
+    const achar = (tp) => prisma.tenantArquivo.findUnique({ where: { tenantId_tipo: { tenantId: req.tenant.id, tipo: tp } } });
+    const a = (await achar(tipo)) || (await achar(tipo === "logo" ? "marca" : "logo"));
+    res.set({ "Cache-Control": "public, max-age=300", "X-Content-Type-Options": "nosniff" });
+    if (a) return res.type(a.mime).send(Buffer.from(a.dados));
+    res.type("image/svg+xml").send(marcaProvisoriaSvg(req.tenant, { grande: tipo === "logo" }));
+  } catch (err) { console.error("[arquivo]", err); res.status(500).end(); }
 });
 
 // Catálogo de documentos preenchíveis
@@ -301,8 +315,9 @@ function renderPagina(arq, t) {
   const vars = {
     SIGLA: t.sigla, ASSISTENTE: t.assistente, NOME: t.nome, GOVERNO: t.governo, UF: t.uf.toUpperCase(),
     SLUG: t.slug, PORTAL: t.portalUrl, TELEFONE: t.telefone,
-    MARCA: t.marcaUrl || "/img/detran-pa-mark.png", LOGO: t.logoUrl || t.marcaUrl || "/img/detran-pa-logo.png",
+    MARCA: cfg.marcaUrl, LOGO: cfg.logoUrl,
     COR: t.corPrimaria || "",
+    CONTATO: t.telefone ? `no portal oficial ou pelo telefone ${t.telefone}` : "no portal oficial",
     BVTITULO: c.boasVindasTitulo || `Olá! Bora resolver teu serviço de trânsito?`,
     BVTEXTO: c.boasVindasTexto || `Tire suas dúvidas sobre habilitação (CNH), veículos, multas e licenciamento. Comece por uma das perguntas abaixo:`,
   };
@@ -312,7 +327,16 @@ function renderPagina(arq, t) {
     .replace(/\{\{\{CANAIS\}\}\}/g, canais)
     .replace(/\{\{([A-Z]+)\}\}/g, (m, k) => (k in vars ? esc(vars[k]) : m));
   const boot = `<script>window.TENANT=${json};window.API_BASE="/api/t/${t.slug}";window.TENANT_BASE="/${t.slug}";</script>`;
-  return html.replace("</head>", `${boot}\n</head>`);
+  // Demonstração: fora do Google e com faixa avisando que não é canal oficial.
+  const demoHead = t.demonstracao
+    ? `<meta name="robots" content="noindex, nofollow" /><style>.demo-faixa{position:sticky;top:0;z-index:50;background:#FFF4CC;color:#5C4400;font:600 12.5px/1.35 system-ui,sans-serif;text-align:center;padding:7px 12px;border-bottom:1px solid #EBD58A}.demo-faixa a{color:#5C4400;text-decoration:underline}body.demo .app{height:calc(100dvh - 34px)}</style>`
+    : "";
+  html = html.replace("</head>", `${cssDoTema(t)}\n${demoHead}${boot}\n</head>`);
+  if (t.demonstracao) {
+    const faixa = `<div class="demo-faixa" role="note">Demonstração — este não é um canal oficial do ${esc(t.sigla)}. Para serviços e informações oficiais, acesse <a href="${esc(urlSegura(t.portalUrl))}" target="_blank" rel="noopener noreferrer">o portal do ${esc(t.sigla)}</a>.</div>`;
+    html = html.replace(/<body([^>]*)>/i, (m, attrs) => `<body${attrs.includes("class=") ? attrs.replace(/class="/, 'class="demo ') : `${attrs} class="demo"`}>\n${faixa}`);
+  }
+  return html;
 }
 
 async function pagina(req, res, qual) {
@@ -321,6 +345,7 @@ async function pagina(req, res, qual) {
   try {
     const t = await buscarTenant(slug);
     if (!t) return res.status(404).send("DETRAN não encontrado.");
+    if (t.demonstracao) res.set("X-Robots-Tag", "noindex, nofollow");
     res.set("Content-Type", "text/html; charset=utf-8").send(renderPagina(PAGINAS[qual], t));
   } catch (err) { console.error("[pagina]", err); res.status(503).send("Serviço indisponível no momento."); }
 }
