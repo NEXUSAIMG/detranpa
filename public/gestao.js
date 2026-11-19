@@ -30,6 +30,8 @@
 
   // ── Login ──
   $("ver-site").href = Sessao.base;
+  // Tutoria abre na mesma aba: o login desta aba vale lá (gestor e admin têm acesso).
+  $("ir-tutoria").href = Sessao.base + "/tutor";
   $("l-ok").onclick = entrar;
   $("l-pwd").addEventListener("keydown", (e) => { if (e.key === "Enter") entrar(); });
   async function entrar() {
