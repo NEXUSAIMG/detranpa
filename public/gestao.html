@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Central de Gestão — {{SIGLA}}</title>
+  <link rel="icon" href="{{MARCA}}" />
+  <link rel="stylesheet" href="/gestao.css" />
+</head>
+<body>
+  <!-- Login -->
+  <div id="tela-login" class="login">
+    <div class="login-card">
+      <img class="login-marca" src="{{MARCA}}" alt="" />
+      <div class="eyebrow">{{SIGLA}}</div>
+      <h1>Central de Gestão</h1>
+      <p class="sub">Atendimentos, chamados e indicadores do {{SIGLA}}.</p>
+      <label class="f" for="l-user">Usuário</label><input id="l-user" class="in" autocomplete="username" />
+      <label class="f" for="l-pwd">Senha</label><input id="l-pwd" class="in" type="password" autocomplete="current-password" />
+      <div id="l-msg"></div>
+      <button id="l-ok" class="btn pri largo">Entrar</button>
+    </div>
+  </div>
+
+  <div id="app" class="app hidden">
+    <!-- Menu lateral -->
+    <nav class="lado" aria-label="Menu da central">
+      <div class="lado-topo">
+        <img class="lado-marca" src="{{MARCA}}" alt="" />
+        <div><b>{{SIGLA}}</b><small>Central de Gestão</small></div>
+      </div>
+      <button class="nav on" data-sec="visao"><span class="ic">◎</span><span>Visão geral</span></button>
+      <button class="nav" data-sec="atendimento"><span class="ic">💬</span><span>Atendimento</span><b class="badge hidden" id="bdg-fila">0</b></button>
+      <button class="nav" data-sec="chamados"><span class="ic">📋</span><span>Chamados</span><b class="badge warn hidden" id="bdg-vencidos">0</b></button>
+      <button class="nav" data-sec="cidadaos"><span class="ic">👤</span><span>Cidadãos</span></button>
+      <button class="nav" data-sec="equipe"><span class="ic">👥</span><span>Equipe</span></button>
+      <button class="nav so-gestor hidden" data-sec="config"><span class="ic">⚙</span><span>Configurações</span></button>
+      <div class="lado-pe">
+        <button class="nav" id="abrir-tv"><span class="ic">📺</span><span>Modo TV</span></button>
+        <a class="nav" href="{{SLUG}}" id="ver-site" target="_blank" rel="noopener"><span class="ic">↗</span><span>Ver o site</span></a>
+      </div>
+    </nav>
+
+    <main class="principal">
+      <header class="topo">
+        <button class="menu-mob" id="menu-mob" aria-label="Abrir menu">☰</button>
+        <h2 id="titulo-sec">Visão geral</h2>
+        <div class="pulso" id="pulso" title="Atualiza sozinho a cada poucos segundos"></div>
+        <div class="eu">
+          <select id="meu-status" class="status-sel" aria-label="Meu status">
+            <option value="ONLINE">● Online</option>
+            <option value="PAUSA">● Em pausa</option>
+            <option value="OFFLINE">● Offline</option>
+          </select>
+          <span class="eu-nome" id="eu-nome">—</span>
+          <button class="btn ghost" id="sair">Sair</button>
+        </div>
+      </header>
+
+      <!-- Visão geral -->
+      <section id="sec-visao" class="sec">
+        <div class="linha-tit">
+          <h3>Agora</h3>
+          <span class="ao-vivo">ao vivo</span>
+        </div>
+        <div class="kpis" id="kpi-agora"></div>
+        <div class="linha-tit">
+          <h3>Período</h3>
+          <div class="seg" id="periodo">
+            <button data-d="1">Hoje</button><button data-d="7" class="on">7 dias</button><button data-d="30">30 dias</button><button data-d="90">90 dias</button>
+          </div>
+        </div>
+        <div class="kpis" id="kpi-periodo"></div>
+        <div class="grade2">
+          <div class="cartao"><h4>Movimento por dia</h4><div id="graf-dias" class="graf"></div></div>
+          <div class="cartao"><h4>Assuntos mais procurados</h4><div id="graf-temas"></div></div>
+          <div class="cartao"><h4>Quando o cidadão procura (dia × hora)</h4><div id="graf-calor" class="calor"></div></div>
+          <div class="cartao"><h4>Satisfação</h4><div id="graf-notas"></div></div>
+          <div class="cartao largo"><h4>Equipe no período</h4><div id="tab-ranking"></div></div>
+        </div>
+      </section>
+
+      <!-- Atendimento -->
+      <section id="sec-atendimento" class="sec hidden">
+        <div class="caixa" id="caixa">
+          <div class="cx-lista">
+            <div class="abas" id="abas-conv">
+              <button data-aba="fila" class="on">Fila <b id="n-fila"></b></button>
+              <button data-aba="meus">Meus <b id="n-meus"></b></button>
+              <button data-aba="equipe">Equipe</button>
+              <button data-aba="bot">No bot</button>
+              <button data-aba="resolvidos">Resolvidos</button>
+            </div>
+            <div class="cx-busca">
+              <input id="busca-conv" class="in" placeholder="Buscar nome ou telefone…" />
+              <select id="filtro-etq" class="sel" aria-label="Filtrar por etiqueta"><option value="">Etiquetas</option></select>
+            </div>
+            <button class="btn pri proximo" id="puxar-proximo">⚡ Puxar o próximo da fila</button>
+            <div class="cx-itens" id="lista-conv"></div>
+          </div>
+
+          <div class="cx-conv" id="cx-conv">
+            <div class="vazio" id="conv-vazia">
+              <div class="vazio-ic">💬</div>
+              <b>Escolha uma conversa</b>
+              <span>ou clique em <i>Puxar o próximo da fila</i>.</span>
+            </div>
+            <div class="conv hidden" id="conv">
+              <div class="conv-topo">
+                <button class="btn ghost so-mob" id="voltar-lista">←</button>
+                <div class="quem"><b id="c-nome">—</b><small id="c-sub"></small></div>
+                <div class="acoes" id="c-acoes"></div>
+              </div>
+              <div class="msgs" id="c-msgs"></div>
+              <div class="compor" id="compor">
+                <div class="compor-abas">
+                  <button data-modo="resp" class="on">Responder</button>
+                  <button data-modo="nota">Nota interna</button>
+                  <span class="dica">Digite <kbd>/</kbd> para respostas rápidas</span>
+                  <button class="btn ghost mini ia-only hidden" id="ia-sugerir">✨ Sugerir resposta</button>
+                </div>
+                <div class="compor-linha">
+                  <div class="rapidas hidden" id="rapidas"></div>
+                  <textarea id="c-texto" rows="2" placeholder="Escreva a mensagem para o cidadão…"></textarea>
+                  <button class="btn pri" id="c-enviar">Enviar</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <aside class="cx-ficha" id="cx-ficha">
+            <div class="ficha hidden" id="ficha">
+              <h4>Cidadão</h4>
+              <label class="f">Nome</label><input id="f-nome" class="in" />
+              <label class="f">Etiquetas</label><div class="etqs" id="f-etqs"></div>
+              <label class="f">Anotações</label><textarea id="f-notas" class="in" rows="3" placeholder="Só a equipe vê."></textarea>
+              <button class="btn soft mini" id="f-salvar">Salvar ficha</button>
+              <div class="ia-bloco ia-only hidden">
+                <button class="btn soft mini" id="ia-resumo">✨ Resumir conversa</button>
+                <div id="ia-resumo-out" class="ia-out hidden"></div>
+              </div>
+              <h4>Chamados</h4>
+              <div id="f-chamados"></div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- Chamados -->
+      <section id="sec-chamados" class="sec hidden">
+        <div class="barra">
+          <input id="busca-ch" class="in" placeholder="Protocolo, assunto, nome ou telefone…" />
+          <select id="fch-status" class="sel"><option value="abertos">Em aberto</option><option value="">Todos</option></select>
+          <select id="fch-prio" class="sel"><option value="">Prioridade</option></select>
+          <select id="fch-resp" class="sel"><option value="">Responsável</option><option value="eu">Comigo</option><option value="ninguem">Sem responsável</option></select>
+          <label class="chk"><input type="checkbox" id="fch-venc" /> Só vencidos</label>
+          <div class="seg" id="modo-ch"><button data-m="kanban" class="on">Quadro</button><button data-m="lista">Lista</button></div>
+          <button class="btn pri" id="novo-ch">+ Novo chamado</button>
+        </div>
+        <div id="kanban" class="kanban"></div>
+        <div id="lista-ch" class="hidden"></div>
+      </section>
+
+      <!-- Cidadãos -->
+      <section id="sec-cidadaos" class="sec hidden">
+        <div class="barra"><input id="busca-cid" class="in" placeholder="Buscar nome ou telefone…" /></div>
+        <div id="lista-cid"></div>
+      </section>
+
+      <!-- Equipe -->
+      <section id="sec-equipe" class="sec hidden">
+        <p class="sub">Status em tempo real e produtividade dos últimos 7 dias.</p>
+        <div class="equipe" id="lista-equipe"></div>
+      </section>
+
+      <!-- Configurações -->
+      <section id="sec-config" class="sec hidden">
+        <div class="grade2">
+          <div class="cartao">
+            <h4>Pesquisa de satisfação</h4>
+            <label class="chk"><input type="checkbox" id="cf-pesquisa" /> Pedir nota de 1 a 5 ao encerrar</label>
+            <label class="f">Pergunta</label><textarea id="cf-msgPesquisa" class="in" rows="2"></textarea>
+            <label class="f">Agradecimento</label><textarea id="cf-agradece" class="in" rows="2"></textarea>
+            <h4>Chamados</h4>
+            <label class="chk"><input type="checkbox" id="cf-avisar" /> Avisar o cidadão no WhatsApp quando o chamado mudar</label>
+            <label class="f">Categorias (uma por linha)</label><textarea id="cf-cats" class="in" rows="6"></textarea>
+            <label class="f">Prazo para resolver (horas) por prioridade</label>
+            <div class="sla" id="cf-sla"></div>
+          </div>
+          <div class="cartao">
+            <h4>Horário de atendimento humano</h4>
+            <label class="chk"><input type="checkbox" id="cf-hativo" /> Avisar quando pedirem atendente fora do horário</label>
+            <div class="dias" id="cf-dias"></div>
+            <div class="linha2"><div><label class="f">Início</label><input id="cf-ini" class="in" type="time" /></div><div><label class="f">Fim</label><input id="cf-fim" class="in" type="time" /></div></div>
+            <label class="f">Mensagem fora do horário</label><textarea id="cf-fora" class="in" rows="3"></textarea>
+            <label class="f">Fuso horário</label><select id="cf-fuso" class="sel"></select>
+            <h4>Fila</h4>
+            <div class="linha2"><div><label class="f">Amarelo após (min)</label><input id="cf-alerta" class="in" type="number" min="1" /></div><div><label class="f">Vermelho após (min)</label><input id="cf-critica" class="in" type="number" min="2" /></div></div>
+          </div>
+        </div>
+        <div id="cf-msg"></div>
+        <button class="btn pri" id="cf-salvar">Salvar configurações</button>
+
+        <div class="grade2" style="margin-top:22px">
+          <div class="cartao">
+            <h4>Respostas rápidas</h4>
+            <div id="lista-rr"></div>
+            <div class="form-mini">
+              <input type="hidden" id="rr-id" />
+              <div class="linha2"><div><label class="f">Atalho</label><input id="rr-atalho" class="in" placeholder="docs-cnh" /></div><div><label class="f">Título</label><input id="rr-titulo" class="in" /></div></div>
+              <label class="f">Texto</label><textarea id="rr-texto" class="in" rows="3"></textarea>
+              <div id="rr-msg"></div>
+              <button class="btn soft mini" id="rr-salvar">Salvar resposta</button> <button class="btn ghost mini" id="rr-limpar">Limpar</button>
+            </div>
+          </div>
+          <div class="cartao">
+            <h4>Etiquetas</h4>
+            <div id="lista-etq"></div>
+            <div class="form-mini">
+              <input type="hidden" id="et-id" />
+              <div class="linha2"><div><label class="f">Nome</label><input id="et-nome" class="in" /></div><div><label class="f">Cor</label><input id="et-cor" type="color" class="cor" value="#0EA5E9" /></div></div>
+              <div id="et-msg"></div>
+              <button class="btn soft mini" id="et-salvar">Salvar etiqueta</button> <button class="btn ghost mini" id="et-limpar">Limpar</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Gaveta do chamado -->
+  <div class="veu hidden" id="veu"></div>
+  <aside class="gaveta hidden" id="gaveta" aria-label="Chamado">
+    <div class="gaveta-topo"><div><small id="g-proto"></small><h3 id="g-assunto">—</h3></div><button class="btn ghost" id="g-fechar">✕</button></div>
+    <div class="gaveta-corpo" id="g-corpo"></div>
+  </aside>
+
+  <!-- Modal genérico (novo chamado, repassar, encerrar) -->
+  <div class="modal hidden" id="modal"><div class="modal-card" id="modal-card"></div></div>
+
+  <!-- Modo TV -->
+  <div class="tv hidden" id="tv">
+    <div class="tv-topo"><img src="{{MARCA}}" alt="" /><div><b>{{SIGLA}}</b><span>Painel de atendimento</span></div><div class="tv-hora" id="tv-hora"></div><button class="btn ghost" id="tv-sair">Sair do modo TV</button></div>
+    <div class="tv-kpis" id="tv-kpis"></div>
+    <div class="tv-grade"><div><h3>Aguardando atendente</h3><div id="tv-fila"></div></div><div><h3>Equipe</h3><div id="tv-equipe"></div></div></div>
+  </div>
+
+  <div class="toast hidden" id="toast"></div>
+  <script src="/sessao.js"></script>
+  <script src="/gestao.js"></script>
+</body>
+</html>
