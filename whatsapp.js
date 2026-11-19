@@ -19,6 +19,7 @@ import { perguntarAoBot, textoComBotoes } from "./lib/botayio.js";
 import { registrarTroca, registrarEvento, buscarConversa, registrarEntradaHumano } from "./lib/registro.js";
 import { tratarAvaliacao, tratarConsultaProtocolo } from "./lib/gestao.js";
 import { configDe, dentroDoHorario } from "./lib/gestao-config.js";
+import { apagarCidadao, textoAvisoWhatsApp } from "./lib/privacidade.js";
 
 const SESSAO_HORAS = Number(process.env.WHATSAPP_SESSAO_HORAS || 12);
 const FALLBACK_ERRO = "Tivemos uma instabilidade momentânea no atendimento automático. Pode reenviar tua mensagem em instantes, por favor?";
@@ -113,6 +114,21 @@ async function processarMensagem(tenant, m) {
     return { status: "protocolo" };
   }
 
+  // LGPD: "apagar meus dados" pede confirmação; "APAGAR" (em até 10 min) apaga.
+  const pedidoKey = `detran:${tenant.slug}:wa:apagar:${phone}`;
+  if (texto && /^\s*apagar\s+(os\s+)?meus\s+dados\s*[.!]?\s*$/i.test(texto)) {
+    await kvSetEx(pedidoKey, "1", 600).catch(() => {});
+    await enviarTexto(z, phone, `Você pediu para apagar as suas conversas e dados de contato guardados pelo ${tenant.sigla}. Protocolos já abertos continuam, mas sem o seu nome e telefone.\n\nPara confirmar, responda *APAGAR* nos próximos 10 minutos.`).catch((e) => console.warn("[Zapayio]", e.message));
+    return { status: "lgpd-confirmar" };
+  }
+  if (texto && /^\s*apagar\s*$/i.test(texto) && (await kvGetStr(pedidoKey).catch(() => null))) {
+    await kvDel(pedidoKey).catch(() => {});
+    await apagarCidadao(tenant, phone);
+    await kvDel(`detran:${tenant.slug}:wa:last:${phone}`).catch(() => {});
+    await enviarTexto(z, phone, `Pronto: apagamos as suas conversas e dados de contato no ${tenant.sigla}. Se mandar uma nova mensagem, um novo atendimento começa.`).catch((e) => console.warn("[Zapayio]", e.message));
+    return { status: "lgpd-apagado" };
+  }
+
   // Conversa com atendente humano: nada vai para o bot; a mensagem (ou a
   // mídia) fica na fila da tela de atendimento.
   if (conv?.status === "HUMANO") {
@@ -147,6 +163,11 @@ async function processarMensagem(tenant, m) {
 
   const enviadosTxt = [];
   let enviados = 0;
+  // LGPD: no primeiro contato, avisa que a conversa fica registrada e por quanto tempo.
+  if (!conv && configDe(tenant).avisoWhatsApp) {
+    const aviso = textoAvisoWhatsApp(tenant);
+    try { await enviarTexto(z, phone, aviso); enviados++; enviadosTxt.push(aviso); } catch (err) { console.warn("[Zapayio] aviso LGPD:", err.message); }
+  }
   for (const item of resp.contents || []) {
     try {
       for (const parte of adaptarParaWhatsApp(textoComBotoes(item), tenant)) {

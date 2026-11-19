@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacidade — {{ASSISTENTE}}</title>
+  <link rel="icon" href="{{MARCA}}" />
+  <style>
+    :root { --ayio-navy: #192662; --ayio-teal: #14AD92; --ayio-teal-deep: #167D70; --t-claro: #E3F6F2; }
+    body { margin: 0; background: #F4F6FA; color: #1B2236; font: 15.5px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    .topo { background: var(--ayio-grad, var(--ayio-navy)); color: #fff; padding: 22px 16px; }
+    .topo .in { max-width: 760px; margin: 0 auto; display: flex; gap: 14px; align-items: center; }
+    .topo img { width: 48px; height: 48px; object-fit: contain; background: #fff; border-radius: 12px; padding: 3px; }
+    .topo h1 { margin: 0; font-size: 21px; } .topo small { opacity: .8; }
+    main { max-width: 760px; margin: 0 auto; padding: 20px 16px 50px; }
+    .cartao { background: #fff; border: 1px solid #E3E8F0; border-radius: 14px; padding: 18px 20px; margin-bottom: 14px; }
+    h2 { font-size: 16.5px; color: var(--ayio-navy); margin: 0 0 8px; }
+    ul { padding-left: 20px; margin: 6px 0; } li { margin: 4px 0; }
+    .destaque { background: var(--t-claro); border-color: transparent; }
+    .btn { cursor: pointer; border: 0; border-radius: 10px; font: 600 14px system-ui, sans-serif; padding: 11px 16px; background: var(--ayio-navy); color: #fff; }
+    .btn.sec { background: #EEF1F6; color: #1B2236; text-decoration: none; display: inline-block; }
+    #msg { margin-top: 10px; font-weight: 600; }
+    a { color: var(--ayio-teal-deep); }
+  </style>
+</head>
+<body>
+  <header class="topo"><div class="in"><img src="{{MARCA}}" alt="" /><div><h1>Aviso de privacidade</h1><small>{{ASSISTENTE}} · {{SIGLA}}</small></div></div></header>
+  <main>
+    <div class="cartao destaque">
+      <b>Resumo:</b> guardamos as suas mensagens só para atender você e melhorar o serviço, por até <b>{{RETENCAO}} dias</b> sem uso. Depois disso elas são apagadas automaticamente. Você pode pedir a exclusão antes, a qualquer momento.
+    </div>
+    <div class="cartao">
+      <h2>Quem cuida dos dados</h2>
+      <p>O controlador dos dados é o <b>{{NOME}} ({{SIGLA}})</b>, órgão do {{GOVERNO}}. Este assistente é uma ferramenta de orientação e não substitui o atendimento oficial.</p>
+    </div>
+    <div class="cartao">
+      <h2>O que fica registrado</h2>
+      <ul>
+        <li>O texto das conversas com o assistente e com os atendentes (no site e no WhatsApp).</li>
+        <li>No WhatsApp, o seu número e o nome do seu perfil. No site, nenhum dado de identificação: só um código aleatório da sessão.</li>
+        <li>Se um atendente abrir um chamado para você: o assunto, o protocolo e o andamento.</li>
+        <li>A nota que você der na pesquisa de satisfação, se responder.</li>
+      </ul>
+      <p><b>Não guardamos</b> as fotos de documentos enviadas para conferência ou para leitura: elas são lidas na hora e descartadas. Os formulários preenchidos na tela ficam só no seu aparelho.</p>
+    </div>
+    <div class="cartao">
+      <h2>Para que usamos</h2>
+      <ul>
+        <li>Responder às suas dúvidas e dar continuidade ao atendimento (inclusive com um atendente humano).</li>
+        <li>Acompanhar os chamados abertos para você e avisar sobre o andamento.</li>
+        <li>Gerar estatísticas sem identificação (assuntos mais procurados, tempo de atendimento) para melhorar o serviço.</li>
+      </ul>
+      <p>A base legal é a execução de políticas públicas e o exercício das atribuições do órgão (art. 7º, III, e art. 23 da Lei 13.709/2018 — LGPD). Os dados não são vendidos nem usados para propaganda.</p>
+    </div>
+    <div class="cartao">
+      <h2>Por quanto tempo</h2>
+      <ul>
+        <li><b>Conversas:</b> apagadas automaticamente após <b>{{RETENCAO}} dias</b> sem novas mensagens.</li>
+        <li><b>Chamados encerrados:</b> após <b>{{RETENCAOCH}} dias</b>, perdem nome, telefone e descrição; fica só o registro estatístico (protocolo, assunto e datas).</li>
+        <li><b>Estatísticas:</b> não têm dados pessoais e podem ser mantidas.</li>
+      </ul>
+    </div>
+    <div class="cartao">
+      <h2>Seus direitos</h2>
+      <p>Você pode pedir acesso, correção ou exclusão dos seus dados (art. 18 da LGPD):</p>
+      <ul>
+        <li><b>No WhatsApp:</b> mande <b>apagar meus dados</b> e confirme com <b>APAGAR</b>.</li>
+        <li><b>No site:</b> use o botão abaixo para apagar a conversa deste navegador.</li>
+        <li><b>Encarregado de dados:</b> {{ENCARREGADO}}.</li>
+      </ul>
+      <p id="politica"></p>
+      <button class="btn" id="apagar">Apagar a minha conversa deste navegador</button>
+      <a class="btn sec" href="/{{SLUG}}">Voltar ao assistente</a>
+      <div id="msg"></div>
+    </div>
+  </main>
+  <script>
+    (function () {
+      var T = window.TENANT || {};
+      var base = window.API_BASE || "/api/t/" + T.slug;
+      fetch(base + "/privacidade").then(function (r) { return r.json(); }).then(function (d) {
+        if (d && /^https:\/\//.test(d.politicaUrl || "")) {
+          var p = document.getElementById("politica"), a = document.createElement("a");
+          a.href = d.politicaUrl; a.target = "_blank"; a.rel = "noopener noreferrer"; a.textContent = "Política de privacidade oficial do " + T.sigla;
+          p.appendChild(a);
+        }
+      }).catch(function () {});
+      document.getElementById("apagar").onclick = function () {
+        var chave = "detran_" + T.slug + "_sid", sid = "";
+        try { sid = sessionStorage.getItem(chave) || ""; } catch (e) {}
+        var msg = document.getElementById("msg");
+        if (!sid) { msg.textContent = "Não há conversa guardada neste navegador."; return; }
+        if (!confirm("Apagar a sua conversa com o assistente? Isso não pode ser desfeito.")) return;
+        fetch(base + "/privacidade/conversa", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: sid }) })
+          .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+          .then(function (x) {
+            if (!x.ok) { msg.textContent = x.d.error || "Não foi possível apagar."; return; }
+            try { sessionStorage.removeItem(chave); } catch (e) {}
+            msg.textContent = "✓ Conversa apagada.";
+          }).catch(function () { msg.textContent = "Não foi possível apagar agora."; });
+      };
+    })();
+  </script>
+</body>
+</html>

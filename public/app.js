@@ -1097,3 +1097,21 @@ function abrirDefesa(texto, tipo) {
     setTimeout(() => window.print(), 60); setTimeout(cleanup, 4000);
   }
 })();
+
+/* ═══════════════════ AVISO DE PRIVACIDADE (LGPD) ═══════════════════
+   Na primeira visita, uma faixa curta explica que a conversa fica registrada
+   e por quanto tempo, com link para o aviso completo. */
+(function () {
+  try { if (localStorage.getItem(LS("aviso_lgpd"))) return; } catch (_) { return; }
+  const composer = document.querySelector("footer.composer");
+  if (!composer) return;
+  fetch(API("/privacidade")).then((r) => r.json()).then((d) => {
+    const dias = d.retencaoConversasDias || 180;
+    const box = document.createElement("div");
+    box.className = "aviso-lgpd";
+    box.setAttribute("role", "note");
+    box.innerHTML = `<span>🔒 Para atender você, esta conversa fica registrada por até <b>${dias} dias</b> e depois é apagada. Não envie senhas nem dados bancários. <a href="${(window.TENANT_BASE || "")}/privacidade">Saiba mais</a></span><button type="button">Entendi</button>`;
+    box.querySelector("button").onclick = () => { try { localStorage.setItem(LS("aviso_lgpd"), "1"); } catch (_) {} box.remove(); };
+    composer.insertAdjacentElement("afterbegin", box);
+  }).catch(() => {});
+})();

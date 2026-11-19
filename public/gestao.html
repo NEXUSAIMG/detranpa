@@ -142,6 +142,7 @@
               </div>
               <h4>Chamados</h4>
               <div id="f-chamados"></div>
+              <button class="btn perigo mini so-gestor hidden" id="f-apagar" style="margin-top:16px">🗑 Apagar dados deste cidadão (LGPD)</button>
             </div>
           </aside>
         </div>
@@ -198,6 +199,20 @@
             <h4>Fila</h4>
             <div class="linha2"><div><label class="f">Amarelo após (min)</label><input id="cf-alerta" class="in" type="number" min="1" /></div><div><label class="f">Vermelho após (min)</label><input id="cf-critica" class="in" type="number" min="2" /></div></div>
           </div>
+        </div>
+        <div class="cartao" style="margin-top:14px">
+          <h4>🔒 Privacidade (LGPD)</h4>
+          <p class="sub" style="margin:0 0 6px">A limpeza roda sozinha todo dia. Defina os prazos com o encarregado de dados do DETRAN. O cidadão vê esses prazos no aviso de privacidade do site e do WhatsApp.</p>
+          <div class="linha2">
+            <div><label class="f">Apagar conversas sem atividade após (dias)</label><input id="cf-retConv" class="in" type="number" min="30" max="1825" /></div>
+            <div><label class="f">Tirar dados pessoais dos chamados encerrados após (dias)</label><input id="cf-retCh" class="in" type="number" min="90" max="3650" /></div>
+            <div><label class="f">Contato do encarregado de dados (DPO)</label><input id="cf-encarregado" class="in" placeholder="e-mail ou link do canal do DETRAN" /></div>
+            <div><label class="f">Política de privacidade oficial (link https)</label><input id="cf-politica" class="in" placeholder="https://..." /></div>
+          </div>
+          <label class="chk"><input type="checkbox" id="cf-avisoWa" /> Avisar no primeiro contato pelo WhatsApp que a conversa fica registrada</label>
+          <div class="sub" id="lgpd-previa" style="margin:8px 0"></div>
+          <button class="btn soft mini" id="lgpd-limpar">Aplicar a limpeza agora</button>
+          <a class="btn ghost mini" id="lgpd-ver" target="_blank" rel="noopener">Ver o aviso de privacidade ↗</a>
         </div>
         <div id="cf-msg"></div>
         <button class="btn pri" id="cf-salvar">Salvar configurações</button>

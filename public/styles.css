@@ -460,3 +460,9 @@ a { color: var(--ayio-teal-deep); }
 .conf-spin { width: 14px; height: 14px; border: 2px solid #CBD2DC; border-top-color: var(--ayio-teal); border-radius: 50%; animation: confgira .8s linear infinite; }
 @keyframes confgira { to { transform: rotate(360deg); } }
 .doc-card:disabled { opacity: .5; cursor: wait; }
+
+/* ── Aviso de privacidade (LGPD) ── */
+.aviso-lgpd { font-size: 12.5px; line-height: 1.45; color: #2A3550; background: var(--t-claro, #E3F6F2); border-radius: 10px; padding: 8px 10px; margin: 0 0 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.aviso-lgpd a { color: var(--ayio-teal-deep); font-weight: 600; }
+.aviso-lgpd button { margin-left: auto; border: 0; border-radius: 8px; padding: 4px 10px; font: 600 12px system-ui, sans-serif; background: var(--ayio-navy); color: #fff; cursor: pointer; }
+.disclaimer .link-priv { color: inherit; text-decoration: underline; }

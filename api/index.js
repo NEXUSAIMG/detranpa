@@ -32,6 +32,8 @@ import { registrarAdmin } from "../lib/admin.js";
 import { registrarAtendimento } from "../lib/atendimento.js";
 import { registrarGestao } from "../lib/gestao.js";
 import { registrarConferencia } from "../lib/conferencia.js";
+import { registrarPrivacidade } from "../lib/privacidade.js";
+import { configDe } from "../lib/gestao-config.js";
 import { chaveNaUrl, liberadoDemo, gravarCookieDemo, paginaRestrita } from "../lib/demo.js";
 import { cssDoTema, marcaProvisoriaSvg } from "../lib/tema.js";
 
@@ -309,8 +311,11 @@ registrarGestao(app, { limitar: (chave, max) => rateLimited(chave, max) });
 // Conferência de documentos antes do protocolo (checklist por serviço + foto)
 registrarConferencia(app, { limitar: (chave, max) => rateLimited(chave, max) });
 
+// LGPD: retenção, limpeza diária (cron), eliminação a pedido e aviso de privacidade
+registrarPrivacidade(app, { limitar: (chave, max) => rateLimited(chave, max) });
+
 // ═════════════════════════ PÁGINAS ═════════════════════════
-const PAGINAS = { chat: "index.html", tutor: "tutor.html", balcao: "balcao.html", painel: "painel-custos.html", admin: "admin.html", atendimento: "atendimento.html", gestao: "gestao.html" };
+const PAGINAS = { chat: "index.html", tutor: "tutor.html", balcao: "balcao.html", painel: "painel-custos.html", admin: "admin.html", atendimento: "atendimento.html", gestao: "gestao.html", privacidade: "privacidade.html" };
 const htmlCache = new Map();
 const lerHtml = (arq) => {
   if (!htmlCache.has(arq) || process.env.NODE_ENV === "development") htmlCache.set(arq, readFileSync(join(ROOT, "public", arq), "utf8"));
@@ -330,6 +335,9 @@ function renderPagina(arq, t) {
     MARCA: cfg.marcaUrl, LOGO: cfg.logoUrl,
     COR: t.corPrimaria || "",
     CONTATO: t.telefone ? `no portal oficial ou pelo telefone ${t.telefone}` : "no portal oficial",
+    // LGPD (página /<uf>/privacidade)
+    RETENCAO: String(configDe(t).retencaoConversasDias), RETENCAOCH: String(configDe(t).retencaoChamadosDias),
+    ENCARREGADO: configDe(t).encarregado || `pelos canais oficiais do ${t.sigla}`,
     BVTITULO: c.boasVindasTitulo || `Olá! Bora resolver teu serviço de trânsito?`,
     BVTEXTO: c.boasVindasTexto || `Tire suas dúvidas sobre habilitação (CNH), veículos, multas e licenciamento. Comece por uma das perguntas abaixo:`,
   };
@@ -392,6 +400,7 @@ app.get("/:slug", (req, res) => pagina(req, res, "chat"));
 app.get("/:slug/admin", (req, res) => pagina(req, res, "admin"));
 app.get("/:slug/atendimento", (req, res) => pagina(req, res, "atendimento"));
 app.get("/:slug/gestao", (req, res) => pagina(req, res, "gestao"));
+app.get("/:slug/privacidade", (req, res) => pagina(req, res, "privacidade"));
 app.get("/:slug/tutor", (req, res) => pagina(req, res, "tutor"));
 app.get("/:slug/balcao", (req, res) => pagina(req, res, "balcao"));
 app.get("/:slug/painel", (req, res) => pagina(req, res, "painel"));

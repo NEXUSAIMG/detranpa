@@ -529,14 +529,40 @@
     $("cf-ini").value = c.horario.inicio; $("cf-fim").value = c.horario.fim; $("cf-fora").value = c.horario.mensagemFora;
     $("cf-fuso").innerHTML = FUSOS.map((f) => `<option ${f === c.fuso ? "selected" : ""}>${f}</option>`).join("");
     $("cf-alerta").value = c.esperaAlertaMin; $("cf-critica").value = c.esperaCriticaMin;
+    $("cf-retConv").value = c.retencaoConversasDias; $("cf-retCh").value = c.retencaoChamadosDias;
+    $("cf-encarregado").value = c.encarregado || ""; $("cf-politica").value = c.politicaUrl || ""; $("cf-avisoWa").checked = c.avisoWhatsApp !== false;
+    $("lgpd-ver").href = Sessao.base + "/privacidade";
+    previaLgpd();
     listaRespostas(); listaEtiquetas();
   }
+  async function previaLgpd() {
+    $("lgpd-previa").textContent = "Calculando…";
+    const r = await api("/lgpd/previa"); if (!r.ok) return ($("lgpd-previa").textContent = "");
+    const d = r.data;
+    $("lgpd-previa").innerHTML = `Pela regra atual, a próxima limpeza remove <b>${d.conversas}</b> conversa(s) e <b>${d.balcao}</b> registro(s) do balcão, e tira os dados pessoais de <b>${d.chamados}</b> chamado(s) encerrado(s). Última limpeza: <b>${d.ultimaLimpeza ? fmtDH(d.ultimaLimpeza) : "ainda não rodou"}</b>.`;
+  }
+  $("lgpd-limpar").onclick = async () => {
+    if (!confirmar("Aplicar agora a limpeza pela regra configurada? O que for apagado não volta.")) return;
+    const r = await api("/lgpd/limpar", post());
+    if (!r.ok) return toast(r.data.error || "Erro na limpeza.");
+    toast(`Limpeza feita: ${r.data.conversas} conversa(s), ${r.data.chamados} chamado(s) anonimizado(s).`); previaLgpd();
+  };
+  $("f-apagar").onclick = async () => {
+    const c = S.conv?.conversa; if (!c) return;
+    if (!confirmar(`Apagar TODAS as conversas e a ficha de ${S.conv.ficha.nome || formatarFone(c.contato)}? Os chamados ficam, mas sem nome e telefone. Use só a pedido do cidadão. Não dá para desfazer.`)) return;
+    const r = await api("/lgpd/apagar-cidadao", post({ contato: c.contato }));
+    if (!r.ok) return toast(r.data.error || "Não foi possível apagar.");
+    toast(`Dados apagados: ${r.data.conversas} conversa(s), ${r.data.chamados} chamado(s) anonimizado(s).`);
+    S.convId = null; S.conv = null; $("conv").classList.add("hidden"); $("ficha").classList.add("hidden"); $("conv-vazia").classList.remove("hidden"); $("caixa").classList.remove("aberta"); carregarLista();
+  };
   $("cf-salvar").onclick = async () => {
     const sla = {}; $("cf-sla").querySelectorAll("input").forEach((i) => (sla[i.dataset.p] = Number(i.value)));
     const b = {
       pesquisaSatisfacao: $("cf-pesquisa").checked, mensagemPesquisa: $("cf-msgPesquisa").value, agradecimentoPesquisa: $("cf-agradece").value,
       avisarChamado: $("cf-avisar").checked, categorias: $("cf-cats").value.split("\n"), slaHoras: sla, fuso: $("cf-fuso").value,
       esperaAlertaMin: Number($("cf-alerta").value), esperaCriticaMin: Number($("cf-critica").value),
+      retencaoConversasDias: Number($("cf-retConv").value), retencaoChamadosDias: Number($("cf-retCh").value),
+      encarregado: $("cf-encarregado").value, politicaUrl: $("cf-politica").value, avisoWhatsApp: $("cf-avisoWa").checked,
       horario: { ativo: $("cf-hativo").checked, dias: [...$("cf-dias").querySelectorAll("input:checked")].map((i) => Number(i.value)), inicio: $("cf-ini").value, fim: $("cf-fim").value, mensagemFora: $("cf-fora").value },
     };
     const r = await api("/config", put(b));

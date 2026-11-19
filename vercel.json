@@ -10,6 +10,9 @@
     },
     { "src": "public/**", "use": "@vercel/static" }
   ],
+  "crons": [
+    { "path": "/api/cron/limpeza", "schedule": "23 6 * * *" }
+  ],
   "routes": [
     { "src": "/api/(.*)", "dest": "/api/index.js" },
     { "src": "/(.+\\.(?:js|css|png|jpe?g|svg|ico|webp|gif|woff2?|map|txt))", "dest": "/public/$1" },
