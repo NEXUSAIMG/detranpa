@@ -89,9 +89,36 @@ BOTAYIO_EMAIL=... BOTAYIO_SENHA=... npm run migrar -- --tenant pa --aplicar
   para o tutor completar a base na tutoria do bot.
 - O Redis antigo é só lido. Rodar de novo não duplica (cada etapa fica registrada).
 
+## Administração pela tela
+
+| Endereço | Quem | O que faz |
+|---|---|---|
+| `/admin` | Equipe Ayio (SUPERADMIN) | Lista todos os DETRANs, cria um novo (copiando os formulários de outro), edita qualquer um |
+| `/pa/admin` | Administrador do DETRAN | Só o próprio DETRAN: dados e textos, integrações, usuários e formulários |
+
+Em cada DETRAN:
+- **Dados e textos:** nome, sigla, telefone, portal, logo, tom de voz, orientações do estado
+  e o conteúdo da tela (boas-vindas, sugestões, guias, atalhos) em JSON.
+- **Integrações:** URL/segredo do bot no BotAyio, link de tutoria, instância e tokens do
+  Zapayio, segredo do webhook (com botão "Gerar"). Segredos entram cifrados e nunca são
+  mostrados de volta. Botões para apontar o webhook do Zapayio, ver o status do WhatsApp e
+  testar o bot.
+- **Usuários:** criar, mudar perfil, desativar/reativar, trocar senha. O admin não consegue
+  desativar nem rebaixar a si mesmo, nem criar SUPERADMIN.
+- **Formulários:** mostrar/ocultar e ordem.
+
+Desativar um DETRAN (tirar o site do ar) e copiar formulários entre DETRANs são só da equipe Ayio.
+Mudanças aparecem no site em até 1 minuto (cache).
+
+O primeiro SUPERADMIN é criado pela linha de comando:
+```bash
+SENHA='...' npm run tenant -- usuario - ayio SUPERADMIN "Equipe Ayio"
+```
+
 ## Novo DETRAN
 
-Crie `tenants/<slug>.json` (modelo: `tenants/pa.json`) e, se quiser, `tenants/<slug>.conteudo.json`
-(sugestões, guias, atalhos, boas-vindas) e `knowledge/<slug>/*.md` (base da IA local).
-Depois: `npm run tenant -- seed <slug>`, usuários e integrações como acima.
-O cadastro pela tela (`/admin`) vem numa fase seguinte.
+Pela tela: `/admin` → "Novo DETRAN" → depois integrações e usuários na própria ficha.
+
+Pela linha de comando (útil para trazer conteúdo pronto): crie `tenants/<slug>.json`
+(modelo: `tenants/pa.json`) e, se quiser, `tenants/<slug>.conteudo.json` e
+`knowledge/<slug>/*.md` (base da IA local). Depois `npm run tenant -- seed <slug>`.

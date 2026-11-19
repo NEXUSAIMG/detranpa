@@ -28,6 +28,7 @@ import { perguntarAoBot, textoComBotoes } from "../lib/botayio.js";
 import { promptCidadao, promptOperador, promptDefesa, promptTermo, promptExtracao } from "../lib/prompts.js";
 import { registrarTroca, registrarEvento, estatisticas, classificarTema } from "../lib/registro.js";
 import { registrarWhatsApp } from "../whatsapp.js";
+import { registrarAdmin } from "../lib/admin.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_TENANT = String(process.env.DEFAULT_TENANT || "pa").toLowerCase();
@@ -275,8 +276,11 @@ app.get(`${T}/balcao`, comTenant, exigir("balcao"), async (req, res) => {
 // WhatsApp (Zapayio <-> BotAyio) por DETRAN
 registrarWhatsApp(app);
 
+// Administração: /api/admin (equipe Ayio) e /api/t/<slug>/admin (admin do DETRAN)
+registrarAdmin(app, { limitar: (chave, max) => rateLimited(chave, max) });
+
 // ═════════════════════════ PÁGINAS ═════════════════════════
-const PAGINAS = { chat: "index.html", tutor: "tutor.html", balcao: "balcao.html", painel: "painel-custos.html" };
+const PAGINAS = { chat: "index.html", tutor: "tutor.html", balcao: "balcao.html", painel: "painel-custos.html", admin: "admin.html" };
 const htmlCache = new Map();
 const lerHtml = (arq) => {
   if (!htmlCache.has(arq) || process.env.NODE_ENV === "development") htmlCache.set(arq, readFileSync(join(ROOT, "public", arq), "utf8"));
@@ -324,7 +328,16 @@ app.get(["/balcao", "/balcao.html"], (_req, res) => res.redirect(302, `/${DEFAUL
 app.get(["/painel-custos", "/painel-custos.html"], (_req, res) => res.redirect(302, `/${DEFAULT_TENANT}/painel`));
 app.get("/index.html", (_req, res) => res.redirect(302, `/${DEFAULT_TENANT}`));
 
+// Área geral da equipe Ayio (sem DETRAN): cadastra e gerencia todos.
+app.get("/admin", (_req, res) => {
+  const html = lerHtml("admin.html")
+    .replace(/\{\{([A-Z]+)\}\}/g, (m, k) => ({ SIGLA: "Ayio", ASSISTENTE: "Assistente DETRAN", SLUG: "" }[k] ?? ""))
+    .replace("</head>", `<script>window.ADMIN_GERAL=true;</script>\n</head>`);
+  res.set("Content-Type", "text/html; charset=utf-8").send(html);
+});
+
 app.get("/:slug", (req, res) => pagina(req, res, "chat"));
+app.get("/:slug/admin", (req, res) => pagina(req, res, "admin"));
 app.get("/:slug/tutor", (req, res) => pagina(req, res, "tutor"));
 app.get("/:slug/balcao", (req, res) => pagina(req, res, "balcao"));
 app.get("/:slug/painel", (req, res) => pagina(req, res, "painel"));
