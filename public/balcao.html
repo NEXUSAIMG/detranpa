@@ -2,8 +2,8 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Copiloto do Balcão — DETRAN-PA</title>
-<link rel="stylesheet" href="styles.css">
+<title>Copiloto do Balcão — {{SIGLA}}</title>
+<link rel="stylesheet" href="/styles.css">
 <style>
  .bx-wrap{max-width:900px;margin:0 auto;min-height:100dvh;display:flex;flex-direction:column;background:var(--paper);border-left:1px solid var(--paper-edge);border-right:1px solid var(--paper-edge);}
  .bx-main{flex:1;display:flex;flex-direction:column;min-height:0;}
@@ -59,17 +59,18 @@
 <div class="bx-wrap">
   <header class="topbar">
     <div class="brand">
-      <div class="logo"><img class="brand-mark" src="/img/detran-pa-mark.png" alt="DETRAN-PA"></div>
-      <div class="brand-text"><span class="eyebrow">DETRAN-PA · Uso interno</span><span class="title">Copiloto do Balcão</span></div>
+      <div class="logo"><img class="brand-mark" src="{{MARCA}}" alt="{{SIGLA}}"></div>
+      <div class="brand-text"><span class="eyebrow">{{SIGLA}} · Uso interno</span><span class="title">Copiloto do Balcão</span></div>
     </div>
-    <div class="topbar-actions"><button id="painel" class="ghost-btn hidden">Painel</button><a href="/" class="ghost-btn" title="Ir ao chat do cidadão">← Chat do cidadão</a><button id="logout" class="ghost-btn hidden">Sair</button></div>
+    <div class="topbar-actions"><button id="painel" class="ghost-btn hidden">Painel</button><a href="/{{SLUG}}" class="ghost-btn" title="Ir ao chat do cidadão">← Chat do cidadão</a><button id="logout" class="ghost-btn hidden">Sair</button></div>
   </header>
   <main class="bx-main">
     <div id="login" class="login-box">
       <div class="lb-card">
         <h3>Entrar no Copiloto do Balcão</h3>
-        <p class="sub">Ferramenta de apoio ao atendente. Entre com a senha do tutor.</p>
-        <input id="pwd" type="password" placeholder="Senha">
+        <p class="sub">Ferramenta de apoio ao atendente do {{SIGLA}}. Entre com seu usuário.</p>
+        <input id="user" type="text" autocomplete="username" placeholder="Usuário" style="margin-bottom:8px">
+        <input id="pwd" type="password" autocomplete="current-password" placeholder="Senha">
         <div id="login-msg" class="lb-msg"></div>
         <button id="enter">Entrar</button>
       </div>
@@ -119,6 +120,7 @@
     <pre id="termo-paper" class="bx-paper"></pre>
   </div>
 </div>
-<script src="balcao.js"></script>
+<script src="/sessao.js"></script>
+<script src="/balcao.js"></script>
 </body>
 </html>

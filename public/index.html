@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Assistente DETRAN-PA</title>
-  <meta name="description" content="Tire dúvidas sobre habilitação, veículos, multas e licenciamento no Pará." />
-  <link rel="stylesheet" href="styles.css" />
+  <title>{{ASSISTENTE}}</title>
+  <meta name="description" content="Tire dúvidas sobre habilitação, veículos, multas e licenciamento com o {{SIGLA}}." />
+  <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <main class="app" role="main">
@@ -13,11 +13,11 @@
     <header class="topbar">
       <div class="brand">
         <div class="logo">
-          <img class="brand-mark" src="/img/detran-pa-mark.png" alt="DETRAN-PA" />
+          <img class="brand-mark" src="{{MARCA}}" alt="{{SIGLA}}" />
         </div>
         <div class="brand-text">
-          <span class="eyebrow">Departamento de Trânsito do Pará</span>
-          <span class="title">Assistente DETRAN-PA</span>
+          <span class="eyebrow">{{NOME}}</span>
+          <span class="title">{{ASSISTENTE}}</span>
         </div>
       </div>
       <div class="topbar-actions">
@@ -32,9 +32,9 @@
     <!-- Conversa -->
     <section id="scroll" class="scroll" aria-live="polite">
       <div id="empty" class="empty">
-        <img class="welcome-logo" src="/img/detran-pa-logo.png" alt="DETRAN-PA" />
-        <h2>Salve, parente! Bora resolver teu serviço de trânsito?</h2>
-        <p>Tira tuas dúvidas sobre habilitação (CNH), veículos, multas e licenciamento aqui no Pará. Começa por uma das perguntas aqui embaixo:</p>
+        <img class="welcome-logo" src="{{LOGO}}" alt="{{SIGLA}}" />
+        <h2>{{BVTITULO}}</h2>
+        <p>{{BVTEXTO}}</p>
         <div id="suggestions" class="suggestions"></div>
         <button id="empty-docs" class="docs-cta">
           <span class="docs-cta-icon">📄</span>
@@ -44,11 +44,7 @@
           </span>
           <span class="docs-cta-arrow">→</span>
         </button>
-        <div class="channels">
-          <a href="https://www.detran.pa.gov.br" target="_blank" rel="noopener noreferrer">↗ Portal DETRAN-PA</a>
-          <a href="https://cidadao.detran.pa.gov.br" target="_blank" rel="noopener noreferrer">↗ Portal Venus (multas)</a>
-          <a href="https://app.sefa.pa.gov.br/consulta-ipva" target="_blank" rel="noopener noreferrer">↗ IPVA (SEFA-PA)</a>
-        </div>
+        <div class="channels">{{{CANAIS}}}</div>
       </div>
       <div id="thread" class="thread"></div>
     </section>
@@ -64,7 +60,7 @@
           </svg>
         </button>
       </div>
-      <p class="disclaimer">Informativo — confirma valores e prazos no portal oficial ou no Call Center 154. Não substitui o atendimento do DETRAN-PA.</p>
+      <p class="disclaimer">Informativo — confirme valores e prazos no portal oficial ou pelo telefone {{TELEFONE}}. Não substitui o atendimento do {{SIGLA}}.</p>
     </footer>
   </main>
 
@@ -80,7 +76,7 @@
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <script src="/app.js"></script>
   <!-- Acessibilidade em Libras (VLibras — gov.br) -->
   <div vw class="enabled">
     <div vw-access-button class="active"></div>

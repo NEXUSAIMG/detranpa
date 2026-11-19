@@ -1,0 +1,172 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Banco do Assistente DETRAN (multi-tenant): um tenant por DETRAN.
+// O "cérebro" de cada DETRAN é o bot dele no BotAyio (prompt, base e tutoria
+// ficam lá). Aqui ficam o cadastro do tenant, as integrações, os usuários,
+// os formulários, o balcão, os indicadores e o histórico das conversas.
+// ─────────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Perfil {
+  SUPERADMIN // equipe Ayio: todos os DETRANs
+  ADMIN      // administrador de um DETRAN
+  GESTOR     // painel e indicadores
+  TUTOR      // acesso à tutoria do bot (BotAyio)
+  BALCAO     // copiloto do balcão
+}
+
+enum Canal {
+  WEB
+  WHATSAPP
+}
+
+model Tenant {
+  id           String   @id @default(cuid())
+  slug         String   @unique @db.VarChar(20) // vai na URL: /pa, /am...
+  uf           String   @db.Char(2)
+  sigla        String   @db.VarChar(40) // "DETRAN-PA"
+  nome         String   @db.VarChar(160) // "Departamento de Trânsito do Estado do Pará"
+  governo      String   @db.VarChar(160) // "Governo do Estado do Pará"
+  cidadeSede   String   @db.VarChar(80) // usada nos documentos ("Belém")
+  assistente   String   @db.VarChar(80) // "Assistente DETRAN-PA"
+  portalUrl    String   @db.VarChar(255)
+  telefone     String   @db.VarChar(40) // call center
+  logoUrl      String?  @db.VarChar(255)
+  marcaUrl     String?  @db.VarChar(255)
+  corPrimaria  String?  @db.VarChar(9)
+  // Jeito de falar com o cidadão (ex.: tom paraense). Vai nos prompts locais.
+  personaTom   String?  @db.Text
+  // Regras do estado: órgão do IPVA, multas por órgão, portais. Vai nos prompts.
+  orientacoes  String?  @db.Text
+  // Conteúdo da tela: sugestões, guias passo a passo, atalhos oficiais.
+  conteudo     Json?
+  ativo        Boolean  @default(true)
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  integracao  TenantIntegracao?
+  usuarios    Usuario[]
+  formularios Formulario[]
+  eventos     Evento[]
+  balcao      AtendimentoBalcao[]
+  conversas   Conversa[]
+}
+
+// Credenciais por DETRAN. Tudo que termina em "Enc" é criptografado (AES-GCM)
+// com a chave APP_ENCRYPTION_KEY do servidor.
+model TenantIntegracao {
+  id                 String   @id @default(cuid())
+  tenantId           String   @unique
+  tenant             Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // BotAyio: webhook síncrono do bot deste DETRAN (/webhooks/seucartorio/<bot_id>)
+  botayioUrl         String?  @db.VarChar(255)
+  botayioSecretEnc   String?  @db.Text
+  // Link de tutoria do bot (/tutor/app?bot=...&token=...) - tem token, então é cifrado
+  botayioTutorUrlEnc String?  @db.Text
+  // Zapayio (OnZap): mesma estrutura de rotas da Z-API
+  zapayioBaseUrl     String?  @db.VarChar(255)
+  zapayioInstanceId  String?  @db.VarChar(120)
+  zapayioTokenEnc    String?  @db.Text
+  zapayioClientEnc   String?  @db.Text
+  // Segredo do caminho do webhook: /api/t/<slug>/zapayio/webhook/<segredo>
+  zapayioWebhookEnc  String?  @db.Text
+  atualizadoEm       DateTime @updatedAt
+}
+
+model Usuario {
+  id           String    @id @default(cuid())
+  tenantId     String? // nulo só para SUPERADMIN
+  tenant       Tenant?   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  nome         String    @db.VarChar(120)
+  login        String    @db.VarChar(120)
+  senhaHash    String    @db.VarChar(255)
+  perfil       Perfil
+  ativo        Boolean   @default(true)
+  ultimoAcesso DateTime?
+  criadoEm     DateTime  @default(now())
+
+  @@unique([tenantId, login])
+  @@index([login])
+}
+
+model Formulario {
+  id        String  @id @default(cuid())
+  tenantId  String
+  tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  chave     String  @db.VarChar(60) // "procuracao", "comunicacao-venda"...
+  ordem     Int     @default(0)
+  definicao Json // { id, title, subtitle, desc, sections: [...] }
+  ativo     Boolean @default(true)
+
+  @@unique([tenantId, chave])
+}
+
+// Indicadores do painel. tipo: PERGUNTA | FEEDBACK
+model Evento {
+  id         String   @id @default(cuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tipo       String   @db.VarChar(20)
+  canal      Canal    @default(WEB)
+  tema       String?  @db.VarChar(60)
+  resolvido  Boolean?
+  positivo   Boolean?
+  transbordo Boolean  @default(false)
+  criadoEm   DateTime @default(now())
+
+  @@index([tenantId, criadoEm])
+}
+
+model AtendimentoBalcao {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  usuarioId String?
+  guiche    String?  @db.VarChar(40)
+  atendente String?  @db.VarChar(60)
+  servico   String?  @db.VarChar(120)
+  cidadao   String?  @db.VarChar(80)
+  cpf       String?  @db.VarChar(20)
+  protocolo String?  @db.VarChar(40)
+  resumo    String?  @db.Text
+  criadoEm  DateTime @default(now())
+
+  @@index([tenantId, criadoEm])
+}
+
+// Histórico por DETRAN (site e WhatsApp). status: BOT | HUMANO | ENCERRADA
+model Conversa {
+  id         String     @id @default(cuid())
+  tenantId   String
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  canal      Canal
+  contato    String     @db.VarChar(80) // telefone (WhatsApp) ou id da sessão (site)
+  nome       String?    @db.VarChar(120)
+  status     String     @default("BOT") @db.VarChar(12)
+  categoria  String?    @db.VarChar(60)
+  iniciadaEm DateTime   @default(now())
+  ultimaEm   DateTime   @default(now())
+  mensagens  Mensagem[]
+
+  @@unique([tenantId, canal, contato])
+  @@index([tenantId, ultimaEm])
+}
+
+model Mensagem {
+  id         String   @id @default(cuid())
+  conversaId String
+  conversa   Conversa @relation(fields: [conversaId], references: [id], onDelete: Cascade)
+  autor      String   @db.VarChar(12) // CIDADAO | BOT | ATENDENTE
+  texto      String   @db.Text
+  criadoEm   DateTime @default(now())
+
+  @@index([conversaId, criadoEm])
+}

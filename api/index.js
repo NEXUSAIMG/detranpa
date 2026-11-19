@@ -1,213 +1,109 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Aplicação Express do Assistente DETRAN-PA.
+// Assistente DETRAN — aplicação multi-tenant (um tenant por DETRAN).
 //
-// Roda local (server.js chama app.listen) e no Vercel (export default = função).
-// A chave da IA (DeepSeek ou Anthropic) vive só no servidor. O navegador fala
-// apenas com /api/*.
+//   /pa, /am ...            chat do cidadão de cada DETRAN
+//   /pa/tutor, /pa/balcao   áreas internas (login por usuário e perfil)
+//   /pa/painel              painel executivo
+//   /api/t/<slug>/...       API do DETRAN (dados sempre isolados por tenant)
 //
-// Sala do Tutor: conhecimento ensinado por senha (texto ou documento). Documentos
-// grandes são aceitos; na conversa, só os trechos relevantes à pergunta são
-// enviados ao assistente (store.js → buildTutorContext).
+// O "cérebro" de cada DETRAN é o bot dele no BotAyio (prompt, base, tutoria).
+// A IA local cuida de fotos, formulários, defesa e balcão, e é o plano B do
+// chat enquanto um DETRAN ainda não tem bot no BotAyio.
+//
+// Roda local (server.js chama app.listen) e na Vercel (export default).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import "dotenv/config";
 import express from "express";
-import { readFileSync, readdirSync, existsSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { FORMS, FORM_INDEX } from "../forms-data.js";
-import { storageMode, listEntries, addEntry, updateEntry, deleteEntry, buildTutorContext, logGap, listGaps, clearGaps, logEvent, getStats, resetStats, reindexEmbeddings, semanticEnabled, logAtendimento, listAtendimentos } from "../store.js";
+import { createHash } from "node:crypto";
+import { prisma, bancoConfigurado } from "../lib/db.js";
+import { comTenant, buscarTenant, configPublica, integracoes, statusIntegracoes, SLUG_RE } from "../lib/tenants.js";
+import { login, exigir, podeAcessar } from "../lib/auth.js";
+import { lerToken } from "../lib/cripto.js";
+import { chamarLLM, limparHistorico, textoDe, temImagem, llmConfigurado, SEM_CHAVE, PROVIDER_ID, MODEL, MAX_TOKENS } from "../lib/llm.js";
+import { perguntarAoBot, textoComBotoes } from "../lib/botayio.js";
+import { promptCidadao, promptOperador, promptDefesa, promptTermo, promptExtracao } from "../lib/prompts.js";
+import { registrarTroca, registrarEvento, estatisticas, classificarTema } from "../lib/registro.js";
+import { registrarWhatsApp } from "../whatsapp.js";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const ROOT = join(__dirname, "..");
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const DEFAULT_TENANT = String(process.env.DEFAULT_TENANT || "pa").toLowerCase();
 
-// ── Provedor de IA ──────────────────────────────────────────────────────────
-// Padrão: DeepSeek, pelo endpoint compatível com o formato da Anthropic (mesmo
-// corpo de requisição e de resposta, então o resto do código não muda).
-// Para voltar à Anthropic: LLM_PROVIDER=anthropic.
-// Sem LLM_PROVIDER, usa o provedor cuja chave estiver definida (DeepSeek primeiro).
-const PROVIDERS = {
-  deepseek: {
-    nome: "DeepSeek",
-    keyVar: "DEEPSEEK_API_KEY",
-    url: "https://api.deepseek.com/anthropic/v1/messages",
-    // deepseek-flash lê imagens (fotos de documentos). deepseek-v4-pro NÃO lê:
-    // troca a foto pelo texto "[Unsupported Image]".
-    model: process.env.DEEPSEEK_MODEL || "deepseek-flash",
-    // Raciocínio desligado: resposta mais rápida e barata, e o max_tokens vai
-    // todo para o texto. Para ligar: DEEPSEEK_THINKING=1.
-    extra: { thinking: { type: process.env.DEEPSEEK_THINKING === "1" ? "enabled" : "disabled" } },
-  },
-  anthropic: {
-    nome: "Anthropic",
-    keyVar: "ANTHROPIC_API_KEY",
-    url: "https://api.anthropic.com/v1/messages",
-    model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6",
-    extra: {},
-  },
-};
-const PROVIDER_ID = (() => {
-  const p = String(process.env.LLM_PROVIDER || "").trim().toLowerCase();
-  if (PROVIDERS[p]) return p;
-  if (process.env.DEEPSEEK_API_KEY) return "deepseek";
-  if (process.env.ANTHROPIC_API_KEY) return "anthropic";
-  return "deepseek";
-})();
-const PROVIDER = PROVIDERS[PROVIDER_ID];
-const API_KEY = process.env[PROVIDER.keyVar];
-const API_URL = PROVIDER.url;
-const MODEL = PROVIDER.model;
-const LLM_EXTRA = PROVIDER.extra;
-const SEM_CHAVE = `Servidor sem ${PROVIDER.keyVar}.`;
-const MAX_TOKENS = Number(process.env.MAX_TOKENS || 2048);
-const TUTOR_PASSWORD = process.env.TUTOR_PASSWORD || "";
-
-const MAX_MESSAGES = 24;
-const MAX_CHARS_PER_MSG = 4000;
-const MAX_ENTRY_CHARS = 120000; // documentos bem maiores são aceitos
-const RATE_WINDOW_MS = 60_000;
-const RATE_MAX = 20;
-
-// ── Base de conhecimento estática (pasta /knowledge) ────────────────────────
-function carregarBaseConhecimento() {
-  const dir = join(ROOT, "knowledge");
-  if (!existsSync(dir)) { console.warn("[aviso] Pasta /knowledge não encontrada."); return ""; }
-  const arquivos = readdirSync(dir).filter((f) => f.endsWith(".md")).sort();
-  return arquivos
-    .map((f) => `\n\n===== ARQUIVO: ${f} =====\n\n${readFileSync(join(dir, f), "utf8")}`)
-    .join("");
-}
-
-const BASE_CONHECIMENTO = carregarBaseConhecimento();
-const LISTA_FORMS = FORM_INDEX.map((f) => `   - ${f.id}: ${f.title} — ${f.desc}`).join("\n");
-
-const SYSTEM_PROMPT = `Você é o "Assistente DETRAN-PA", um atendente virtual que ajuda os cidadãos do Pará a entender e resolver os serviços do Departamento de Trânsito do Estado (habilitação/CNH, veículos, multas e licenciamento).
-
-PÚBLICO: pessoas leigas, que não conhecem os termos técnicos do trânsito. Escreva como se estivesse explicando com calma para alguém que nunca lidou com o DETRAN.
-
-TOM PARAENSE (o jeito de falar):
-- Fale com o jeitão acolhedor e caloroso do paraense, de Belém do Pará — como quem ajuda um vizinho, um parente.
-- Use o tratamento "tu", conjugando de forma natural: "tu precisa", "tu vai", "tu pode", "tu já tem", "se tu quiser".
-- Pode usar, com naturalidade e SEM exagero, expressões típicas da região, como: "égua", "arre égua" (surpresa), "pai d'égua" (muito bom/excelente), "vixe", "rapaz", "parente", "mana"/"maninho", "bora", "partiu", "tá ligado?", "no capricho". Use 1 ou 2 por resposta, no máximo — é tempero, não é o prato.
-- Comece de um jeito caloroso quando fizer sentido (ex.: "Égua, parente, bora resolver isso!" ou "Salve! Deixa eu te explicar...").
-- IMPORTANTE: a gíria NUNCA pode atrapalhar o entendimento. Documentos, prazos, valores e links têm que ficar claríssimos e corretos. Não vire caricatura nem force a barra.
-- Em assuntos delicados (multa, prazo curto, perda de documento, algo que dá dor de cabeça), pega leve no regionalismo e foca em acolher e ajudar com cuidado.
-
-ENTREGA EM PARTES (como uma pessoa conversando no WhatsApp):
-- Responda como gente de verdade conversa: em vez de um textão só, quebre a resposta em mensagens CURTAS, enviadas uma depois da outra.
-- Separe cada mensagem com uma linha contendo APENAS o marcador: [[BREAK]]
-- Cada parte deve ser curta: 1 a 3 frases, ou uma listinha pequena. Para pergunta simples, 1 parte basta. Para explicação com passo a passo, use de 2 a 4 partes (raramente mais que isso).
-- Não avise que vai dividir; apenas mande as mensagens naturalmente, como quem digita e envia várias vezes.
-- Não exagere: não pique demais nem deixe partes com uma palavra só.
-
-COMO RESPONDER (linguagem simples e detalhada):
-1. Responda SEMPRE em português do Brasil, no jeito paraense (tratamento "tu"), com tom acolhedor, paciente e gentil.
-2. Use palavras do dia a dia. Evite "juridiquês" e termos técnicos; quando precisar usar uma sigla ou termo do trânsito, EXPLIQUE entre parênteses na primeira vez. Exemplos:
-   - CNH (a carteira de motorista)
-   - CRLV (o documento anual do veículo, que prova que ele está licenciado)
-   - CRV (o antigo "documento/recibo" do carro, usado para passar o veículo para outra pessoa)
-   - ATPV-e (a autorização digital para transferir o veículo na hora da venda)
-   - DAE (o boleto de pagamento das taxas do estado)
-   - Portal Venus (o site do DETRAN onde tu contesta multas pela internet)
-   - JARI (a junta que julga os recursos contra multas)
-   - EAR (anotação na carteira de quem dirige trabalhando, tipo motorista de app, ônibus ou caminhão)
-   - PPD (a carteira provisória, válida no primeiro ano)
-3. Seja detalhado quando precisar, mas distribuído nas partes curtas. Em processos, explique o passo a passo (pode ser uma listinha numa das partes). Ao longo da resposta, cubra quando fizer sentido: o que é, documentos necessários, passo a passo, prazos (e o risco de perder o prazo), custo aproximado (só referência) e onde fazer / link oficial.
-4. Quando a resposta for longa, feche com um resumo curto ("Resumindo:") numa das últimas partes, e ofereça o próximo passo ("Quer que eu te explique como fazer X?").
-5. Se algo tem prazo curto ou risco de multa, destaque isso de forma clara.
-
-REGRAS DE CONTEÚDO (não podem ser quebradas):
-6. Baseie-se EXCLUSIVAMENTE na BASE DE CONHECIMENTO abaixo (incluindo o que o Tutor ensinou). NÃO invente taxas, prazos, documentos ou links. Se algo não estiver na base, diga com sinceridade que não tem essa informação específica e oriente a confirmar no portal https://www.detran.pa.gov.br ou pelo telefone 154.
-7. Valores de taxas são apenas uma REFERÊNCIA — explique que o valor exato é o que aparece no boleto/DAE gerado no site oficial.
-8. Encaminhe para o lugar certo:
-   - IPVA, DPVAT e impostos do veículo NÃO são com o DETRAN, e sim com a SEFA-PA (Secretaria da Fazenda). Site: app.sefa.pa.gov.br/consulta-ipva — Telefone: 0800-725-5533.
-   - Multas: o DETRAN só resolve as multas aplicadas por ele mesmo (pelo Portal Venus). Multas de rodovia estadual são com o DER-PA; de rodovia federal (BR), com a PRF; de ruas da cidade, com a Prefeitura/SEMOB. Explique isso de forma simples se o caso pedir.
-   - Para contestar multa (defesa ou recurso): Portal Venus (cidadao.detran.pa.gov.br), com login da conta gov.br.
-9. Inclua os links oficiais quando ajudarem.
-10. Você é um assistente informativo: ajuda a entender e a se organizar, mas não substitui o atendimento oficial e não dá aconselhamento jurídico. Diga isso de forma leve quando for um caso mais delicado.
-
-DOCUMENTOS QUE O USUÁRIO PODE PREENCHER NA TELA:
-A interface tem um preenchedor de documentos. Quando UM destes formulários for claramente útil para o que a pessoa pediu (ex.: vender o veículo, comunicar a venda, declarar residência, dar procuração), inclua NO FINAL da resposta, em UMA LINHA ISOLADA, o marcador [[FORM:id]] com o id correto. Esse marcador vai sozinho na ÚLTIMA linha, depois de tudo (não precisa de [[BREAK]] antes dele). Regras: no máximo um [[FORM:id]] por resposta; só quando fizer sentido; nunca explique o marcador. Ids válidos:
-${LISTA_FORMS}
-
-ANÁLISE DE FOTOS/IMAGENS (quando o usuário enviar uma foto de documento):
-- Identifique o tipo (Notificação de Autuação ou de Penalidade de multa, CRLV, CRV, boleto/DAE, CNH, comprovante etc.).
-- Leia os dados visíveis (placa, RENAVAM, datas, valores, código/descrição da infração, prazos) e explique em linguagem simples, no tom paraense.
-- Se for MULTA: diga em que fase está (Notificação de Autuação -> cabe Defesa Prévia; Notificação de Penalidade -> cabe Recurso à JARI), destaque o PRAZO e o risco de perdê-lo, e confira o órgão autuador (o Portal Venus só trata multas do próprio DETRAN-PA).
-- Se for boleto/DAE: explique de que é a taxa e como pagar, lembrando que os valores mudam.
-- NUNCA invente o que não estiver visível. Se algo estiver ilegível ou cortado, peça uma foto mais nítida ou de perto.
-
-
-REGISTRO INTERNO (o usuário NÃO vê):
-- Quando você NÃO encontrar a informação pedida na BASE DE CONHECIMENTO e tiver que orientar a pessoa a confirmar no portal oficial ou no telefone 154, acrescente ao final, sozinho em uma linha, o marcador [[SEMBASE]]. Ele é retirado antes de chegar ao usuário e serve só para o DETRAN mapear as dúvidas que faltam na base. NÃO use [[SEMBASE]] quando você respondeu com base na informação disponível.
-
-
-DEFESA DE MULTA:
-- Quando a pessoa quiser contestar ou recorrer de uma multa (defesa prévia ou recurso), responda normalmente e inclua, sozinho na ÚLTIMA linha, o marcador [[DEFESA]]. A interface mostra um botão que gera um rascunho da peça. No máximo um [[DEFESA]] por resposta; nunca explique o marcador.
-
-
-BASE DE CONHECIMENTO:
-${BASE_CONHECIMENTO}`;
-
-// Junta a base estática com o conhecimento (trechos) do Tutor relevantes à pergunta.
-function buildSystem(tutorTexto) {
-  if (tutorTexto && tutorTexto.trim()) {
-    return `${SYSTEM_PROMPT}
-
-===== CONHECIMENTO ADICIONADO PELO TUTOR (trechos relevantes) =====
-(Use com a mesma confiança da base oficial. Se contradisser a base oficial, prefira o que o Tutor ensinou, pois é mais recente. São apenas os trechos que parecem ligados à pergunta atual.)
-
-${tutorTexto}`;
-  }
-  return SYSTEM_PROMPT;
-}
-
-// ── App ─────────────────────────────────────────────────────────────────────
 const app = express();
 app.use(express.json({ limit: "10mb" }));
-app.use(express.static(join(ROOT, "public"), { extensions: ["html"] }));
+// Arquivos estáticos (css, js, imagens). As páginas HTML são servidas pelas
+// rotas abaixo, com os dados do DETRAN injetados.
+const estatico = express.static(join(ROOT, "public"), { index: false });
+app.use((req, res, next) => (/\.html?$/i.test(req.path) ? next() : estatico(req, res, next)));
 
+// ── Limite de perguntas por IP ──────────────────────────────────────────────
 const hits = new Map();
-function rateLimited(ip) {
+function rateLimited(chave, max = 20, janela = 60_000) {
   const agora = Date.now();
-  const reg = hits.get(ip) || { count: 0, reset: agora + RATE_WINDOW_MS };
-  if (agora > reg.reset) { reg.count = 0; reg.reset = agora + RATE_WINDOW_MS; }
-  reg.count += 1; hits.set(ip, reg);
-  return reg.count > RATE_MAX;
+  const reg = hits.get(chave) || { count: 0, reset: agora + janela };
+  if (agora > reg.reset) { reg.count = 0; reg.reset = agora + janela; }
+  reg.count += 1; hits.set(chave, reg);
+  return reg.count > max;
 }
+const ipDe = (req) => req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket?.remoteAddress || "anon";
 
-app.get("/api/health", (_req, res) => {
-  res.json({ ok: true, provider: PROVIDER_ID, model: MODEL, keyConfigured: Boolean(API_KEY), tutor: Boolean(TUTOR_PASSWORD), storage: storageMode(), semantica: semanticEnabled() });
+// ── Formulários do DETRAN (MySQL, cache de 60s) ─────────────────────────────
+const formsCache = new Map();
+async function formsDoTenant(t) {
+  const c = formsCache.get(t.id);
+  if (c && c.exp > Date.now()) return c.valor;
+  const rows = await prisma.formulario.findMany({ where: { tenantId: t.id, ativo: true }, orderBy: { ordem: "asc" } });
+  const valor = rows.map((r) => ({ ...r.definicao, id: r.chave }));
+  formsCache.set(t.id, { valor, exp: Date.now() + 60_000 });
+  return valor;
+}
+const indiceForms = (forms) => forms.map((f) => ({ id: f.id, title: f.title, desc: f.desc, subtitle: f.subtitle }));
+
+// ── Saúde e lista de DETRANs ────────────────────────────────────────────────
+app.get("/api/health", async (_req, res) => {
+  let banco = false;
+  try { if (bancoConfigurado()) { await prisma.$queryRaw`SELECT 1`; banco = true; } } catch (_) {}
+  res.json({ ok: true, banco, provider: PROVIDER_ID, model: MODEL, llm: llmConfigurado() });
+});
+app.get("/api/tenants", async (_req, res) => {
+  try {
+    const ts = await prisma.tenant.findMany({ where: { ativo: true }, select: { slug: true, sigla: true, nome: true }, orderBy: { slug: "asc" } });
+    res.json({ tenants: ts });
+  } catch (err) { console.error("[tenants]", err); res.status(503).json({ error: "Indisponível." }); }
 });
 
-// ── Catálogo de documentos preenchíveis ─────────────────────────────────────
-app.get("/api/forms", (_req, res) => res.json({ forms: FORM_INDEX }));
-app.get("/api/forms/:id", (req, res) => {
-  const form = FORMS.find((f) => f.id === req.params.id);
+// ═════════════════════════ API DO DETRAN ═════════════════════════
+const T = "/api/t/:slug";
+
+app.get(`${T}/config`, comTenant, async (req, res) => {
+  res.json({ tenant: configPublica(req.tenant), integracoes: statusIntegracoes(req.tenant) });
+});
+
+// Catálogo de documentos preenchíveis
+app.get(`${T}/forms`, comTenant, async (req, res) => {
+  try { res.json({ forms: indiceForms(await formsDoTenant(req.tenant)) }); }
+  catch (err) { console.error("[forms]", err); res.status(500).json({ error: "Erro ao carregar documentos." }); }
+});
+app.get(`${T}/forms/:id`, comTenant, async (req, res) => {
+  const form = (await formsDoTenant(req.tenant)).find((f) => f.id === req.params.id);
   if (!form) return res.status(404).json({ error: "Documento não encontrado." });
   res.json({ form });
 });
 
-// ── Extrair dados da conversa para pré-preencher um documento ────────────────
-app.post("/api/extract", async (req, res) => {
-  if (!API_KEY) return res.status(500).json({ error: SEM_CHAVE });
+// Extrair dados da conversa para pré-preencher um documento
+app.post(`${T}/extract`, comTenant, async (req, res) => {
+  if (!llmConfigurado()) return res.status(500).json({ error: SEM_CHAVE });
   const { formId, messages } = req.body || {};
-  const form = FORMS.find((f) => f.id === formId);
+  const form = (await formsDoTenant(req.tenant)).find((f) => f.id === formId);
   if (!form) return res.status(404).json({ error: "Documento não encontrado." });
-
   const hist = (Array.isArray(messages) ? messages : [])
     .filter((m) => m && (m.role === "user" || m.role === "assistant"))
-    .map((m) => {
-      const c = typeof m.content === "string"
-        ? m.content
-        : Array.isArray(m.content) ? m.content.filter((b) => b.type === "text").map((b) => b.text).join(" ") : "";
-      return `${m.role === "user" ? "Cidadão" : "Assistente"}: ${c}`;
-    })
-    .filter((l) => l.trim().length > 12)
-    .slice(-20)
-    .join("\n");
+    .map((m) => `${m.role === "user" ? "Cidadão" : "Assistente"}: ${textoDe(m.content)}`)
+    .filter((l) => l.trim().length > 12).slice(-20).join("\n");
   if (!hist) return res.json({ values: {} });
-
   const campos = [];
   form.sections.forEach((sec) => sec.fields.forEach((f) => campos.push(f)));
   const esquema = campos.map((c) => {
@@ -216,28 +112,9 @@ app.post("/api/extract", async (req, res) => {
     if (c.type === "date") l += " [data AAAA-MM-DD]";
     return l;
   }).join("\n");
-
-  const sys = `Você extrai dados de uma conversa para preencher o formulário "${form.title}" do DETRAN-PA.
-Responda APENAS um objeto JSON no formato {"chave": "valor"} usando as CHAVES exatas listadas.
-Regras:
-- Use SOMENTE informações que o cidadão forneceu explicitamente. NÃO invente nem deduza.
-- Se um campo não foi informado, NÃO inclua a chave.
-- Campos de opção: use exatamente um dos valores entre colchetes.
-- Datas no formato AAAA-MM-DD. Não escreva nada além do JSON.
-
-CAMPOS DISPONÍVEIS:
-${esquema}`;
-
   try {
-    const r = await fetch(API_URL, {
-      method: "POST",
-      headers: { "x-api-key": API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ ...LLM_EXTRA, model: MODEL, max_tokens: 700, system: sys,
-        messages: [{ role: "user", content: `CONVERSA:\n${hist}\n\nExtraia o JSON de preenchimento.` }] }),
-    });
-    if (!r.ok) return res.status(502).json({ error: "Falha ao extrair." });
-    const data = await r.json();
-    const txt = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("").trim();
+    const txt = await chamarLLM({ system: promptExtracao(req.tenant, form, esquema), maxTokens: 700,
+      messages: [{ role: "user", content: `CONVERSA:\n${hist}\n\nExtraia o JSON de preenchimento.` }] });
     const mm = txt.match(/\{[\s\S]*\}/);
     let parsed = {};
     if (mm) { try { parsed = JSON.parse(mm[0]); } catch (_) {} }
@@ -251,438 +128,206 @@ ${esquema}`;
       if (val.trim()) out[k] = val;
     }
     res.json({ values: out });
-  } catch (e) {
-    console.error("[extract]", e);
-    res.status(500).json({ error: "Erro ao extrair." });
-  }
+  } catch (e) { console.error("[extract]", e); res.status(502).json({ error: "Falha ao extrair." }); }
 });
 
-// ── Sala do Tutor ───────────────────────────────────────────────────────────
-function tutorAuth(req, res, next) {
-  if (!TUTOR_PASSWORD) {
-    return res.status(503).json({ error: "A Sala do Tutor está desativada. Defina TUTOR_PASSWORD nas variáveis de ambiente." });
-  }
-  const key = req.headers["x-tutor-key"];
-  if (!key || key !== TUTOR_PASSWORD) {
-    return res.status(401).json({ error: "Senha do tutor incorreta." });
-  }
-  next();
-}
-function persistError(res, err) {
-  if (err && err.message === "PERSIST_NONE") {
-    return res.status(503).json({ error: "Para salvar de forma permanente no Vercel, configure o armazenamento (Vercel KV / Upstash). Veja o DEPLOY.md." });
-  }
-  console.error("[tutor]", err);
-  return res.status(500).json({ error: "Não foi possível salvar agora. Tente novamente." });
-}
+// ── Chat do cidadão ─────────────────────────────────────────────────────────
+// Texto -> bot do DETRAN no BotAyio. Foto (ou DETRAN sem bot) -> IA local.
+app.post(`${T}/chat`, comTenant, async (req, res) => {
+  const t = req.tenant;
+  const ip = ipDe(req);
+  if (rateLimited(`${t.slug}:${ip}`)) return res.status(429).json({ error: "Muitas perguntas em sequência. Aguarde um instante e tente de novo." });
 
-app.get("/api/tutor/status", (_req, res) => {
-  res.json({ enabled: Boolean(TUTOR_PASSWORD), storage: storageMode() });
-});
+  const hist = limparHistorico(req.body?.messages);
+  if (!hist.length || hist[hist.length - 1].role !== "user") return res.status(400).json({ error: "A última mensagem deve ser do usuário." });
+  const ultima = hist[hist.length - 1].content;
+  const pergunta = textoDe(ultima) || "análise de documento enviado por foto";
+  const sid = String(req.body?.sessionId || "").replace(/[^a-zA-Z0-9-]/g, "").slice(0, 48)
+    || createHash("sha256").update(ip).digest("hex").slice(0, 16);
+  const tema = classificarTema(pergunta);
+  const { botayio } = integracoes(t);
 
-app.post("/api/tutor/auth", (req, res) => {
-  if (!TUTOR_PASSWORD) return res.status(503).json({ error: "A Sala do Tutor está desativada. Defina TUTOR_PASSWORD nas variáveis de ambiente." });
-  const { key } = req.body || {};
-  if (key && key === TUTOR_PASSWORD) return res.json({ ok: true, storage: storageMode() });
-  return res.status(401).json({ error: "Senha incorreta." });
-});
-
-// Lista com PRÉVIA (não manda o conteúdo inteiro dos documentos grandes)
-app.get("/api/tutor/entries", tutorAuth, async (_req, res) => {
-  try {
-    const all = await listEntries();
-    const entries = all.map((e) => ({
-      id: e.id,
-      title: e.title,
-      source: e.source || "texto",
-      chars: (e.content || "").length,
-      preview: (e.content || "").slice(0, 600),
-      createdAt: e.createdAt,
-      updatedAt: e.updatedAt,
-    }));
-    res.json({ entries, storage: storageMode() });
-  } catch (err) { persistError(res, err); }
-});
-
-app.post("/api/tutor/entries", tutorAuth, async (req, res) => {
-  const { title, content, source } = req.body || {};
-  if (!title || !content || !String(title).trim() || !String(content).trim()) {
-    return res.status(400).json({ error: "Informe o título e o conteúdo." });
-  }
-  if (String(content).length > MAX_ENTRY_CHARS) {
-    return res.status(400).json({ error: `Conteúdo muito longo (máximo de ${MAX_ENTRY_CHARS.toLocaleString("pt-BR")} caracteres).` });
-  }
-  try { res.json({ entry: await addEntry({ title, content, source }) }); }
-  catch (err) { persistError(res, err); }
-});
-
-app.put("/api/tutor/entries/:id", tutorAuth, async (req, res) => {
-  const { title, content } = req.body || {};
-  if (content != null && String(content).length > MAX_ENTRY_CHARS) {
-    return res.status(400).json({ error: `Conteúdo muito longo (máximo de ${MAX_ENTRY_CHARS.toLocaleString("pt-BR")} caracteres).` });
-  }
-  try {
-    const e = await updateEntry(req.params.id, { title, content });
-    if (!e) return res.status(404).json({ error: "Item não encontrado." });
-    res.json({ entry: e });
-  } catch (err) { persistError(res, err); }
-});
-
-app.delete("/api/tutor/entries/:id", tutorAuth, async (req, res) => {
-  try {
-    const ok = await deleteEntry(req.params.id);
-    if (!ok) return res.status(404).json({ error: "Item não encontrado." });
-    res.json({ ok: true });
-  } catch (err) { persistError(res, err); }
-});
-
-// ── Chat ────────────────────────────────────────────────────────────────────
-app.post("/api/defesa", async (req, res) => {
-  if (!API_KEY) return res.status(500).json({ error: SEM_CHAVE });
-  let { messages } = req.body || {};
-  if (!Array.isArray(messages)) messages = [];
-  const IMGS = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
-  const limpa = (content) => {
-    if (typeof content === "string") return content.slice(0, 4000);
-    if (Array.isArray(content)) {
-      const out = []; let n = 0;
-      for (const b of content) {
-        if (!b || typeof b !== "object") continue;
-        if (b.type === "text" && typeof b.text === "string") out.push({ type: "text", text: b.text.slice(0, 4000) });
-        else if (b.type === "image" && b.source && b.source.type === "base64" && IMGS.has(b.source.media_type) && typeof b.source.data === "string" && b.source.data.length <= 5 * 1024 * 1024 && n < 2) { n++; out.push({ type: "image", source: { type: "base64", media_type: b.source.media_type, data: b.source.data } }); }
+  // 1) BotAyio (texto)
+  if (!temImagem(ultima) && botayio.url && botayio.secret) {
+    try {
+      const restart = !hist.some((m) => m.role === "assistant");
+      const resp = await perguntarAoBot(botayio, `detran-${t.slug}-web-${sid}`, pergunta, restart);
+      const partes = [];
+      for (const item of resp.contents || []) {
+        const txt = textoComBotoes(item);
+        if (txt) partes.push(txt);
+        if (item.arquivo?.url) partes.push(`📎 ${item.arquivo.nome || "Arquivo"}: ${item.arquivo.url}`);
       }
-      return out.length ? out : "";
+      const reply = partes.join("\n[[BREAK]]\n");
+      const transbordo = Boolean(resp.handed_off);
+      registrarTroca({ tenantId: t.id, canal: "WEB", contato: sid, pergunta, respostas: partes, categoria: resp.categoria, transbordo });
+      registrarEvento({ tenantId: t.id, tipo: "PERGUNTA", canal: "WEB", tema: resp.categoria || tema, resolvido: true, transbordo });
+      return res.json({ reply: reply || "Não consegui gerar uma resposta. Pode reformular a pergunta?", origem: "botayio" });
+    } catch (err) {
+      console.error(`[BotAyio:${t.slug}] chat web:`, err.message);
+      if (!llmConfigurado()) {
+        registrarEvento({ tenantId: t.id, tipo: "PERGUNTA", canal: "WEB", tema: "erro", resolvido: false });
+        return res.status(502).json({ error: "Não foi possível obter a resposta agora. Tente novamente em instantes." });
+      }
+      // segue para a IA local como plano B
     }
-    return "";
-  };
-  const hist = messages
-    .filter((m) => m && (m.role === "user" || m.role === "assistant") && (typeof m.content === "string" || Array.isArray(m.content)))
-    .slice(-24)
-    .map((m) => ({ role: m.role, content: limpa(m.content) }))
-    .filter((m) => (typeof m.content === "string" ? m.content.length > 0 : m.content.length > 0));
-  if (!hist.length || hist[hist.length - 1].role !== "user") hist.push({ role: "user", content: "Redija o rascunho da defesa com base na conversa acima." });
+  }
 
-  const sys = `Você redige um RASCUNHO de peça de defesa de multa de trânsito para o cidadão do Pará apresentar no DETRAN-PA (Portal Venus). Baseie-se na conversa e, se houver, na imagem da notificação.
-
-1. Escolha o tipo conforme a fase:
-   - Notificação de AUTUAÇÃO -> "DEFESA PRÉVIA (DEFESA DA AUTUAÇÃO)".
-   - Notificação de PENALIDADE -> "RECURSO À JARI".
-   Se não der para saber, faça a Defesa Prévia e avise numa linha.
-2. Estrutura:
-   - Endereçamento (À Autoridade de Trânsito do DETRAN-PA, ou À JARI).
-   - IDENTIFICAÇÃO: nome, CPF, nº da CNH, placa/RENAVAM, nº do Auto de Infração (AIT), data e local. Use os dados fornecidos; onde faltar, escreva [PREENCHER].
-   - DOS FATOS: relate conforme a pessoa contou.
-   - DO DIREITO: fundamente com o CTB e Resoluções do CONTRAN pertinentes ao caso (ex.: prazo/regularidade da notificação, art. 281 do CTB; aferição do equipamento pelo INMETRO; correta tipificação; Res. CONTRAN 918/2022). Use só o que couber.
-   - DO PEDIDO: cancelamento da autuação/penalidade e arquivamento.
-   - Fecho: local, data e linha de assinatura.
-3. Regras: tom formal e respeitoso; NÃO invente dados (use [PREENCHER]); não prometa resultado.
-Comece com UMA linha de aviso: "RASCUNHO — revise, preencha os campos [PREENCHER] e confira antes de protocolar. Não substitui orientação jurídica." Depois, a peça.`;
-
+  // 2) IA local (fotos, ou plano B)
+  if (!llmConfigurado()) return res.status(500).json({ error: SEM_CHAVE });
   try {
-    const r = await fetch(API_URL, {
-      method: "POST",
-      headers: { "x-api-key": API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ ...LLM_EXTRA, model: MODEL, max_tokens: 2500, system: sys, messages: hist }),
-    });
-    if (!r.ok) return res.status(502).json({ error: "Não foi possível gerar agora. Tente de novo." });
-    const data = await r.json();
-    const texto = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
-    res.json({ defesa: texto });
-  } catch (e) {
-    console.error("[defesa]", e);
-    res.status(500).json({ error: "Erro ao gerar a defesa." });
+    let texto = await chamarLLM({ system: promptCidadao(t, await formsDoTenant(t)), messages: hist, maxTokens: MAX_TOKENS });
+    let semBase = false;
+    if (texto.includes("[[SEMBASE]]")) { semBase = true; texto = texto.replace(/\[\[SEMBASE\]\]/g, "").trim(); }
+    registrarTroca({ tenantId: t.id, canal: "WEB", contato: sid, pergunta, respostas: [texto] });
+    registrarEvento({ tenantId: t.id, tipo: "PERGUNTA", canal: "WEB", tema, resolvido: !semBase });
+    res.json({ reply: texto || "Não consegui gerar uma resposta. Pode reformular a pergunta?", origem: "local" });
+  } catch (err) {
+    console.error("[chat]", err.message);
+    res.status(502).json({ error: "Não foi possível obter a resposta agora. Tente novamente em instantes." });
   }
 });
 
-function classificarTema(q) {
-  const s = String(q || "").toLowerCase();
-  const has = (arr) => arr.some((w) => s.includes(w));
-  if (has(["multa", "infrac", "infraç", "recurso", "jari", "pontos", "autuac", "autuaç", "penalidade"])) return "multas";
-  if (has(["cnh", "habilit", "carteira", "renovar", "categoria", "exame", "toxicol", "reciclagem", "psicot"])) return "cnh";
-  if (has(["ipva"])) return "ipva";
-  if (has(["veic", "veíc", "carro", "moto", "transfer", "licenciamento", "placa", "crlv", "crv", "vistoria", "emplac", "gravame", "venda"])) return "veiculos";
-  return "outros";
-}
+// Rascunho de defesa de multa (público)
+app.post(`${T}/defesa`, comTenant, async (req, res) => {
+  if (!llmConfigurado()) return res.status(500).json({ error: SEM_CHAVE });
+  if (rateLimited(`defesa:${req.tenant.slug}:${ipDe(req)}`, 6)) return res.status(429).json({ error: "Aguarde um instante e tente de novo." });
+  const hist = limparHistorico(req.body?.messages);
+  if (!hist.length || hist[hist.length - 1].role !== "user") hist.push({ role: "user", content: "Redija o rascunho da defesa com base na conversa acima." });
+  try { res.json({ defesa: await chamarLLM({ system: promptDefesa(req.tenant), messages: hist, maxTokens: 2500 }) }); }
+  catch (e) { console.error("[defesa]", e.message); res.status(502).json({ error: "Não foi possível gerar agora. Tente de novo." }); }
+});
 
-// Feedback do cidadão (público) — alimenta o painel do gestor
-app.post("/api/feedback", (req, res) => {
-  const up = !!(req.body && req.body.up);
-  logEvent({ k: "fb", up: up ? 1 : 0 }).catch(() => {});
+// Feedback do cidadão (público)
+app.post(`${T}/feedback`, comTenant, (req, res) => {
+  registrarEvento({ tenantId: req.tenant.id, tipo: "FEEDBACK", canal: "WEB", positivo: Boolean(req.body?.up) });
   res.json({ ok: true });
 });
 
-// Estatísticas de uso (protegido)
-app.get("/api/tutor/stats", tutorAuth, async (_req, res) => {
-  try { res.json({ stats: await getStats() }); }
-  catch (err) { persistError(res, err); }
-});
-app.delete("/api/tutor/stats", tutorAuth, async (_req, res) => {
-  try { await resetStats(); res.json({ ok: true }); }
-  catch (err) { persistError(res, err); }
-});
-
-// ── Painel: perguntas que o assistente não soube responder ──────────────────
-app.get("/api/tutor/gaps", tutorAuth, async (_req, res) => {
-  try { res.json({ gaps: await listGaps() }); }
-  catch (err) { persistError(res, err); }
-});
-app.delete("/api/tutor/gaps", tutorAuth, async (_req, res) => {
-  try { await clearGaps(); res.json({ ok: true }); }
-  catch (err) { persistError(res, err); }
-});
-
-// Busca semântica: gera embeddings dos itens (protegido)
-app.post("/api/tutor/reindex", tutorAuth, async (_req, res) => {
-  try { res.json(await reindexEmbeddings()); }
-  catch (err) { console.error("[reindex]", err); res.status(500).json({ error: "Falha ao reindexar." }); }
-});
-
-// Curadoria automática da base (protegido)
-app.get("/api/tutor/curadoria", tutorAuth, async (_req, res) => {
-  if (!API_KEY) return res.status(500).json({ error: SEM_CHAVE });
+// ── Login das áreas internas ────────────────────────────────────────────────
+app.post(`${T}/auth/login`, comTenant, async (req, res) => {
+  if (rateLimited(`login:${req.tenant.slug}:${ipDe(req)}`, 10)) return res.status(429).json({ error: "Muitas tentativas. Aguarde um minuto." });
   try {
-    const entries = await listEntries();
-    if (!entries.length) return res.json({ curadoria: { resumo: "A base ainda está vazia.", duplicados: [], desatualizados: [], sugestoes: [] } });
-    const gaps = await listGaps();
-    const lista = entries.slice(0, 300).map((e) => `#${e.id} | ${e.title} | ${String(e.preview || "").slice(0, 180).replace(/\s+/g, " ")}`).join("\n");
-    const gapsTxt = [...new Set(gaps.map((g) => String(g.q || "").trim()).filter(Boolean))].slice(0, 60).join("\n");
-    const sys = `Você é um curador da base de conhecimento de um assistente do DETRAN-PA. Recebe a lista de itens (id | título | trecho) e as perguntas que o assistente não soube responder. Analise e responda APENAS um JSON válido no formato:
-{
- "resumo": "1-2 frases sobre a saúde geral da base",
- "duplicados": [{"tema": "assunto", "ids": ["id1","id2"], "motivo": "por que parecem repetidos"}],
- "desatualizados": [{"id": "id", "titulo": "título", "motivo": "por que pode estar velho ou superado"}],
- "sugestoes": [{"titulo": "novo tópico sugerido", "porque": "baseado em qual lacuna/pergunta"}]
-}
-Regras: seja conservador (só marque duplicado quando for claramente o mesmo assunto); no máximo 8 itens por lista; NÃO invente ids que não estejam na lista; as sugestões devem vir das perguntas sem resposta ou de lacunas óbvias de cobertura. Responda somente o JSON, sem texto fora dele.`;
-    const r = await fetch(API_URL, {
-      method: "POST",
-      headers: { "x-api-key": API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ ...LLM_EXTRA, model: MODEL, max_tokens: 1600, system: sys, messages: [{ role: "user", content: `ITENS DA BASE:\n${lista}\n\nPERGUNTAS SEM RESPOSTA:\n${gapsTxt || "(nenhuma)"}` }] }),
-    });
-    if (!r.ok) return res.status(502).json({ error: "Não foi possível analisar agora." });
-    const data = await r.json();
-    const txt = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("").trim();
-    const m = txt.match(/\{[\s\S]*\}/);
-    let curadoria = { resumo: "", duplicados: [], desatualizados: [], sugestoes: [] };
-    if (m) { try { curadoria = Object.assign(curadoria, JSON.parse(m[0])); } catch (_) {} }
-    res.json({ curadoria });
-  } catch (err) {
-    console.error("[curadoria]", err);
-    res.status(500).json({ error: "Erro ao analisar a base." });
-  }
+    const r = await login(req.tenant, req.body?.login, req.body?.senha);
+    if (!r) return res.status(401).json({ error: "Usuário ou senha incorretos." });
+    const area = String(req.body?.area || "");
+    if (area && !podeAcessar(r.usuario.perfil, area)) return res.status(403).json({ error: "Seu perfil não tem acesso a esta área." });
+    res.json(r);
+  } catch (err) { console.error("[login]", err); res.status(500).json({ error: "Não foi possível entrar agora." }); }
+});
+// Confere se o token ainda vale para uma área
+app.get(`${T}/auth/eu`, comTenant, (req, res) => {
+  const h = String(req.headers.authorization || "");
+  const d = h.startsWith("Bearer ") ? lerToken(h.slice(7)) : null;
+  if (!d || (d.perfil !== "SUPERADMIN" && d.tid !== req.tenant.id)) return res.status(401).json({ error: "Sessão expirada." });
+  const area = String(req.query.area || "");
+  if (area && !podeAcessar(d.perfil, area)) return res.status(403).json({ error: "Sem acesso a esta área." });
+  res.json({ perfil: d.perfil });
 });
 
-const OPERATOR_PROMPT = `Você é o COPILOTO DE ATENDIMENTO do DETRAN-PA, para uso do ATENDENTE de balcão (servidor público) — NÃO do cidadão.
+// ── Sala do Tutor: tutoria do bot (BotAyio) + indicadores ──────────────────
+app.get(`${T}/tutoria`, comTenant, exigir("tutor"), (req, res) => {
+  const { botayio } = integracoes(req.tenant);
+  res.json({ tutorUrl: botayio.tutorUrl || null, integracoes: statusIntegracoes(req.tenant) });
+});
+app.get(`${T}/stats`, comTenant, exigir("tutor"), async (req, res) => {
+  try { res.json({ stats: await estatisticas(req.tenant.id, Math.min(365, Number(req.query.dias) || 30)) }); }
+  catch (err) { console.error("[stats]", err); res.status(500).json({ error: "Erro ao carregar indicadores." }); }
+});
 
-PÚBLICO: servidor que já conhece os termos técnicos. Seja direto, técnico e organizado.
-
-PARA CADA CASO, entregue de forma objetiva:
-1. CHECKLIST de documentos exigidos (com observações e exceções).
-2. PASSO A PASSO do procedimento.
-3. BASE LEGAL pertinente (artigos do CTB, Resoluções do CONTRAN, IN 01/2018 DETRAN-PA), quando houver.
-4. PONTOS DE ATENÇÃO / erros comuns que fazem o processo voltar.
-
-TRIAGEM DE DOCUMENTOS POR FOTO: se o atendente enviar fotos de documentos, confira validade e completude — comprovante de residência com data de até 90 dias, CNH dentro da validade, firma reconhecida por autenticidade quando exigida, decalque de chassi/motor legível, sinais de débito/bloqueio. Depois responda de forma inequívoca: comece com "PODE DAR ENTRADA" ou com "PENDÊNCIAS:" seguido da lista objetiva do que falta ou precisa corrigir. NUNCA invente o que não estiver visível na imagem; se estiver ilegível, peça foto melhor.
-
-REGRAS: baseie-se na BASE DE CONHECIMENTO abaixo; se algo não estiver nela, diga com franqueza e oriente confirmar. Valores de taxas são referência (o final é o do boleto/DAE). Encaminhe corretamente: IPVA/impostos -> SEFA-PA; multa de rodovia estadual -> DER-PA, federal -> PRF, via municipal -> Prefeitura/SEMOB. Responda em texto corrido e listas; NÃO use marcadores como [[BREAK]] ou [[FORM]].`;
-
-// Registro e painel de atendimentos do balcão — protegido
-app.post("/api/atendimento", tutorAuth, async (req, res) => {
+// ── Balcão (copiloto do atendente) ─────────────────────────────────────────
+app.post(`${T}/atendente`, comTenant, exigir("balcao"), async (req, res) => {
+  if (!llmConfigurado()) return res.status(500).json({ error: SEM_CHAVE });
+  const hist = limparHistorico(req.body?.messages, { maxImgs: 3 });
+  if (!hist.length || hist[hist.length - 1].role !== "user") return res.status(400).json({ error: "A última mensagem deve ser do atendente." });
+  try {
+    const texto = await chamarLLM({ system: promptOperador(req.tenant), messages: hist, maxTokens: Math.max(MAX_TOKENS, 1800) });
+    res.json({ reply: texto || "Sem resposta. Reformule a pergunta." });
+  } catch (e) { console.error("[atendente]", e.message); res.status(502).json({ error: "Não foi possível responder agora." }); }
+});
+app.post(`${T}/termo`, comTenant, exigir("balcao"), async (req, res) => {
+  if (!llmConfigurado()) return res.status(500).json({ error: SEM_CHAVE });
+  const hist = limparHistorico(req.body?.messages, { maxImgs: 3 });
+  if (!hist.length || hist[hist.length - 1].role !== "user") hist.push({ role: "user", content: "Gere o termo de exigência com base no atendimento acima." });
+  try { res.json({ termo: await chamarLLM({ system: promptTermo(req.tenant), messages: hist, maxTokens: 1600 }) }); }
+  catch (e) { console.error("[termo]", e.message); res.status(502).json({ error: "Não foi possível gerar agora." }); }
+});
+app.post(`${T}/atendimento`, comTenant, exigir("balcao"), async (req, res) => {
   const b = req.body || {};
   if (!b.servico && !b.resumo) return res.status(400).json({ error: "Informe ao menos o serviço." });
-  const rec = {
-    guiche: String(b.guiche || "").slice(0, 40), atendente: String(b.atendente || "").slice(0, 60),
-    servico: String(b.servico || "").slice(0, 120), cidadao: String(b.cidadao || "").slice(0, 80),
-    cpf: String(b.cpf || "").slice(0, 20), protocolo: String(b.protocolo || "").slice(0, 40),
-    resumo: String(b.resumo || "").slice(0, 1500),
-  };
-  try { const r = await logAtendimento(rec); res.json({ ok: true, id: r.id }); }
-  catch (err) { persistError(res, err); }
-});
-app.get("/api/balcao", tutorAuth, async (_req, res) => {
-  try { res.json({ atendimentos: await listAtendimentos() }); }
-  catch (err) { persistError(res, err); }
-});
-
-// Termo de exigência (balcão) — protegido
-app.post("/api/termo", tutorAuth, async (req, res) => {
-  if (!API_KEY) return res.status(500).json({ error: SEM_CHAVE });
-  let { messages } = req.body || {};
-  if (!Array.isArray(messages)) messages = [];
-  const IMGS = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
-  const limpa = (content) => {
-    if (typeof content === "string") return content.slice(0, 4000);
-    if (Array.isArray(content)) {
-      const out = []; let n = 0;
-      for (const b of content) {
-        if (!b || typeof b !== "object") continue;
-        if (b.type === "text" && typeof b.text === "string") out.push({ type: "text", text: b.text.slice(0, 4000) });
-        else if (b.type === "image" && b.source && b.source.type === "base64" && IMGS.has(b.source.media_type) && typeof b.source.data === "string" && b.source.data.length <= 5 * 1024 * 1024 && n < 3) { n++; out.push({ type: "image", source: { type: "base64", media_type: b.source.media_type, data: b.source.data } }); }
-      }
-      return out;
-    }
-    return "";
-  };
-  const hist = messages
-    .filter((m) => m && (m.role === "user" || m.role === "assistant") && (typeof m.content === "string" || Array.isArray(m.content)))
-    .slice(-24)
-    .map((m) => ({ role: m.role, content: limpa(m.content) }))
-    .filter((m) => (typeof m.content === "string" ? m.content.length > 0 : m.content.length > 0));
-  if (!hist.length || hist[hist.length - 1].role !== "user") hist.push({ role: "user", content: "Gere o termo de exigência com base no atendimento acima." });
-
-  const sys = `Você redige um TERMO DE EXIGÊNCIA do DETRAN-PA, para o ATENDENTE entregar ao cidadão, listando o que falta para dar entrada no serviço. Baseie-se na conversa (e nas fotos, se houver).
-
-Estrutura:
-- Cabeçalho: "GOVERNO DO ESTADO DO PARÁ / DEPARTAMENTO DE TRÂNSITO DO ESTADO DO PARÁ - DETRAN-PA" e o título "TERMO DE EXIGÊNCIA".
-- Serviço pretendido: identifique conforme a conversa.
-- Identificação: Cidadão [PREENCHER], CPF [PREENCHER], Protocolo [PREENCHER].
-- "Para prosseguir com o serviço, é necessário apresentar/corrigir:" seguido de uma lista NUMERADA apenas com o que realmente falta ou precisa corrigir (conforme a conversa). Para cada item, cite a base legal quando pertinente (CTB, Resoluções do CONTRAN, IN 01/2018 DETRAN-PA).
-- Prazo para cumprimento: [PREENCHER].
-- Local e data: Belém/PA, [PREENCHER]. Atendente: [PREENCHER] (matrícula [PREENCHER]).
-
-Regras: linguagem formal e objetiva; NÃO invente exigências que não constem na conversa; se não houver pendências, escreva que a documentação está apta para dar entrada. Comece com UMA linha: "MODELO — confira e preencha os campos [PREENCHER] antes de entregar." Depois o termo.`;
-
+  const s = (v, n) => (v == null || v === "" ? null : String(v).slice(0, n));
   try {
-    const r = await fetch(API_URL, {
-      method: "POST",
-      headers: { "x-api-key": API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ ...LLM_EXTRA, model: MODEL, max_tokens: 1600, system: sys, messages: hist }),
-    });
-    if (!r.ok) return res.status(502).json({ error: "Não foi possível gerar agora." });
-    const data = await r.json();
-    const texto = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
-    res.json({ termo: texto });
-  } catch (e) { console.error("[termo]", e); res.status(500).json({ error: "Erro ao gerar o termo." }); }
+    const r = await prisma.atendimentoBalcao.create({ data: {
+      tenantId: req.tenant.id, usuarioId: req.usuario.uid,
+      guiche: s(b.guiche, 40), atendente: s(b.atendente, 60), servico: s(b.servico, 120),
+      cidadao: s(b.cidadao, 80), cpf: s(b.cpf, 20), protocolo: s(b.protocolo, 40), resumo: s(b.resumo, 1500),
+    } });
+    res.json({ ok: true, id: r.id });
+  } catch (err) { console.error("[atendimento]", err); res.status(500).json({ error: "Não foi possível salvar agora." }); }
 });
-
-// Copiloto do Balcão (modo operador) — protegido
-app.post("/api/atendente", tutorAuth, async (req, res) => {
-  if (!API_KEY) return res.status(500).json({ error: SEM_CHAVE });
-  let { messages } = req.body || {};
-  if (!Array.isArray(messages) || !messages.length) return res.status(400).json({ error: "Envie ao menos uma mensagem." });
-  const IMGS = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
-  const limpa = (content) => {
-    if (typeof content === "string") return content.slice(0, MAX_CHARS_PER_MSG);
-    if (Array.isArray(content)) {
-      const out = []; let n = 0;
-      for (const b of content) {
-        if (!b || typeof b !== "object") continue;
-        if (b.type === "text" && typeof b.text === "string") out.push({ type: "text", text: b.text.slice(0, MAX_CHARS_PER_MSG) });
-        else if (b.type === "image" && b.source && b.source.type === "base64" && IMGS.has(b.source.media_type) && typeof b.source.data === "string" && b.source.data.length <= 5 * 1024 * 1024 && n < 3) { n++; out.push({ type: "image", source: { type: "base64", media_type: b.source.media_type, data: b.source.data } }); }
-      }
-      return out;
-    }
-    return "";
-  };
-  messages = messages
-    .filter((m) => m && (m.role === "user" || m.role === "assistant") && (typeof m.content === "string" || Array.isArray(m.content)))
-    .slice(-MAX_MESSAGES)
-    .map((m) => ({ role: m.role, content: limpa(m.content) }))
-    .filter((m) => (typeof m.content === "string" ? m.content.length > 0 : m.content.length > 0));
-  if (!messages.length || messages[messages.length - 1].role !== "user") return res.status(400).json({ error: "A última mensagem deve ser do atendente." });
-  const _u = messages[messages.length - 1].content;
-  const ultima = typeof _u === "string" ? _u : (_u.filter((b) => b.type === "text").map((b) => b.text).join(" ").trim() || "triagem de documentos");
-  let tutorTexto = ""; try { tutorTexto = await buildTutorContext(ultima); } catch (_) {}
-  const sys = OPERATOR_PROMPT + "\n\nBASE DE CONHECIMENTO:\n" + BASE_CONHECIMENTO + (tutorTexto ? ("\n\n===== CONHECIMENTO DO TUTOR (trechos relevantes) =====\n" + tutorTexto) : "");
+app.get(`${T}/balcao`, comTenant, exigir("balcao"), async (req, res) => {
   try {
-    const r = await fetch(API_URL, {
-      method: "POST",
-      headers: { "x-api-key": API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ ...LLM_EXTRA, model: MODEL, max_tokens: Math.max(MAX_TOKENS, 1800), system: sys, messages }),
-    });
-    if (!r.ok) { const d = await r.text(); console.error("[atendente]", r.status, d); return res.status(502).json({ error: "Não foi possível responder agora." }); }
-    const data = await r.json();
-    const texto = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
-    res.json({ reply: texto || "Sem resposta. Reformule a pergunta." });
-  } catch (e) { console.error("[atendente]", e); res.status(500).json({ error: "Erro interno." }); }
+    const rows = await prisma.atendimentoBalcao.findMany({ where: { tenantId: req.tenant.id }, orderBy: { criadoEm: "desc" }, take: 500 });
+    res.json({ atendimentos: rows.map((r) => ({ ...r, at: r.criadoEm.getTime() })) });
+  } catch (err) { console.error("[balcao]", err); res.status(500).json({ error: "Erro ao carregar." }); }
 });
 
-app.post("/api/chat", async (req, res) => {
-  if (!API_KEY) {
-    return res.status(500).json({ error: `Servidor sem ${PROVIDER.keyVar} configurada. Defina a chave nas variáveis de ambiente.` });
-  }
+// WhatsApp (Zapayio <-> BotAyio) por DETRAN
+registrarWhatsApp(app);
 
-  const ip = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket?.remoteAddress || "anon";
-  if (rateLimited(ip)) {
-    return res.status(429).json({ error: "Muitas perguntas em sequência. Aguarde um instante e tente de novo." });
-  }
+// ═════════════════════════ PÁGINAS ═════════════════════════
+const PAGINAS = { chat: "index.html", tutor: "tutor.html", balcao: "balcao.html", painel: "painel-custos.html" };
+const htmlCache = new Map();
+const lerHtml = (arq) => {
+  if (!htmlCache.has(arq) || process.env.NODE_ENV === "development") htmlCache.set(arq, readFileSync(join(ROOT, "public", arq), "utf8"));
+  return htmlCache.get(arq);
+};
+const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-  let { messages } = req.body || {};
-  if (!Array.isArray(messages) || messages.length === 0) {
-    return res.status(400).json({ error: "Envie ao menos uma mensagem." });
-  }
-  const ALLOWED_IMG = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
-  const MAX_IMAGES = 2;
-  const MAX_IMG_B64 = 5 * 1024 * 1024;
-  const limparConteudo = (content) => {
-    if (typeof content === "string") return content.slice(0, MAX_CHARS_PER_MSG);
-    if (Array.isArray(content)) {
-      const blocos = []; let imgs = 0;
-      for (const b of content) {
-        if (!b || typeof b !== "object") continue;
-        if (b.type === "text" && typeof b.text === "string") {
-          blocos.push({ type: "text", text: b.text.slice(0, MAX_CHARS_PER_MSG) });
-        } else if (
-          b.type === "image" && b.source && b.source.type === "base64" &&
-          ALLOWED_IMG.has(b.source.media_type) && typeof b.source.data === "string" &&
-          b.source.data.length <= MAX_IMG_B64 && imgs < MAX_IMAGES
-        ) {
-          imgs++;
-          blocos.push({ type: "image", source: { type: "base64", media_type: b.source.media_type, data: b.source.data } });
-        }
-      }
-      return blocos;
-    }
-    return "";
+const urlSegura = (u) => (/^https?:\/\//i.test(String(u || "")) ? String(u) : "#");
+
+function renderPagina(arq, t) {
+  const cfg = configPublica(t);
+  const c = cfg.conteudo || {};
+  const json = JSON.stringify(cfg).replace(/</g, "\\u003c");
+  const vars = {
+    SIGLA: t.sigla, ASSISTENTE: t.assistente, NOME: t.nome, GOVERNO: t.governo, UF: t.uf.toUpperCase(),
+    SLUG: t.slug, PORTAL: t.portalUrl, TELEFONE: t.telefone,
+    MARCA: t.marcaUrl || "/img/detran-pa-mark.png", LOGO: t.logoUrl || t.marcaUrl || "/img/detran-pa-logo.png",
+    COR: t.corPrimaria || "",
+    BVTITULO: c.boasVindasTitulo || `Olá! Bora resolver teu serviço de trânsito?`,
+    BVTEXTO: c.boasVindasTexto || `Tire suas dúvidas sobre habilitação (CNH), veículos, multas e licenciamento. Comece por uma das perguntas abaixo:`,
   };
+  const canais = (Array.isArray(c.canais) && c.canais.length ? c.canais : [{ rotulo: `Portal ${t.sigla}`, url: t.portalUrl }])
+    .map((k) => `<a href="${esc(urlSegura(k.url))}" target="_blank" rel="noopener noreferrer">↗ ${esc(k.rotulo)}</a>`).join("\n          ");
+  let html = lerHtml(arq)
+    .replace(/\{\{\{CANAIS\}\}\}/g, canais)
+    .replace(/\{\{([A-Z]+)\}\}/g, (m, k) => (k in vars ? esc(vars[k]) : m));
+  const boot = `<script>window.TENANT=${json};window.API_BASE="/api/t/${t.slug}";window.TENANT_BASE="/${t.slug}";</script>`;
+  return html.replace("</head>", `${boot}\n</head>`);
+}
 
-  messages = messages
-    .filter((m) => m && (m.role === "user" || m.role === "assistant") && (typeof m.content === "string" || Array.isArray(m.content)))
-    .slice(-MAX_MESSAGES)
-    .map((m) => ({ role: m.role, content: limparConteudo(m.content) }))
-    .filter((m) => (typeof m.content === "string" ? m.content.length > 0 : m.content.length > 0));
-
-  if (messages.length === 0 || messages[messages.length - 1].role !== "user") {
-    return res.status(400).json({ error: "A última mensagem deve ser do usuário." });
-  }
-
-  // Conhecimento do tutor: só os TRECHOS relevantes à última pergunta.
-  const _ultima = messages[messages.length - 1].content;
-  const ultimaPergunta = typeof _ultima === "string"
-    ? _ultima
-    : (_ultima.filter((b) => b.type === "text").map((b) => b.text).join(" ").trim() || "análise de documento enviado por foto");
-  let tutorTexto = "";
-  try { tutorTexto = await buildTutorContext(ultimaPergunta); } catch (e) { /* segue sem o tutor se falhar */ }
-
+async function pagina(req, res, qual) {
+  const slug = String(req.params.slug || "").toLowerCase();
+  if (!SLUG_RE.test(slug)) return res.status(404).send("Página não encontrada.");
   try {
-    const resposta = await fetch(API_URL, {
-      method: "POST",
-      headers: { "x-api-key": API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ ...LLM_EXTRA, model: MODEL, max_tokens: MAX_TOKENS, system: buildSystem(tutorTexto), messages }),
-    });
+    const t = await buscarTenant(slug);
+    if (!t) return res.status(404).send("DETRAN não encontrado.");
+    res.set("Content-Type", "text/html; charset=utf-8").send(renderPagina(PAGINAS[qual], t));
+  } catch (err) { console.error("[pagina]", err); res.status(503).send("Serviço indisponível no momento."); }
+}
 
-    if (!resposta.ok) {
-      const detalhe = await resposta.text();
-      console.error(`[${PROVIDER_ID}]`, resposta.status, detalhe);
-      return res.status(502).json({ error: "Não foi possível obter a resposta agora. Tente novamente em instantes." });
-    }
+// Endereços antigos continuam funcionando (vão para o DETRAN padrão).
+app.get("/", (_req, res) => res.redirect(302, `/${DEFAULT_TENANT}`));
+app.get(["/tutor", "/tutor.html"], (_req, res) => res.redirect(302, `/${DEFAULT_TENANT}/tutor`));
+app.get(["/balcao", "/balcao.html"], (_req, res) => res.redirect(302, `/${DEFAULT_TENANT}/balcao`));
+app.get(["/painel-custos", "/painel-custos.html"], (_req, res) => res.redirect(302, `/${DEFAULT_TENANT}/painel`));
+app.get("/index.html", (_req, res) => res.redirect(302, `/${DEFAULT_TENANT}`));
 
-    const data = await resposta.json();
-    let texto = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
-    let semBase = false;
-    if (texto.includes("[[SEMBASE]]")) {
-      semBase = true;
-      texto = texto.replace(/\[\[SEMBASE\]\]/g, "").trim();
-      logGap(ultimaPergunta).catch(() => {});
-    }
-    logEvent({ k: "q", t: classificarTema(ultimaPergunta), r: semBase ? 0 : 1 }).catch(() => {});
-    res.json({ reply: texto || "Não consegui gerar uma resposta. Pode reformular a pergunta?" });
-  } catch (err) {
-    console.error("[erro]", err);
-    res.status(500).json({ error: "Erro interno ao processar a pergunta." });
-  }
-});
+app.get("/:slug", (req, res) => pagina(req, res, "chat"));
+app.get("/:slug/tutor", (req, res) => pagina(req, res, "tutor"));
+app.get("/:slug/balcao", (req, res) => pagina(req, res, "balcao"));
+app.get("/:slug/painel", (req, res) => pagina(req, res, "painel"));
 
 export default app;
-export { MODEL, FORMS, TUTOR_PASSWORD, PROVIDER };
-export { storageMode };
+export { MODEL };

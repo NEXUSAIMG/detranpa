@@ -6,13 +6,20 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "postinstall": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
+    "tenant": "node scripts/tenant-cli.js"
   },
   "engines": {
     "node": ">=18.17"
   },
   "dependencies": {
+    "@prisma/client": "^5.22.0",
     "dotenv": "^16.4.5",
     "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "prisma": "^5.22.0"
   }
 }

@@ -4,15 +4,15 @@
     {
       "src": "api/index.js",
       "use": "@vercel/node",
-      "config": { "includeFiles": ["knowledge/**", "forms-data.js", "store.js"] }
+      "config": {
+        "includeFiles": ["knowledge/**", "lib/**", "whatsapp.js", "store.js", "public/*.html", "prisma/schema.prisma", "node_modules/.prisma/client/**"]
+      }
     },
     { "src": "public/**", "use": "@vercel/static" }
   ],
   "routes": [
     { "src": "/api/(.*)", "dest": "/api/index.js" },
-    { "src": "/tutor", "dest": "/public/tutor.html" },
-    { "src": "/balcao", "dest": "/public/balcao.html" },
-    { "src": "/", "dest": "/public/index.html" },
-    { "src": "/(.*)", "dest": "/public/$1" }
+    { "src": "/(.+\\.(?:js|css|png|jpe?g|svg|ico|webp|gif|woff2?|map|txt))", "dest": "/public/$1" },
+    { "src": "/(.*)", "dest": "/api/index.js" }
   ]
 }

@@ -3,55 +3,26 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Sala do Tutor — Assistente DETRAN-PA</title>
-  <link rel="stylesheet" href="styles.css" />
+  <title>Sala do Tutor — {{ASSISTENTE}}</title>
+  <link rel="stylesheet" href="/styles.css" />
   <style>
-    .tutor-wrap { max-width: 880px; margin: 0 auto; min-height: 100dvh; display: flex; flex-direction: column; background: var(--paper); border-left: 1px solid var(--paper-edge); border-right: 1px solid var(--paper-edge); }
+    .tutor-wrap { max-width: 980px; margin: 0 auto; min-height: 100dvh; display: flex; flex-direction: column; background: var(--paper); border-left: 1px solid var(--paper-edge); border-right: 1px solid var(--paper-edge); }
     .tutor-main { flex: 1; overflow-y: auto; padding: 20px; }
     .t-card { background: var(--surface); border: 1px solid var(--paper-edge); border-radius: 14px; padding: 18px; margin-bottom: 16px; }
     .t-card h3 { margin: 0 0 4px; font-size: 15px; color: #1B2D26; }
     .t-card .sub { font-size: 12.5px; color: var(--ink-soft); margin: 0 0 14px; }
     .t-label { display: block; font-size: 12px; color: var(--ink-soft); margin: 12px 0 5px; }
-    .t-input, .t-textarea { width: 100%; padding: 11px 13px; font-size: 14px; font-family: inherit; border: 1px solid #D9D4C8; border-radius: 10px; background: #fff; color: var(--ink); outline: none; }
-    .t-input:focus, .t-textarea:focus { border-color: var(--moss-pale); }
-    .t-textarea { resize: vertical; min-height: 120px; line-height: 1.5; }
+    .t-input, .t-select { width: 100%; padding: 11px 13px; font-size: 14px; font-family: inherit; border: 1px solid #D9D4C8; border-radius: 10px; background: #fff; color: var(--ink); outline: none; }
+    .t-select { width: auto; padding: 8px 10px; }
+    .t-input:focus { border-color: var(--moss-pale); }
     .t-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     .t-btn { cursor: pointer; border: 0; border-radius: 10px; font-size: 13.5px; font-weight: 600; padding: 11px 16px; display: inline-flex; align-items: center; gap: 7px; }
     .t-btn.primary { background: var(--moss); color: #fff; }
-    .t-btn.primary:hover { filter: brightness(1.05); }
     .t-btn.primary:disabled { opacity: .5; cursor: default; }
     .t-btn.soft { background: var(--chip); color: #2A3A33; }
-    .t-btn.soft:hover { background: #E6DFD2; }
-    .t-btn.danger { background: #F4E4DC; color: #9A4B1B; padding: 7px 11px; font-size: 12px; }
-    .t-btn.danger:hover { background: #EED6C9; }
-    .t-hint { font-size: 11.5px; color: #7A8A82; margin-top: 6px; }
-    .badge { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; padding: 5px 10px; border-radius: 999px; font-weight: 600; }
-    .badge.ok { background: #E4F1EB; color: var(--moss-deep); }
-    .tag-doc { font-size: 10.5px; font-weight: 700; letter-spacing: .03em; color: var(--moss-deep); background: #E4F1EB; padding: 3px 8px; border-radius: 999px; }
-    .upload-zone {
-      border: 1.5px dashed #C4CDBE; border-radius: 12px; padding: 14px;
-      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-      background: #FAFBF8; margin-bottom: 6px;
-    }
-    .upload-zone .uz-icon { font-size: 22px; }
-    .upload-zone .uz-text { flex: 1; min-width: 160px; }
-    .upload-zone .uz-text strong { font-size: 13px; color: #1B2D26; display: block; }
-    .upload-zone .uz-text small { font-size: 11.5px; color: var(--ink-soft); }
-    .up-status { font-size: 12px; margin-top: 8px; }
-    .up-status.busy { color: var(--moss-deep); }
-    .up-status.err { color: var(--warn-ink); }
-    .or-divider { text-align: center; font-size: 11px; color: #9AA8A1; text-transform: uppercase; letter-spacing: .08em; margin: 14px 0 4px; }
-    .entry { border: 1px solid var(--paper-edge); border-radius: 11px; padding: 13px 14px; margin-top: 10px; background: #fff; }
-    .entry h4 { margin: 0; font-size: 14px; color: #1B2D26; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-    .entry .body { font-size: 13px; color: #2C3A34; white-space: pre-wrap; margin: 7px 0 0; line-height: 1.5; max-height: 160px; overflow: auto; }
-    .entry .meta { font-size: 11px; color: #8A988F; margin-top: 9px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-    .entry .meta .spacer { flex: 1; }
     .t-msg { font-size: 13px; padding: 10px 12px; border-radius: 9px; margin-top: 10px; }
     .t-msg.err { background: var(--warn-bg); color: var(--warn-ink); }
     .t-msg.ok { background: #E4F1EB; color: var(--moss-deep); }
-    .test-q { display: flex; gap: 8px; }
-    .test-q .t-input { flex: 1; }
-    .test-answer { margin-top: 12px; background: #F3F6F4; border: 1px solid #E2E8E4; border-radius: 11px; padding: 13px 15px; font-size: 13.5px; line-height: 1.55; color: #182620; white-space: pre-wrap; }
     .login-box { max-width: 380px; margin: 14vh auto 0; }
     .login-box .logo-big { width: 54px; height: 54px; border-radius: 14px; background: var(--moss); display: flex; align-items: center; justify-content: center; margin: 0 auto 14px; }
     .center { text-align: center; }
@@ -63,13 +34,13 @@
       <div class="brand">
         <div class="logo" aria-hidden="true">🎓</div>
         <div class="brand-text">
-          <span class="eyebrow">Assistente DETRAN-PA</span>
+          <span class="eyebrow">{{ASSISTENTE}}</span>
           <span class="title">Sala do Tutor</span>
         </div>
       </div>
       <div class="topbar-actions">
-        <a href="/" class="ghost-btn" title="Ir para o chat">← Ir para o chat</a>
-        <a href="/balcao" id="go-balcao" class="ghost-btn hidden" title="Abrir o Copiloto do Balcão">🏛️ Balcão</a>
+        <a href="/{{SLUG}}" class="ghost-btn" title="Ir para o chat">← Ir para o chat</a>
+        <a href="/{{SLUG}}/balcao" id="go-balcao" class="ghost-btn hidden" title="Abrir o Copiloto do Balcão">🏛️ Balcão</a>
         <button id="logout" class="ghost-btn hidden">Sair</button>
       </div>
     </header>
@@ -80,111 +51,46 @@
         <div class="t-card">
           <div class="logo-big">🎓</div>
           <h3 class="center">Entrar na Sala do Tutor</h3>
-          <p class="sub center">Aqui você ensina o assistente. Tudo que você escrever ou enviar vira conhecimento usado nas respostas — na hora.</p>
-          <label class="t-label" for="pwd">Senha do tutor</label>
-          <input id="pwd" class="t-input" type="password" placeholder="Digite a senha" />
+          <p class="sub center">{{SIGLA}} — revise e corrija as respostas do assistente.</p>
+          <label class="t-label" for="user">Usuário</label>
+          <input id="user" class="t-input" type="text" autocomplete="username" placeholder="Seu usuário" />
+          <label class="t-label" for="pwd">Senha</label>
+          <input id="pwd" class="t-input" type="password" autocomplete="current-password" placeholder="Sua senha" />
           <div id="login-msg"></div>
-          <div class="t-row" style="margin-top:12px">
-            <button id="enter" class="t-btn primary">Entrar</button>
-          </div>
+          <div class="t-row" style="margin-top:12px"><button id="enter" class="t-btn primary">Entrar</button></div>
         </div>
       </div>
 
       <!-- PAINEL -->
       <div id="panel" class="hidden">
-        <div id="storage-banner"></div>
+        <div class="t-card">
+          <h3>🧠 Tutoria do assistente</h3>
+          <p class="sub">O conhecimento do assistente do {{SIGLA}} fica no bot dele. Na tutoria você vê as respostas reais (as de baixa confiança primeiro), corrige o que estiver errado e testa de novo. A correção vale na hora, no site e no WhatsApp.</p>
+          <div id="tutoria">Carregando…</div>
+        </div>
 
         <div class="t-card" id="dash-card">
-          <h3>📊 Painel do gestor</h3>
-          <p class="sub">Visão de uso do assistente — demanda por tema, horários e satisfação.</p>
+          <h3>📊 Indicadores do atendimento</h3>
+          <p class="sub">Demanda por tema, canal e horário, pedidos de atendente e satisfação.</p>
           <div class="t-row" style="margin-bottom:10px">
+            <select id="periodo" class="t-select" aria-label="Período">
+              <option value="7">Últimos 7 dias</option>
+              <option value="30" selected>Últimos 30 dias</option>
+              <option value="90">Últimos 90 dias</option>
+            </select>
             <button id="dash-reload" class="t-btn soft">Atualizar</button>
+            <a href="/{{SLUG}}/painel" class="t-btn soft" style="text-decoration:none">Painel executivo →</a>
           </div>
           <div id="dash-tiles" class="dash-tiles"></div>
+          <div id="dash-canais" class="dash-block"></div>
           <div id="dash-themes" class="dash-block"></div>
           <div id="dash-hours" class="dash-block"></div>
-        </div>
-
-        <div class="t-card">
-          <h3>💼 Painel executivo de custos</h3>
-          <p class="sub">Custo de operação da IA por modelo e cenário de adoção no Pará, simulador de volume e formação de preço (custos administrativos + lucro + impostos) com o valor total a cobrar.</p>
-          <a href="/painel-custos.html" class="t-btn primary" style="text-decoration:none">Abrir painel executivo</a>
-        </div>
-
-        <div class="t-card">
-          <h3>✍️ Ensinar algo novo</h3>
-          <p class="sub">Envie um documento OU escreva você mesmo. Pode ser um texto bem grande (uma instrução inteira, por exemplo) — o assistente guarda tudo e, em cada pergunta, usa só os trechos que interessam.</p>
-
-          <!-- Envio de documento -->
-          <div class="upload-zone">
-            <span class="uz-icon">📎</span>
-            <span class="uz-text">
-              <strong>Enviar um documento</strong>
-              <small>PDF, Word (.docx), TXT ou Markdown — pode ser grande. Eu extraio o texto pra você revisar.</small>
-            </span>
-            <input id="file" type="file" accept=".pdf,.txt,.md,.docx" hidden />
-            <button type="button" class="t-btn soft" id="pick-file">Escolher arquivo</button>
-          </div>
-          <div id="up-status" class="up-status"></div>
-
-          <div class="or-divider">— ou escreva —</div>
-
-          <label class="t-label" for="t-title">Título (assunto)</label>
-          <input id="t-title" class="t-input" type="text" placeholder="Ex.: Instrução Normativa 02/2026 — novas regras de vistoria" />
-          <label class="t-label" for="t-content">Conteúdo</label>
-          <textarea id="t-content" class="t-textarea" placeholder="Cole aqui o texto (pode ser longo) ou envie um documento acima."></textarea>
-          <div class="t-hint"><span id="char-count">0</span>/120000 caracteres</div>
-          <div id="add-msg"></div>
-          <div class="t-row" style="margin-top:12px">
-            <button id="save" class="t-btn primary">Salvar conhecimento</button>
-            <button id="clear" class="t-btn soft">Limpar</button>
-          </div>
-        </div>
-
-        <div class="t-card">
-          <h3>🧪 Testar o assistente</h3>
-          <p class="sub">Faça uma pergunta para conferir se o que você ensinou já está sendo usado.</p>
-          <div class="test-q">
-            <input id="test-input" class="t-input" type="text" placeholder="Ex.: Quais as novas regras de vistoria?" />
-            <button id="test-send" class="t-btn soft">Perguntar</button>
-          </div>
-          <div id="test-answer"></div>
-        </div>
-
-        <div class="t-card">
-          <h3>📚 O que você já ensinou</h3>
-          <p class="sub" id="list-count">Carregando…</p>
-          <div id="list"></div>
-        </div>
-
-        <div class="t-card">
-          <h3>🕳️ Perguntas sem resposta</h3>
-          <p class="sub">O que os cidadãos perguntaram e o assistente <strong>não soube responder</strong> pela base atual. É o mapa do que falta esclarecer ou atualizar.</p>
-          <div class="t-row" style="margin-bottom:8px">
-            <button id="gaps-reload" class="t-btn soft">Atualizar</button>
-            <button id="gaps-clear" class="t-btn danger">Limpar tudo</button>
-          </div>
-          <p class="sub" id="gaps-count">Carregando…</p>
-          <div id="gaps-list"></div>
-        </div>
-
-        <div class="t-card">
-          <h3>🧹 Curadoria da base</h3>
-          <p class="sub">A IA analisa os itens ensinados: possíveis duplicados, o que pode estar desatualizado e sugestões de novos tópicos a partir das lacunas.</p>
-          <div class="t-row" style="margin-bottom:8px"><button id="cur-run" class="t-btn primary">Analisar base</button></div>
-          <div id="cur-out"></div>
-        </div>
-
-        <div class="t-card">
-          <h3>🔎 Busca semântica</h3>
-          <p class="sub">Faz o assistente entender o <strong>significado</strong> da pergunta, não só as palavras. Requer a chave <strong>VOYAGE_API_KEY</strong> no ambiente. Depois de configurar (ou de ensinar itens novos em massa), clique para gerar os embeddings.</p>
-          <div class="t-row" style="margin-bottom:8px"><button id="sem-run" class="t-btn soft">Gerar / atualizar embeddings</button></div>
-          <div id="sem-out"></div>
         </div>
       </div>
     </main>
   </div>
 
-  <script src="tutor.js"></script>
+  <script src="/sessao.js"></script>
+  <script src="/tutor.js"></script>
 </body>
 </html>

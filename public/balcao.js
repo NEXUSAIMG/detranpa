@@ -1,6 +1,6 @@
 // Copiloto do Balcão — apoio ao atendente (modo operador).
 const $ = (id) => document.getElementById(id);
-let tKey = sessionStorage.getItem("tutorKey") || "";
+// Login por usuário e perfil do DETRAN: ver /sessao.js
 const conversa = []; let carregando = false; let foto = null; let fotoChip = null;
 
 const CHIPS = [
@@ -15,23 +15,19 @@ const CHIPS = [
 function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 function rich(t) { return esc(t).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/(https?:\/\/[^\s)]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>'); }
 
-async function api(path, opts = {}) {
-  const headers = Object.assign({ "Content-Type": "application/json" }, opts.headers || {});
-  if (tKey) headers["x-tutor-key"] = tKey;
-  const res = await fetch(path, Object.assign({}, opts, { headers }));
-  const data = await res.json().catch(() => ({}));
-  return { ok: res.ok, status: res.status, data };
-}
+// Chamadas à API do DETRAN da URL (com o token da sessão).
+const api = (path, opts = {}) => Sessao.api(path.replace(/^\/api/, ""), opts);
 
 $("enter").onclick = login;
 $("pwd").addEventListener("keydown", (e) => { if (e.key === "Enter") login(); });
 async function login() {
-  const k = $("pwd").value.trim(); if (!k) return;
-  const { ok, data } = await api("/api/tutor/auth", { method: "POST", body: JSON.stringify({ key: k }) });
-  if (!ok) { $("login-msg").textContent = data.error || "Senha incorreta."; return; }
-  tKey = k; sessionStorage.setItem("tutorKey", k); abrirConsole();
+  const u = $("user").value.trim(), k = $("pwd").value;
+  if (!u || !k) { $("login-msg").textContent = "Informe usuário e senha."; return; }
+  const { ok, data } = await Sessao.entrar(u, k, "balcao");
+  if (!ok) { $("login-msg").textContent = data.error || "Usuário ou senha incorretos."; return; }
+  abrirConsole();
 }
-$("logout").onclick = () => { tKey = ""; sessionStorage.removeItem("tutorKey"); location.reload(); };
+$("logout").onclick = () => { Sessao.sair(); location.reload(); };
 
 function abrirConsole() {
   $("login").classList.add("hidden"); $("console").classList.remove("hidden"); $("logout").classList.remove("hidden"); var _pn=document.getElementById("painel"); if(_pn) _pn.classList.remove("hidden");
@@ -95,9 +91,7 @@ function mostrarFoto(dataUrl) {
 function limparFoto() { foto = null; if (fotoChip) { fotoChip.remove(); fotoChip = null; } }
 
 (async function () {
-  const status = await api("/api/tutor/status");
-  if (status.ok && !status.data.enabled) { $("login").innerHTML = '<div class="lb-card"><h3>Copiloto do Balcão desativado</h3><p class="sub">Defina TUTOR_PASSWORD no ambiente para ativar.</p><a href="/" class="ghost-btn">← Voltar</a></div>'; return; }
-  if (tKey) { const probe = await api("/api/tutor/entries"); if (probe.ok) { abrirConsole(); return; } tKey = ""; sessionStorage.removeItem("tutorKey"); }
+  if (await Sessao.valida("balcao")) abrirConsole();
 })();
 
 /* ── Termo de exigência ── */

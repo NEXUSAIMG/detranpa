@@ -1,19 +1,24 @@
-// Frontend do Assistente DETRAN-PA.
-// Conversa com o backend local (/api/chat) e usa o catálogo de documentos
-// (/api/forms) para o preenchedor guiado. A chave da Anthropic nunca passa
-// pelo navegador.
+// Frontend do Assistente DETRAN (multi-tenant).
+// O servidor injeta window.TENANT (dados do DETRAN da URL) e window.API_BASE
+// (/api/t/<slug>). Textos, guias, atalhos e documentos vêm do DETRAN.
 
-const SUGESTOES = [
-  { area: "Habilitação", q: "Quais documentos preciso para renovar a CNH?" },
-  { area: "Veículos", q: "Como faço a transferência de um veículo que comprei?" },
-  { area: "Multas", q: "Recebi uma notificação de autuação. O que faço?" },
-  { area: "IPVA", q: "Onde consulto e pago o IPVA no Pará?" },
-  { area: "Veículos", q: "Quero vender meu carro. Como faço a intenção de venda?" },
-  { area: "Habilitação", q: "Quem precisa fazer exame toxicológico?" },
-];
+const TENANT = window.TENANT || {};
+const CONTEUDO = TENANT.conteudo || {};
+const API = (p) => (window.API_BASE || "/api/t/pa") + p;
+const LS = (k) => `detran_${TENANT.slug || "pa"}_${k}`;
+// Id da conversa no site (o bot do DETRAN no BotAyio guarda o contexto por ele).
+const SESSION_ID = (() => {
+  try {
+    let v = sessionStorage.getItem(LS("sid"));
+    if (!v) { v = (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2); sessionStorage.setItem(LS("sid"), v); }
+    return v;
+  } catch (_) { return Date.now().toString(36); }
+})();
+const SUGESTOES = CONTEUDO.sugestoes || [];
 
-// Emblema do DETRAN-PA recriado em vetor (três anéis: vermelho, verde e amarelo).
-const LOGO_SVG = `<svg class="detran-mark" viewBox="0 0 100 96" xmlns="http://www.w3.org/2000/svg" aria-label="DETRAN-PA"><g fill="none" stroke-width="7"><circle cx="50" cy="28" r="18" stroke="#E11B22"/><circle cx="33" cy="60" r="18" stroke="#3AAA35"/><circle cx="67" cy="60" r="18" stroke="#F6C400"/></g><g><circle cx="50" cy="28" r="3.6" fill="#E11B22"/><circle cx="33" cy="60" r="3.6" fill="#3AAA35"/><circle cx="67" cy="60" r="3.6" fill="#F6C400"/></g></svg>`;
+// Marca do DETRAN para os documentos. O PA tem o emblema recriado em vetor
+// (três anéis); os demais usam a imagem cadastrada.
+const LOGO_SVG = (TENANT.slug && TENANT.slug !== "pa" && TENANT.marcaUrl) ? `<img class="detran-mark" src="${TENANT.marcaUrl}" alt="">` : `<svg class="detran-mark" viewBox="0 0 100 96" xmlns="http://www.w3.org/2000/svg" aria-label="DETRAN-PA"><g fill="none" stroke-width="7"><circle cx="50" cy="28" r="18" stroke="#E11B22"/><circle cx="33" cy="60" r="18" stroke="#3AAA35"/><circle cx="67" cy="60" r="18" stroke="#F6C400"/></g><g><circle cx="50" cy="28" r="3.6" fill="#E11B22"/><circle cx="33" cy="60" r="3.6" fill="#3AAA35"/><circle cx="67" cy="60" r="3.6" fill="#F6C400"/></g></svg>`;
 
 const els = {
   scroll: document.getElementById("scroll"),
@@ -185,9 +190,9 @@ async function enviar(texto) {
   if (window.__limparFoto) window.__limparFoto();
   carregando = true; els.send.disabled = true; showTyping();
   try {
-    const resp = await fetch("/api/chat", {
+    const resp = await fetch(API("/chat"), {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages: conversa }),
+      body: JSON.stringify({ messages: conversa, sessionId: SESSION_ID }),
     });
     const data = await resp.json().catch(() => ({}));
     hideTyping();
@@ -235,7 +240,7 @@ async function openDocs() {
   els.overlayBody.innerHTML = `<p class="doc-intro">Carregando documentos…</p>`;
   try {
     if (!formsCache) {
-      const resp = await fetch("/api/forms");
+      const resp = await fetch(API("/forms"));
       const data = await resp.json();
       formsCache = data.forms || [];
     }
@@ -265,7 +270,7 @@ async function openForm(id, fromChat) {
   els.docsBack.classList.remove("hidden");
   els.overlayBody.innerHTML = `<p class="doc-intro">Carregando documento…</p>`;
   try {
-    const resp = await fetch(`/api/forms/${id}`);
+    const resp = await fetch(API(`/forms/${id}`));
     if (!resp.ok) throw new Error();
     const { form } = await resp.json();
     renderForm(form, fromChat);
@@ -340,7 +345,7 @@ function renderForm(form, fromChat) {
     if (!conversa.length) return;
     const old = bFill.innerHTML; bFill.disabled = true; bFill.innerHTML = "✨ Preenchendo…";
     try {
-      const r = await fetch("/api/extract", {
+      const r = await fetch(API("/extract"), {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ formId: form.id, messages: conversa }),
       });
@@ -411,21 +416,21 @@ function fmtDate(v) {
   return m ? `${m[3]}/${m[2]}/${m[1]}` : v;
 }
 
-// Monta o documento no layout oficial do DETRAN-PA (logo no topo + marca d'água).
+// Monta o documento no layout oficial do DETRAN (logo no topo + marca d'água).
 function buildDoc(form, values) {
   const blankH = '<span class="dp-blank">__________________</span>';
   const blankT = "__________________";
   const H = []; const T = [];
 
   // Marca d'água (ao fundo)
-  H.push(`<div class="dp-wm" aria-hidden="true">${LOGO_SVG}<span>DETRAN-PA</span></div>`);
+  H.push(`<div class="dp-wm" aria-hidden="true">${LOGO_SVG}<span>${escapeHtml(TENANT.sigla || "DETRAN")}</span></div>`);
   H.push(`<div class="dp-content">`);
 
   // Cabeçalho oficial: logo + órgão
-  H.push(`<div class="dp-head"><div class="dp-logo"><img class="detran-mark" src="/img/detran-pa-mark.png" alt="DETRAN-PA"></div><div class="dp-gov">Governo do Estado do Pará<br>Departamento de Trânsito do Estado do Pará<br>DETRAN-PA</div></div>`);
-  T.push("GOVERNO DO ESTADO DO PARÁ");
-  T.push("DEPARTAMENTO DE TRÂNSITO DO ESTADO DO PARÁ");
-  T.push("DETRAN-PA\n");
+  H.push(`<div class="dp-head"><div class="dp-logo"><img class="detran-mark" src="${escapeHtml(TENANT.marcaUrl || "/img/detran-pa-mark.png")}" alt="${escapeHtml(TENANT.sigla || "")}"></div><div class="dp-gov">${escapeHtml(TENANT.governo || "")}<br>${escapeHtml(TENANT.nome || "")}<br>${escapeHtml(TENANT.sigla || "")}</div></div>`);
+  T.push((TENANT.governo || "").toUpperCase());
+  T.push((TENANT.nome || "").toUpperCase());
+  T.push(`${TENANT.sigla || ""}\n`);
 
   H.push(`<div class="dp-title">${escapeHtml(form.title)}</div>`);
   T.push(form.title.toUpperCase());
@@ -471,7 +476,7 @@ function buildDoc(form, values) {
   return { html: H.join("\n"), text: T.join("\n") };
 }
 
-fetch("/api/forms").then((r) => r.json()).then((d) => { formsCache = d.forms || []; }).catch(() => {});
+fetch(API("/forms")).then((r) => r.json()).then((d) => { formsCache = d.forms || []; }).catch(() => {});
 
 /* ═══════════════════════ VOZ (falar e ouvir) ═══════════════════════ */
 (function () {
@@ -626,12 +631,12 @@ fetch("/api/forms").then((r) => r.json()).then((d) => { formsCache = d.forms || 
   const actions = els.reset ? els.reset.parentNode : document.querySelector(".topbar-actions");
   if (!actions) return;
   let pref = {};
-  try { pref = JSON.parse(localStorage.getItem("detranpa_a11y") || "{}"); } catch (_) {}
+  try { pref = JSON.parse(localStorage.getItem(LS("a11y")) || "{}"); } catch (_) {}
   const ZOOMS = [1, 1.15, 1.3];
   let zi = ZOOMS.indexOf(pref.zoom); if (zi < 0) zi = 0;
   let hc = !!pref.hc;
 
-  function salvar() { try { localStorage.setItem("detranpa_a11y", JSON.stringify({ zoom: ZOOMS[zi], hc })); } catch (_) {} }
+  function salvar() { try { localStorage.setItem(LS("a11y"), JSON.stringify({ zoom: ZOOMS[zi], hc })); } catch (_) {} }
   function aplicar() {
     document.documentElement.style.zoom = ZOOMS[zi];
     document.body.classList.toggle("hc", hc);
@@ -666,7 +671,7 @@ window.__feedback = function (bubble) {
       row.querySelectorAll(".fb-btn").forEach((x) => { x.disabled = true; });
       b.classList.add("chosen");
       row.querySelector("span").textContent = "Valeu pelo retorno!";
-      fetch("/api/feedback", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ up }) }).catch(() => {});
+      fetch(API("/feedback"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ up }) }).catch(() => {});
     };
   });
   bubble.appendChild(row);
@@ -684,7 +689,7 @@ window.__defesaButton = function (bubble) {
 async function gerarDefesa(btn) {
   const old = btn.innerHTML; btn.disabled = true; btn.innerHTML = "📝 Gerando o rascunho…";
   try {
-    const r = await fetch("/api/defesa", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: conversa }) });
+    const r = await fetch(API("/defesa"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: conversa }) });
     const d = await r.json().catch(() => ({}));
     if (!r.ok || !d.defesa) { btn.innerHTML = "Não deu pra gerar agora"; setTimeout(() => { btn.disabled = false; btn.innerHTML = old; }, 2400); return; }
     abrirDefesa(d.defesa);
@@ -723,134 +728,9 @@ function abrirDefesa(texto) {
 
 /* ═══════════════════ TE LEVO PELA MÃO (guias) ═══════════════════ */
 (function () {
-  const GUIAS = [
-    {
-      id: "comprar", icon: "🚗", title: "Comprei um veículo usado",
-      desc: "Passar o carro/moto para o meu nome.",
-      intro: "Transferência de propriedade — quem faz é o comprador.",
-      prazoDias: 30, prazoLabel: "Transferência em até 30 dias da assinatura da ATPV",
-      steps: [
-        { t: "Conferir débitos e impedimentos", d: "IPVA, multas e licenciamento têm que estar quitados e sem bloqueios.", link: "https://www.detran.pa.gov.br/servicosWeb/consultaVeiculoInfracao_detalhada_V.php", linkLabel: "Consultar o veículo" },
-        { t: "Checar o gravame", d: "Se o carro era financiado, o gravame precisa estar baixado (a financeira informa)." },
-        { t: "Gerar e assinar a ATPV-e", d: "O vendedor gera a ATPV-e; comprador e vendedor assinam no app Carteira Digital de Trânsito (login gov.br). Dispensa cartório para registros a partir de 04/01/2021." },
-        { t: "Fazer a vistoria", d: "Em ECV credenciada ou no DETRAN — confere chassi e motor (decalque)." },
-        { t: "Pagar o DAE", d: "Pague a taxa de transferência (boleto DAE) gerada no portal." },
-        { t: "Emitir o CRLV-e", d: "Em ~2 dias úteis após o pagamento, o novo documento fica no app CDT.", link: "https://www.detran.pa.gov.br/sistransito/detran-web/servicos/crlv/indexCRLVe.jsf", linkLabel: "CRLV-e" }
-      ]
-    },
-    {
-      id: "vender", icon: "🤝", title: "Vou vender meu veículo",
-      desc: "Comunicar a venda e me proteger de multas futuras.",
-      intro: "Comunicação de venda — quem faz é o vendedor.",
-      prazoDias: 30, prazoLabel: "Comunicação de venda em até 30 dias da venda",
-      steps: [
-        { t: "Preencher a intenção/ATPV com o comprador", d: "Reúna os dados completos do comprador (nome, CPF, endereço, contato).", docs: true },
-        { t: "Fazer a Comunicação de Venda", d: "No portal, aba Veículos → Formulário de Comunicação de Venda → preencher, anexar e protocolar.", link: "https://www.detran.pa.gov.br/servicos", linkLabel: "Portal de serviços" },
-        { t: "Guardar o protocolo e acompanhar", d: "A partir do registro, multas e débitos do novo dono deixam de vir no seu nome." }
-      ]
-    },
-    {
-      id: "renovar", icon: "🪪", title: "Renovar a CNH",
-      desc: "Renovar a carteira quando vence.",
-      intro: "Renovação de CNH (cadastro no PA).",
-      steps: [
-        { t: "Emitir o boleto de renovação", d: "Abra o serviço no portal e emita o boleto.", link: "https://www.detran.pa.gov.br/servicos", linkLabel: "Portal de serviços" },
-        { t: "Pagar e aguardar a compensação", d: "Leva cerca de 72h úteis." },
-        { t: "Validação documental + foto", d: "Presencial, com identidade e comprovante de residência." },
-        { t: "Exame médico", d: "Obrigatório para todas as categorias. Agende pelo Call Center 154." },
-        { t: "Psicotécnico (se EAR)", d: "Só para quem exerce atividade remunerada." },
-        { t: "Toxicológico (se C, D ou E)", d: "Obrigatório nessas categorias; validade de 90 dias." },
-        { t: "Receber a CNH em casa", d: "A carteira é enviada pelos Correios; a CNH-e fica no app CDT." }
-      ]
-    },
-    {
-      id: "multa", icon: "⚖️", title: "Recorrer de uma multa",
-      desc: "Contestar uma autuação ou multa.",
-      intro: "Defesa/Recurso pelo Portal Venus.",
-      prazoDias: 30, prazoLabel: "Protocole dentro do prazo da notificação (mínimo 30 dias)",
-      steps: [
-        { t: "Identificar a fase", d: "Notificação de Autuação = cabe Defesa Prévia. Notificação de Penalidade = cabe Recurso à JARI." },
-        { t: "Conferir o órgão autuador", d: "O Portal Venus só trata multas do próprio DETRAN-PA. Rodovia estadual → DER-PA; federal → PRF; via municipal → Prefeitura/SEMOB." },
-        { t: "Reunir as provas", d: "Notificação, RG/CNH, CRLV-e, fotos, vídeos, recibos — o que ajudar a fundamentar." },
-        { t: "Protocolar no Portal Venus", d: "Login gov.br (prata/ouro). Redija com fundamentação e anexe as provas. (Dica: peça ao assistente um rascunho de defesa!)", link: "https://cidadao.detran.pa.gov.br", linkLabel: "Portal Venus" },
-        { t: "Guardar o protocolo e acompanhar", d: "Anote o número e acompanhe o resultado." }
-      ]
-    },
-    {
-      id: "primeira_hab", icon: "🚦", title: "Tirar a primeira CNH",
-      desc: "Primeira habilitação (ACC, A e/ou B).",
-      intro: "Maior de 18 anos, alfabetizado, residente no PA.",
-      steps: [
-        { t: "Emitir o boleto da 1ª fase", d: "Exames clínicos. Emita no site, na sede ou na CIRETRAN.", link: "https://www.detran.pa.gov.br/servicos", linkLabel: "Portal de serviços" },
-        { t: "Agendar a coleta biométrica", d: "Com documento original e cópia." },
-        { t: "Fazer exame médico e psicotécnico", d: "Em clínica credenciada. Agende pelo Call Center 154." },
-        { t: "Curso teórico (~45h)", d: "Em CFC credenciado ou pelo app CNH do Brasil." },
-        { t: "Prova teórica", d: "30 questões, mínimo de 21 acertos. Chegue 30 min antes." },
-        { t: "LADV + aulas práticas", d: "Cumpra a carga horária de direção da categoria." },
-        { t: "Prova prática de direção", d: "Agendada pelo CFC ou por você no site/CIRETRAN." },
-        { t: "Receber a PPD e depois a CNH", d: "Desde 06/2026, categorias A e B também fazem toxicológico antes da PPD." }
-      ]
-    },
-    {
-      id: "segunda_via_cnh", icon: "🪪", title: "2ª via da CNH",
-      desc: "Perdi, furtaram ou danifiquei a carteira.",
-      intro: "Nova via sem alterar os dados de habilitação.",
-      steps: [
-        { t: "Boletim de ocorrência (se furto/roubo)", d: "Guarde o BO — mas ele não substitui a CNH para dirigir." },
-        { t: "Abrir o serviço de 2ª via", d: "No portal, com identidade, CPF e comprovante de residência.", link: "https://www.detran.pa.gov.br/servicos", linkLabel: "Portal de serviços" },
-        { t: "Pagar o boleto", d: "Em regra não há novo exame." },
-        { t: "Emissão", d: "A CNH-e fica no app CDT e/ou a via física chega pelos Correios." }
-      ]
-    },
-    {
-      id: "mudanca_cat", icon: "🚛", title: "Mudar ou incluir categoria",
-      desc: "Ex.: B → C/D/E, ou adicionar A.",
-      intro: "Conferir os requisitos de idade e tempo de categoria.",
-      steps: [
-        { t: "Conferir idade e tempo mínimos", d: "C: 1 ano na B. D: 21 anos + 2 anos na B (ou 1 na C). E: 21 anos + 1 ano na C ou D." },
-        { t: "Emitir o boleto", d: "Na sede, CIRETRAN ou site.", link: "https://www.detran.pa.gov.br/servicos", linkLabel: "Portal de serviços" },
-        { t: "Validação documental", d: "CNH original + cópia, identidade, CPF e comprovante de residência." },
-        { t: "Exames", d: "Médico + toxicológico (obrigatório para C, D e E) + psicotécnico se for atividade remunerada." },
-        { t: "Curso/aulas e prova prática", d: "Na nova categoria." },
-        { t: "Receber a CNH", d: "Enviada pelos Correios." }
-      ]
-    },
-    {
-      id: "licenciar", icon: "🧾", title: "Licenciar o veículo (anual)",
-      desc: "Regularizar o licenciamento do ano.",
-      intro: "Habilita a circulação e gera o CRLV-e do ano.",
-      steps: [
-        { t: "Pagar o IPVA (é da SEFA)", d: "O DETRAN não licencia com IPVA em aberto.", link: "https://app.sefa.pa.gov.br/consulta-ipva", linkLabel: "Consultar IPVA (SEFA)" },
-        { t: "Emitir o DAE de licenciamento", d: "No portal, informando placa e RENAVAM.", link: "https://www.detran.pa.gov.br/sistransito/detran-web/servicos/b/dadosBLicencAnoAtual.jsf", linkLabel: "Boleto de licenciamento" },
-        { t: "Pagar o boleto", d: "Há calendário por final de placa." },
-        { t: "Baixar o CRLV-e", d: "Fica no app CDT em ~72h; pode imprimir em papel comum pelo site.", link: "https://www.detran.pa.gov.br/sistransito/detran-web/servicos/crlv/indexCRLVe.jsf", linkLabel: "CRLV-e" }
-      ]
-    },
-    {
-      id: "emplacar", icon: "🆕", title: "Emplacar veículo 0km",
-      desc: "Primeiro emplacamento (placa Mercosul).",
-      intro: "Documentos: nota fiscal, identidade/CPF, comprovante de residência e laudo de vistoria.",
-      steps: [
-        { t: "Pagar as guias (IPVA e licenciamento)", d: "Necessárias para o registro." },
-        { t: "Fazer a vistoria", d: "Em ECV credenciada ou no DETRAN." },
-        { t: "Registro no DETRAN", d: "Com a documentação e as guias pagas.", link: "https://www.detran.pa.gov.br/servicos", linkLabel: "Portal de serviços" },
-        { t: "Receber a placa Mercosul e o CRV/CRLV-e", d: "Emplacamento Mercosul ~R$ 45,78 (referência)." }
-      ]
-    },
-    {
-      id: "reciclagem", icon: "⚠️", title: "CNH suspensa (reciclagem)",
-      desc: "Regularizar a carteira suspensa.",
-      intro: "Curso de reciclagem quando há suspensão do direito de dirigir.",
-      steps: [
-        { t: "Conferir a penalidade e o prazo", d: "Veja a notificação de suspensão e o período a cumprir." },
-        { t: "Fazer o curso de reciclagem", d: "Carga de 45 horas-aula, em CFC credenciado (e/ou EAD conforme credenciamento)." },
-        { t: "Cumprir o prazo da suspensão", d: "A CNH só é liberada após o prazo E a conclusão do curso." },
-        { t: "Entregar o certificado", d: "O desbloqueio costuma sair em ~72h." }
-      ]
-    }
-  ];
+  const GUIAS = CONTEUDO.guias || [];
 
-  if (els.emptyDocs) {
+  if (els.emptyDocs && GUIAS.length) {
     const cta = document.createElement("button");
     cta.className = "docs-cta guia-cta";
     cta.innerHTML = '<span class="docs-cta-icon">🧭</span><span><strong>Te levo pela mão</strong><small>O passo a passo de um serviço inteiro, com prazos e documentos.</small></span>';
@@ -858,8 +738,8 @@ function abrirDefesa(texto) {
     els.emptyDocs.insertAdjacentElement("afterend", cta);
   }
 
-  function done(id) { try { return JSON.parse(localStorage.getItem("detranpa_guia_" + id) || "[]"); } catch (_) { return []; } }
-  function setDone(id, arr) { try { localStorage.setItem("detranpa_guia_" + id, JSON.stringify(arr)); } catch (_) {} }
+  function done(id) { try { return JSON.parse(localStorage.getItem(LS("guia_" + id)) || "[]"); } catch (_) { return []; } }
+  function setDone(id, arr) { try { localStorage.setItem(LS("guia_" + id), JSON.stringify(arr)); } catch (_) {} }
 
   function abrirGuias() {
     els.overlay.classList.remove("hidden");
@@ -910,9 +790,9 @@ function abrirDefesa(texto) {
     const ymd2 = `${dn.getFullYear()}${pad(dn.getMonth() + 1)}${pad(dn.getDate())}`;
     const n = new Date();
     const stamp = `${n.getFullYear()}${pad(n.getMonth() + 1)}${pad(n.getDate())}T${pad(n.getHours())}${pad(n.getMinutes())}${pad(n.getSeconds())}`;
-    const ics = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//DETRAN-PA//Assistente//PT-BR", "BEGIN:VEVENT",
-      `UID:${g.id}-${ymd}@detranpa`, `DTSTAMP:${stamp}`, `DTSTART;VALUE=DATE:${ymd}`, `DTEND;VALUE=DATE:${ymd2}`,
-      `SUMMARY:Prazo DETRAN — ${g.title}`, `DESCRIPTION:${g.prazoLabel}. Confirme sempre no portal detran.pa.gov.br`,
+    const ics = ["BEGIN:VCALENDAR", "VERSION:2.0", `PRODID:-//${TENANT.sigla || "DETRAN"}//Assistente//PT-BR`, "BEGIN:VEVENT",
+      `UID:${g.id}-${ymd}@detran-${TENANT.slug || "pa"}`, `DTSTAMP:${stamp}`, `DTSTART;VALUE=DATE:${ymd}`, `DTEND;VALUE=DATE:${ymd2}`,
+      `SUMMARY:Prazo DETRAN — ${g.title}`, `DESCRIPTION:${g.prazoLabel}. Confirme sempre no portal ${TENANT.portalUrl || "oficial"}`,
       "BEGIN:VALARM", "TRIGGER:-P1D", "ACTION:DISPLAY", "DESCRIPTION:Lembrete de prazo DETRAN", "END:VALARM",
       "END:VEVENT", "END:VCALENDAR"].join("\r\n");
     const blob = new Blob([ics], { type: "text/calendar" });
@@ -1013,17 +893,10 @@ function abrirDefesa(texto) {
     cta.onclick = abrirVeiculo;
     els.emptyDocs.insertAdjacentElement("afterend", cta);
   }
-  const load = () => { try { return JSON.parse(localStorage.getItem("detranpa_veiculo") || "{}"); } catch (_) { return {}; } };
-  const save = (v) => { try { localStorage.setItem("detranpa_veiculo", JSON.stringify(v)); } catch (_) {} };
+  const load = () => { try { return JSON.parse(localStorage.getItem(LS("veiculo")) || "{}"); } catch (_) { return {}; } };
+  const save = (v) => { try { localStorage.setItem(LS("veiculo"), JSON.stringify(v)); } catch (_) {} };
 
-  const ATALHOS = [
-    { ic: "🚨", n: "Consultar multas", s: "RENAVAM + placa", u: "https://www.detran.pa.gov.br/servicosWeb/consultadeInfracoes_V.php" },
-    { ic: "🔎", n: "Veículo (detalhada)", s: "RENAVAM + placa + CPF", u: "https://www.detran.pa.gov.br/servicosWeb/consultaVeiculoInfracao_detalhada_V.php" },
-    { ic: "🧾", n: "Boleto de licenciamento", s: "placa + RENAVAM", u: "https://www.detran.pa.gov.br/sistransito/detran-web/servicos/b/dadosBLicencAnoAtual.jsf" },
-    { ic: "📄", n: "CRLV-e (baixar)", s: "placa/RENAVAM", u: "https://www.detran.pa.gov.br/sistransito/detran-web/servicos/crlv/indexCRLVe.jsf" },
-    { ic: "📦", n: "Acompanhar documento", s: "dados do processo", u: "https://www.detran.pa.gov.br/servicosWeb/acompanheSeuDocumento_V.php" },
-    { ic: "💰", n: "IPVA (SEFA)", s: "RENAVAM", u: "https://app.sefa.pa.gov.br/consulta-ipva" },
-  ];
+  const ATALHOS = CONTEUDO.atalhos || [];
 
   function copiar(txt, btn) {
     if (!txt) return;
@@ -1062,4 +935,13 @@ function abrirDefesa(texto) {
     }
     renderChips();
   }
+})();
+
+
+/* Abre um documento direto pelo link (?doc=<id>), usado nas respostas do WhatsApp. */
+(function () {
+  try {
+    const doc = new URLSearchParams(location.search).get("doc");
+    if (doc && /^[a-z0-9-]{2,60}$/.test(doc)) openForm(doc, false);
+  } catch (_) {}
 })();

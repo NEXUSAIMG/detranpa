@@ -3,19 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Painel Executivo — Custo do Assistente IA Detran-PA</title>
+<title>Painel Executivo — Custo do {{ASSISTENTE}}</title>
+<script src="/sessao.js" defer></script>
 <script>
-  // Área restrita: exige a mesma chave da Sala do Tutor.
-  (function () {
-    const k = sessionStorage.getItem("tutorKey");
-    if (!k) { location.replace("/tutor"); return; }
-    fetch("/api/tutor/auth", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key: k }),
-    }).then(r => { if (!r.ok) { sessionStorage.removeItem("tutorKey"); location.replace("/tutor"); } })
-      .catch(() => {}); // offline/local: mantém a página aberta
-  })();
+  // Área restrita: exige login com perfil de gestor (ou admin) deste DETRAN.
+  document.addEventListener("DOMContentLoaded", async function () {
+    var base = window.TENANT_BASE || "/pa";
+    var ok = false;
+    try { ok = await window.Sessao.valida("painel"); } catch (_) {}
+    if (!ok) location.replace(base + "/tutor");
+  });
 </script>
 <style>
   :root { color-scheme: light dark; }
@@ -112,7 +109,7 @@
 <body class="viz-root" data-palette="#2a78d6,#eb6834,#1baf7a">
 <div class="wrap">
   <header>
-    <a href="/tutor" class="toggle" style="text-decoration:none; margin-left:8px;">← Sala do Tutor</a>
+    <a href="/{{SLUG}}/tutor" class="toggle" style="text-decoration:none; margin-left:8px;">← Sala do Tutor</a>
     <button class="toggle" id="themeBtn">Alternar tema</button>
     <h1>Painel Executivo — Assistente IA Detran-PA</h1>
     <div class="sub">Custo estimado de operação da IA aplicado aos usuários do Estado do Pará · dados de 03/08/2026 · câmbio US$ 1 = R$ 5,07</div>

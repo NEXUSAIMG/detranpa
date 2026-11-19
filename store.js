@@ -478,3 +478,29 @@ export async function logAtendimento(rec) {
 export async function listAtendimentos() {
   const arr = await balcaoLoad(); return arr.slice().sort((a, b) => b.at - a.at);
 }
+
+
+/* ── Estado curto do WhatsApp (mensagens já vistas, última atividade) ──
+   Usa o KV com expiração. Sem KV, guarda em memória (só serve para teste local). */
+const _memWa = new Map(); // chave -> { v, exp }
+function _memGet(k) {
+  const it = _memWa.get(k);
+  if (!it) return null;
+  if (it.exp && it.exp < Date.now()) { _memWa.delete(k); return null; }
+  return it.v;
+}
+export async function kvSetNxEx(key, value, ttlSec) {
+  if (storageMode() === "kv") return (await kvCmd(["SET", key, value, "NX", "EX", String(ttlSec)])) === "OK";
+  if (_memGet(key) !== null) return false;
+  _memWa.set(key, { v: value, exp: Date.now() + ttlSec * 1000 });
+  return true;
+}
+export async function kvGetStr(key) {
+  if (storageMode() === "kv") return kvGet(key);
+  return _memGet(key);
+}
+export async function kvSetEx(key, value, ttlSec) {
+  if (storageMode() === "kv") return kvCmd(["SET", key, value, "EX", String(ttlSec)]);
+  _memWa.set(key, { v: value, exp: Date.now() + ttlSec * 1000 });
+  return "OK";
+}
