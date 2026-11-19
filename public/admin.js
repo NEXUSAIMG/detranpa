@@ -95,7 +95,10 @@ async function abrirTenant(slug) {
   $("eyebrow").textContent = t.sigla;
   $("d-titulo").textContent = `${t.sigla} — /${t.slug}`;
   $("d-sub").textContent = t.nome;
-  $("ver-site").href = `/${t.slug}`;
+  $("ver-site").href = r.data.linkDemo || `/${t.slug}`;
+  $("demo-link").classList.toggle("hidden", !r.data.linkDemo);
+  $("demo-url").value = r.data.linkDemo ? location.origin + r.data.linkDemo : "";
+  $("demo-copiar").onclick = () => { $("demo-url").select(); navigator.clipboard?.writeText($("demo-url").value); $("demo-copiar").textContent = "Copiado ✓"; setTimeout(() => ($("demo-copiar").textContent = "Copiar"), 1500); };
   CAMPOS.forEach((c) => ($(`t-${c}`).value = t[c] || ""));
   $("t-conteudo").value = JSON.stringify(t.conteudo || {}, null, 2);
   $("t-ativo-wrap").classList.toggle("hidden", !souSuper); $("t-ativo").checked = t.ativo;

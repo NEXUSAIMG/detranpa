@@ -148,9 +148,13 @@
             <label class="f">Conteúdo da tela (JSON: boasVindasTitulo, boasVindasTexto, canais, sugestoes, guias, atalhos)</label>
             <textarea id="t-conteudo" class="ta mono" spellcheck="false"></textarea>
             <div class="hint">O tom e a base do bot do WhatsApp e do site ficam no BotAyio; estes textos valem para a tela e para a IA local.</div>
-            <label class="f hidden" id="t-demo-wrap"><input type="checkbox" id="t-demonstracao" /> Demonstração (mostra uma faixa de aviso e o site não aparece no Google). Desmarque quando o DETRAN virar cliente.</label>
+            <label class="f hidden" id="t-demo-wrap"><input type="checkbox" id="t-demonstracao" /> Demonstração (site fechado: só abre pelo link privado, com faixa de aviso e fora do Google). Desmarque quando o DETRAN virar cliente.</label>
           <label class="f hidden" id="t-ativo-wrap"><input type="checkbox" id="t-ativo" /> DETRAN ativo (desmarcar tira o site do ar)</label>
             <div id="dados-msg"></div>
+            <div id="demo-link" class="hidden" style="margin:12px 0;padding:12px 14px;border:1px solid #EBD58A;background:#FFF8E1;border-radius:10px;font-size:13px">
+              <b>Link privado da demonstração</b> — mande este link para o DETRAN na apresentação. Sem ele, o site mostra "Demonstração restrita".
+              <div class="row" style="margin-top:8px;gap:8px"><input id="demo-url" class="in" readonly style="flex:1;font-family:ui-monospace,monospace;font-size:12px" /><button id="demo-copiar" class="btn soft" type="button">Copiar</button></div>
+            </div>
             <div class="row"><button id="dados-ok" class="btn pri">Salvar dados</button><a id="ver-site" class="btn soft" target="_blank" rel="noopener" style="text-decoration:none">Abrir o site ↗</a></div>
           </section>
 

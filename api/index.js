@@ -31,6 +31,7 @@ import { registrarWhatsApp } from "../whatsapp.js";
 import { registrarAdmin } from "../lib/admin.js";
 import { registrarAtendimento } from "../lib/atendimento.js";
 import { registrarGestao } from "../lib/gestao.js";
+import { chaveNaUrl, liberadoDemo, gravarCookieDemo, paginaRestrita } from "../lib/demo.js";
 import { cssDoTema, marcaProvisoriaSvg } from "../lib/tema.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -74,7 +75,8 @@ app.get("/api/health", async (_req, res) => {
 });
 app.get("/api/tenants", async (_req, res) => {
   try {
-    const ts = await prisma.tenant.findMany({ where: { ativo: true }, select: { slug: true, sigla: true, nome: true }, orderBy: { slug: "asc" } });
+    // Só os DETRANs clientes: os de demonstração são privados.
+    const ts = await prisma.tenant.findMany({ where: { ativo: true, demonstracao: false }, select: { slug: true, sigla: true, nome: true }, orderBy: { slug: "asc" } });
     res.json({ tenants: ts });
   } catch (err) { console.error("[tenants]", err); res.status(503).json({ error: "Indisponível." }); }
 });
@@ -349,7 +351,18 @@ async function pagina(req, res, qual) {
   try {
     const t = await buscarTenant(slug);
     if (!t) return res.status(404).send("DETRAN não encontrado.");
-    if (t.demonstracao) res.set("X-Robots-Tag", "noindex, nofollow");
+    if (t.demonstracao) {
+      res.set("X-Robots-Tag", "noindex, nofollow");
+      res.set("Cache-Control", "private, no-store");
+      // Link privado: grava o cookie e volta para o endereço limpo (a chave não fica na barra).
+      if (chaveNaUrl(req, t)) {
+        gravarCookieDemo(req, res, t);
+        const resto = new URLSearchParams(req.query); resto.delete("demo");
+        const q = resto.toString();
+        return res.redirect(302, req.path + (q ? `?${q}` : ""));
+      }
+      if (!liberadoDemo(req, t)) return res.status(403).set("Content-Type", "text/html; charset=utf-8").send(paginaRestrita(t));
+    }
     res.set("Content-Type", "text/html; charset=utf-8").send(renderPagina(PAGINAS[qual], t));
   } catch (err) { console.error("[pagina]", err); res.status(503).send("Serviço indisponível no momento."); }
 }
