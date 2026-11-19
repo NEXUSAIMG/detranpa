@@ -683,22 +683,41 @@ window.__defesaButton = function (bubble) {
   const btn = document.createElement("button");
   btn.type = "button"; btn.className = "form-suggest defesa";
   btn.innerHTML = '<span class="fs-doc">📝</span> Gerar rascunho de defesa da multa';
-  btn.onclick = () => gerarDefesa(btn);
+  btn.onclick = () => escolherDefesa();
   bubble.appendChild(btn);
 };
-async function gerarDefesa(btn) {
-  const old = btn.innerHTML; btn.disabled = true; btn.innerHTML = "📝 Gerando o rascunho…";
-  try {
-    const r = await fetch(API("/defesa"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: conversa }) });
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok || !d.defesa) { btn.innerHTML = "Não deu pra gerar agora"; setTimeout(() => { btn.disabled = false; btn.innerHTML = old; }, 2400); return; }
-    abrirDefesa(d.defesa);
-    btn.innerHTML = "📝 Rascunho gerado ✓"; setTimeout(() => { btn.disabled = false; btn.innerHTML = old; }, 2600);
-  } catch (_) { btn.innerHTML = "Erro ao gerar"; setTimeout(() => { btn.disabled = false; btn.innerHTML = old; }, 2400); }
-}
-function abrirDefesa(texto) {
+// Qual peça? Defesa prévia, JARI (1ª instância) ou CETRAN (2ª instância).
+const CONSELHO = String(TENANT.uf || "").toUpperCase() === "DF" ? "CONTRANDIFE" : `CETRAN-${String(TENANT.uf || "").toUpperCase()}`;
+function escolherDefesa() {
   els.overlay.classList.remove("hidden");
   els.overlayTitle.textContent = "Rascunho de defesa de multa";
+  els.docsBack.classList.add("hidden");
+  const op = [
+    ["defesa_previa", "1️⃣", "Recebi a Notificação de Autuação", "Ainda não é multa. Gera a <b>Defesa Prévia</b>. Prazo: 30 dias do recebimento."],
+    ["jari", "2️⃣", "Recebi a Notificação de Penalidade (a multa)", "Gera o <b>Recurso à JARI</b> (1ª instância). Prazo: o que está na notificação."],
+    ["cetran", "3️⃣", "A JARI negou o meu recurso", `Gera o <b>Recurso ao ${CONSELHO}</b> (2ª instância). Prazo: 30 dias da notificação da decisão da JARI.`],
+    ["auto", "🤔", "Não sei em que fase estou", "Eu descubro pelo que você me contou na conversa."],
+  ];
+  els.overlayBody.innerHTML = `<p class="doc-intro">Em que fase está a sua multa? A peça muda conforme a fase.</p><div class="doc-grid">${op.map(([id, ic, t, d]) => `<button class="doc-card" data-tipo="${id}"><h4>${ic} ${t}</h4><p>${d}</p></button>`).join("")}</div><div id="def-status" class="doc-intro"></div>`;
+  els.overlayBody.querySelectorAll("[data-tipo]").forEach((b) => (b.onclick = () => gerarDefesa(b.getAttribute("data-tipo"))));
+}
+async function gerarDefesa(tipo) {
+  const st = document.getElementById("def-status");
+  els.overlayBody.querySelectorAll("[data-tipo]").forEach((b) => (b.disabled = true));
+  if (st) st.textContent = "📝 Gerando o rascunho… isso leva alguns segundos.";
+  try {
+    const r = await fetch(API("/defesa"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: conversa, tipo }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.defesa) throw new Error(d.error || "Não deu pra gerar agora.");
+    abrirDefesa(d.defesa, tipo);
+  } catch (e) {
+    if (st) st.textContent = "⚠️ " + (e.message || "Erro ao gerar.") + " Tente de novo.";
+    els.overlayBody.querySelectorAll("[data-tipo]").forEach((b) => (b.disabled = false));
+  }
+}
+function abrirDefesa(texto, tipo) {
+  els.overlay.classList.remove("hidden");
+  els.overlayTitle.textContent = { defesa_previa: "Rascunho — Defesa Prévia", jari: "Rascunho — Recurso à JARI", cetran: `Rascunho — Recurso ao ${CONSELHO}` }[tipo] || "Rascunho de defesa de multa";
   els.docsBack.classList.add("hidden");
   els.overlayBody.innerHTML = ''
     + '<div class="doc-screen defesa-screen">'
@@ -944,4 +963,137 @@ function abrirDefesa(texto) {
     const doc = new URLSearchParams(location.search).get("doc");
     if (doc && /^[a-z0-9-]{2,60}$/.test(doc)) openForm(doc, false);
   } catch (_) {}
+})();
+
+/* ═══════════════════ CONFERÊNCIA DE DOCUMENTOS ═══════════════════
+   Checklist por serviço: o cidadão marca o que já tem ou manda a foto e o
+   assistente confere (legível? é o documento certo? está no prazo?).
+   A foto não fica guardada; o progresso fica só neste navegador. */
+(function () {
+  let SERVICOS = null, IA = false;
+  const ST = { OK: ["✓", "ok", "Conferido"], VENCIDO: ["!", "venc", "Vencido"], ILEGIVEL: ["?", "aviso", "Foto ilegível"], OUTRO: ["✗", "venc", "Documento errado"], PENDENTE: ["!", "aviso", "Pendente"], CONFERIR: ["?", "aviso", "Confira"], TENHO: ["✓", "ok", "Marcado por você"] };
+  const salvo = (id) => { try { return JSON.parse(localStorage.getItem(LS("conf_" + id)) || "{}"); } catch (_) { return {}; } };
+  const guardar = (id, v) => { try { localStorage.setItem(LS("conf_" + id), JSON.stringify(v)); } catch (_) {} };
+
+  if (els.emptyDocs) {
+    const cta = document.createElement("button");
+    cta.className = "docs-cta conf-cta";
+    cta.innerHTML = '<span class="docs-cta-icon">✅</span><span><strong>Conferir meus documentos</strong><small>Antes de ir ao DETRAN: veja o que falta e o que está vencido.</small></span>';
+    cta.onclick = abrirServicos;
+    els.emptyDocs.insertAdjacentElement("afterend", cta);
+    const cta2 = document.createElement("button");
+    cta2.className = "docs-cta defesa-cta";
+    cta2.innerHTML = `<span class="docs-cta-icon">⚖️</span><span><strong>Defesa de multa</strong><small>Defesa prévia, recurso à JARI ou ao ${CONSELHO}.</small></span>`;
+    cta2.onclick = escolherDefesa;
+    cta.insertAdjacentElement("afterend", cta2);
+  }
+
+  async function carregar() {
+    if (SERVICOS) return SERVICOS;
+    const r = await fetch(API("/conferencia")); const d = await r.json().catch(() => ({}));
+    SERVICOS = d.servicos || []; IA = Boolean(d.ia); return SERVICOS;
+  }
+
+  async function abrirServicos() {
+    els.overlay.classList.remove("hidden");
+    els.overlayTitle.textContent = "Conferir meus documentos";
+    els.docsBack.classList.add("hidden");
+    els.overlayBody.innerHTML = '<p class="doc-intro">Carregando…</p>';
+    const lista = await carregar();
+    els.overlayBody.innerHTML = `<p class="doc-intro">Escolha o serviço. Eu mostro tudo o que você precisa levar${IA ? " e confiro as fotos dos seus documentos" : ""}, para você não perder a viagem.</p>`
+      + `<div class="doc-grid">${lista.map((s) => { const v = salvo(s.id); const n = s.itens.filter((i) => v[i.id] && ["OK", "TENHO"].includes(v[i.id].status)).length; return `<button class="doc-card" data-s="${escapeHtml(s.id)}"><h4>${s.icone || "📄"} ${escapeHtml(s.titulo)}</h4><p>${escapeHtml(s.resumo || "")}</p>${n ? `<div class="doc-sub">${n}/${s.itens.length} documentos conferidos</div>` : ""}</button>`; }).join("")}</div>`;
+    els.overlayBody.querySelectorAll("[data-s]").forEach((b) => (b.onclick = () => abrirServico(b.getAttribute("data-s"))));
+  }
+
+  function abrirServico(id) {
+    const s = SERVICOS.find((x) => x.id === id); if (!s) return;
+    els.overlayTitle.textContent = s.titulo;
+    const estado = salvo(id);
+    const render = () => {
+      const obrig = s.itens.filter((i) => !i.condicional || estado[i.id]?.aplica !== false);
+      const prontos = obrig.filter((i) => ["OK", "TENHO"].includes(estado[i.id]?.status) || (i.condicional && estado[i.id]?.aplica === false));
+      const problemas = obrig.filter((i) => ["VENCIDO", "OUTRO", "ILEGIVEL", "PENDENTE", "CONFERIR"].includes(estado[i.id]?.status));
+      const faltam = obrig.filter((i) => !estado[i.id]?.status && !(i.condicional && estado[i.id]?.aplica === false));
+      const pct = Math.round((prontos.length / Math.max(1, obrig.length)) * 100);
+      const tudo = !problemas.length && !faltam.length;
+      const itens = s.itens.map((i) => {
+        const e = estado[i.id] || {}; const st = ST[e.status];
+        const naoAplica = i.condicional && e.aplica === false;
+        return `<div class="conf-item ${st ? "st-" + st[1] : ""} ${naoAplica ? "na" : ""}" data-i="${escapeHtml(i.id)}">
+          <div class="conf-ic">${naoAplica ? "–" : st ? st[0] : ""}</div>
+          <div class="conf-txt"><div class="gs-title">${escapeHtml(i.nome)}${i.condicional ? ' <span class="conf-tag">se for o caso</span>' : ""}</div>
+            <div class="gs-desc">${escapeHtml(i.desc || "")}${i.condicional ? `<br><i>${escapeHtml(i.condicional)}</i>` : ""}</div>
+            ${e.motivo ? `<div class="conf-motivo">${st ? `<b>${st[2]}:</b> ` : ""}${escapeHtml(e.motivo)}</div>` : ""}
+            <div class="gs-actions">
+              ${i.foto && IA && !naoAplica ? `<label class="btn btn-soft conf-foto">📷 ${e.status && e.status !== "TENHO" ? "Mandar outra foto" : "Conferir pela foto"}<input type="file" accept="image/*" capture="environment" hidden></label>` : ""}
+              ${!naoAplica && e.status !== "TENHO" && e.status !== "OK" ? '<button class="btn btn-soft" data-a="tenho">Já tenho</button>' : ""}
+              ${e.status ? '<button class="btn btn-soft" data-a="limpar">Desfazer</button>' : ""}
+              ${i.condicional ? `<button class="btn btn-soft" data-a="aplica">${naoAplica ? "É o meu caso" : "Não é o meu caso"}</button>` : ""}
+              ${i.form ? `<button class="btn btn-soft" data-a="form">📝 Preencher aqui</button>` : ""}
+            </div></div></div>`;
+      }).join("");
+      els.overlayBody.innerHTML = `<button class="guia-back">← Outros serviços</button>
+        <div class="conf-resumo ${tudo ? "pronto" : ""}"><div class="conf-pct"><span style="width:${pct}%"></span></div>
+          <b>${tudo ? "✅ Tudo certo para dar entrada!" : `${prontos.length} de ${obrig.length} documentos prontos`}</b>
+          <span>${tudo ? "Leve os originais. Confira o horário e o endereço no portal oficial." : [problemas.length ? `${problemas.length} com problema` : "", faltam.length ? `${faltam.length} ainda não conferido(s)` : ""].filter(Boolean).join(" · ")}</span></div>
+        <p class="doc-intro">${escapeHtml(s.resumo || "")} ${IA ? "As fotos servem só para a conferência e não ficam guardadas." : ""}</p>
+        <div class="guia-steps">${itens}</div>
+        <div class="preview-actions"><button class="btn btn-primary" id="conf-print">🖨️ Imprimir checklist</button>${TENANT.portalUrl ? `<a class="btn btn-soft" href="${escapeHtml(TENANT.portalUrl)}" target="_blank" rel="noopener">↗ Portal oficial</a>` : ""}</div>
+        <p class="doc-intro" style="font-size:12px">A lista é uma orientação com base nas regras gerais. O ${escapeHtml(TENANT.sigla || "DETRAN")} pode pedir algo a mais no seu caso.</p>`;
+      els.overlayBody.querySelector(".guia-back").onclick = abrirServicos;
+      els.overlayBody.querySelectorAll(".conf-item").forEach((el) => {
+        const item = s.itens.find((x) => x.id === el.getAttribute("data-i"));
+        const set = (v) => { estado[item.id] = v; guardar(id, estado); render(); };
+        el.querySelectorAll("[data-a]").forEach((b) => (b.onclick = () => {
+          const a = b.getAttribute("data-a");
+          if (a === "tenho") set({ status: "TENHO", motivo: "" });
+          else if (a === "limpar") set({});
+          else if (a === "aplica") set(estado[item.id]?.aplica === false ? {} : { aplica: false });
+          else if (a === "form") openForm(item.form, false);
+        }));
+        const inp = el.querySelector('input[type="file"]');
+        if (inp) inp.onchange = async () => {
+          const f = inp.files && inp.files[0]; if (!f) return;
+          el.querySelector(".conf-ic").innerHTML = '<span class="conf-spin"></span>';
+          const lbl = el.querySelector(".conf-foto"); if (lbl) lbl.firstChild.textContent = "⏳ Conferindo… ";
+          try {
+            const imagem = await reduzir(f);
+            const r = await fetch(API("/conferencia/analisar"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ servico: s.id, item: item.id, imagem }) });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(d.error || "Não consegui conferir agora.");
+            set({ status: d.status, motivo: d.motivo });
+          } catch (e) { set({ ...(estado[item.id] || {}), motivo: e.message }); }
+        };
+      });
+      document.getElementById("conf-print").onclick = () => imprimir(s, estado);
+    };
+    render();
+  }
+
+  function reduzir(file) {
+    return new Promise((resolve, reject) => {
+      const img = new Image(); const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const MAX = 1600; let w = img.width, h = img.height;
+        if (w > MAX || h > MAX) { const k = Math.min(MAX / w, MAX / h); w = Math.round(w * k); h = Math.round(h * k); }
+        const c = document.createElement("canvas"); c.width = w; c.height = h;
+        c.getContext("2d").drawImage(img, 0, 0, w, h);
+        resolve(c.toDataURL("image/jpeg", 0.85));
+      };
+      img.onerror = () => reject(new Error("Não consegui abrir essa imagem.")); img.src = url;
+    });
+  }
+
+  function imprimir(s, estado) {
+    let holder = document.getElementById("print-holder"); if (holder) holder.remove();
+    holder = document.createElement("div"); holder.id = "print-holder";
+    const linhas = s.itens.map((i) => { const e = estado[i.id] || {}; const na = i.condicional && e.aplica === false; const st = ST[e.status];
+      return `<tr><td style="padding:6px;border:1px solid #999;width:28px;text-align:center">${na ? "–" : st ? st[0] : "☐"}</td><td style="padding:6px;border:1px solid #999"><b>${escapeHtml(i.nome)}</b>${na ? " (não se aplica)" : ""}<br><small>${escapeHtml(i.desc || "")}${e.motivo ? `<br><i>${escapeHtml(e.motivo)}</i>` : ""}</small></td></tr>`; }).join("");
+    holder.innerHTML = `<div style="font-family:Arial,sans-serif;font-size:13px">${LOGO_SVG}<h2 style="margin:6px 0">${escapeHtml(TENANT.sigla || "DETRAN")} — Checklist de documentos</h2><h3 style="margin:0 0 10px;font-weight:normal">${escapeHtml(s.titulo)}</h3><table style="border-collapse:collapse;width:100%">${linhas}</table><p style="font-size:11px;margin-top:12px">Gerado em ${new Date().toLocaleDateString("pt-BR")} pelo ${escapeHtml(TENANT.assistente || "assistente virtual")}. Orientação geral: confirme no portal oficial ${escapeHtml(TENANT.portalUrl || "")}.</p></div>`;
+    document.body.appendChild(holder); document.body.classList.add("is-printing");
+    const cleanup = () => { holder.remove(); document.body.classList.remove("is-printing"); window.removeEventListener("afterprint", cleanup); };
+    window.addEventListener("afterprint", cleanup);
+    setTimeout(() => window.print(), 60); setTimeout(cleanup, 4000);
+  }
 })();

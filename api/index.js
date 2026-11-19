@@ -31,6 +31,7 @@ import { registrarWhatsApp } from "../whatsapp.js";
 import { registrarAdmin } from "../lib/admin.js";
 import { registrarAtendimento } from "../lib/atendimento.js";
 import { registrarGestao } from "../lib/gestao.js";
+import { registrarConferencia } from "../lib/conferencia.js";
 import { chaveNaUrl, liberadoDemo, gravarCookieDemo, paginaRestrita } from "../lib/demo.js";
 import { cssDoTema, marcaProvisoriaSvg } from "../lib/tema.js";
 
@@ -212,8 +213,10 @@ app.post(`${T}/defesa`, comTenant, async (req, res) => {
   if (!llmConfigurado()) return res.status(500).json({ error: SEM_CHAVE });
   if (rateLimited(`defesa:${req.tenant.slug}:${ipDe(req)}`, 6)) return res.status(429).json({ error: "Aguarde um instante e tente de novo." });
   const hist = limparHistorico(req.body?.messages);
-  if (!hist.length || hist[hist.length - 1].role !== "user") hist.push({ role: "user", content: "Redija o rascunho da defesa com base na conversa acima." });
-  try { res.json({ defesa: await chamarLLM({ system: promptDefesa(req.tenant), messages: hist, maxTokens: 2500 }) }); }
+  // tipo: defesa_previa | jari | cetran | auto (descobre pela conversa)
+  const tipo = ["defesa_previa", "jari", "cetran"].includes(req.body?.tipo) ? req.body.tipo : "auto";
+  if (!hist.length || hist[hist.length - 1].role !== "user") hist.push({ role: "user", content: "Redija o rascunho da peça com base na conversa acima." });
+  try { res.json({ defesa: await chamarLLM({ system: promptDefesa(req.tenant, tipo), messages: hist, maxTokens: 2800 }), tipo }); }
   catch (e) { console.error("[defesa]", e.message); res.status(502).json({ error: "Não foi possível gerar agora. Tente de novo." }); }
 });
 
@@ -302,6 +305,9 @@ registrarAtendimento(app);
 
 // Central de Gestão de cada DETRAN (chamados, fila, indicadores, equipe)
 registrarGestao(app, { limitar: (chave, max) => rateLimited(chave, max) });
+
+// Conferência de documentos antes do protocolo (checklist por serviço + foto)
+registrarConferencia(app, { limitar: (chave, max) => rateLimited(chave, max) });
 
 // ═════════════════════════ PÁGINAS ═════════════════════════
 const PAGINAS = { chat: "index.html", tutor: "tutor.html", balcao: "balcao.html", painel: "painel-custos.html", admin: "admin.html", atendimento: "atendimento.html", gestao: "gestao.html" };

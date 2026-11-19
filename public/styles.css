@@ -437,3 +437,26 @@ body.hc .foot, body.hc .dp-sub{ color:#222; }
 a { color: var(--ayio-teal-deep); }
 .bubble.bot a { color: var(--ayio-teal-deep); }
 :focus-visible { outline-color: var(--ayio-teal); }
+
+/* ── Conferência de documentos ── */
+.conf-resumo { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; border-radius: 14px; background: #FFF8E6; border: 1px solid #F1DFA8; margin: 10px 0 12px; }
+.conf-resumo.pronto { background: var(--t-claro, #E3F6F2); border-color: color-mix(in srgb, var(--ayio-teal) 40%, transparent); }
+.conf-resumo b { font-size: 15px; color: var(--ayio-navy); } .conf-resumo span { font-size: 12.5px; color: #5B6680; }
+.conf-pct { height: 8px; border-radius: 99px; background: rgba(0,0,0,.08); overflow: hidden; margin-bottom: 6px; }
+.conf-pct span { display: block; height: 100%; background: var(--ayio-teal); border-radius: 99px; transition: width .3s; }
+.conf-item { display: flex; gap: 12px; padding: 12px; border: 1px solid var(--paper-edge, #E3E8F0); border-radius: 12px; margin-bottom: 8px; background: #fff; }
+.conf-item.na { opacity: .55; }
+.conf-ic { flex: 0 0 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; border: 2px solid #CBD2DC; color: #8A93A8; }
+.conf-item.st-ok .conf-ic { background: var(--ayio-teal); border-color: var(--ayio-teal); color: #fff; }
+.conf-item.st-venc .conf-ic { background: #DC2626; border-color: #DC2626; color: #fff; }
+.conf-item.st-aviso .conf-ic { background: #F59E0B; border-color: #F59E0B; color: #fff; }
+.conf-item.st-venc { border-color: #F5B5B5; } .conf-item.st-aviso { border-color: #F3D38A; }
+.conf-txt { flex: 1; min-width: 0; }
+.conf-tag { font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 99px; background: #EEF1F6; color: #5B6680; vertical-align: middle; }
+.conf-motivo { margin-top: 6px; font-size: 13px; padding: 7px 10px; border-radius: 8px; background: #F7F8FB; }
+.conf-item.st-venc .conf-motivo { background: #FDECEC; color: #8A1C1C; } .conf-item.st-aviso .conf-motivo { background: #FFF7E0; color: #7A5300; }
+.conf-item .gs-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.conf-item .gs-actions .btn { font-size: 12.5px; padding: 6px 10px; cursor: pointer; }
+.conf-spin { width: 14px; height: 14px; border: 2px solid #CBD2DC; border-top-color: var(--ayio-teal); border-radius: 50%; animation: confgira .8s linear infinite; }
+@keyframes confgira { to { transform: rotate(360deg); } }
+.doc-card:disabled { opacity: .5; cursor: wait; }
