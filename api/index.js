@@ -30,6 +30,7 @@ import { registrarTroca, registrarEvento, estatisticas, classificarTema } from "
 import { registrarWhatsApp } from "../whatsapp.js";
 import { registrarAdmin } from "../lib/admin.js";
 import { registrarAtendimento } from "../lib/atendimento.js";
+import { registrarGestao } from "../lib/gestao.js";
 import { cssDoTema, marcaProvisoriaSvg } from "../lib/tema.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -297,8 +298,11 @@ registrarAdmin(app, { limitar: (chave, max) => rateLimited(chave, max) });
 // Atendimento humano (transbordo do bot) por DETRAN
 registrarAtendimento(app);
 
+// Central de Gestão de cada DETRAN (chamados, fila, indicadores, equipe)
+registrarGestao(app, { limitar: (chave, max) => rateLimited(chave, max) });
+
 // ═════════════════════════ PÁGINAS ═════════════════════════
-const PAGINAS = { chat: "index.html", tutor: "tutor.html", balcao: "balcao.html", painel: "painel-custos.html", admin: "admin.html", atendimento: "atendimento.html" };
+const PAGINAS = { chat: "index.html", tutor: "tutor.html", balcao: "balcao.html", painel: "painel-custos.html", admin: "admin.html", atendimento: "atendimento.html", gestao: "gestao.html" };
 const htmlCache = new Map();
 const lerHtml = (arq) => {
   if (!htmlCache.has(arq) || process.env.NODE_ENV === "development") htmlCache.set(arq, readFileSync(join(ROOT, "public", arq), "utf8"));
