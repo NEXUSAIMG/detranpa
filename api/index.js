@@ -175,11 +175,15 @@ app.post(`${T}/chat`, comTenant, async (req, res) => {
   const simP = simPorCookie(req, t) ? String(req.body?.simCidadao || "").replace(/[^a-z]/g, "").slice(0, 20) : "";
   const simCtx = simP ? await contextoParaChat(t, String(req.body?.simSessao || "").replace(/[^\w-]/g, "").slice(0, 40) || "anon", simP).catch(() => "") : "";
 
-  // 1) BotAyio (texto)
-  if (!simCtx && !temImagem(ultima) && botayio.url && botayio.secret) {
+  // 1) BotAyio (texto). Na simulação vai com o contexto do cidadão fictício e a
+  // marca `simulacao` (BotAyio não grava). Se o BotAyio não confirmar que aplicou
+  // o contexto (versão antiga), a resposta é descartada e segue a IA local.
+  if (!temImagem(ultima) && botayio.url && botayio.secret) {
     try {
       const restart = !hist.some((m) => m.role === "assistant");
-      const resp = await perguntarAoBot(botayio, `detran-${t.slug}-web-${sid}`, pergunta, restart);
+      const extra = simCtx ? { contexto: simCtx.trim().slice(0, 7900), simulacao: true } : {};
+      const resp = await perguntarAoBot(botayio, `detran-${t.slug}-web-${simCtx ? "sim-" : ""}${sid}`, pergunta, restart, extra);
+      if (simCtx && !resp.contexto_aplicado) throw new Error("BotAyio sem suporte a contexto (versão antiga)");
       const partes = [];
       for (const item of resp.contents || []) {
         const txt = textoComBotoes(item);
@@ -188,9 +192,11 @@ app.post(`${T}/chat`, comTenant, async (req, res) => {
       }
       const reply = partes.join("\n[[BREAK]]\n");
       const transbordo = Boolean(resp.handed_off);
-      registrarTroca({ tenantId: t.id, canal: "WEB", contato: sid, pergunta, respostas: partes, categoria: resp.categoria, transbordo });
-      registrarEvento({ tenantId: t.id, tipo: "PERGUNTA", canal: "WEB", tema: resp.categoria || tema, resolvido: true, transbordo });
-      return res.json({ reply: reply || "Não consegui gerar uma resposta. Pode reformular a pergunta?", origem: "botayio" });
+      if (!simCtx) { // simulação não entra nas conversas nem nas estatísticas do DETRAN
+        registrarTroca({ tenantId: t.id, canal: "WEB", contato: sid, pergunta, respostas: partes, categoria: resp.categoria, transbordo });
+        registrarEvento({ tenantId: t.id, tipo: "PERGUNTA", canal: "WEB", tema: resp.categoria || tema, resolvido: true, transbordo });
+      }
+      return res.json({ reply: reply || "Não consegui gerar uma resposta. Pode reformular a pergunta?", origem: simCtx ? "botayio-sim" : "botayio" });
     } catch (err) {
       console.error(`[BotAyio:${t.slug}] chat web:`, err.message);
       if (!llmConfigurado()) {
@@ -207,8 +213,10 @@ app.post(`${T}/chat`, comTenant, async (req, res) => {
     let texto = await chamarLLM({ system: promptCidadao(t, await formsDoTenant(t)) + simCtx, messages: hist, maxTokens: MAX_TOKENS });
     let semBase = false;
     if (texto.includes("[[SEMBASE]]")) { semBase = true; texto = texto.replace(/\[\[SEMBASE\]\]/g, "").trim(); }
-    registrarTroca({ tenantId: t.id, canal: "WEB", contato: sid, pergunta, respostas: [texto] });
-    registrarEvento({ tenantId: t.id, tipo: "PERGUNTA", canal: "WEB", tema, resolvido: !semBase });
+    if (!simCtx) {
+      registrarTroca({ tenantId: t.id, canal: "WEB", contato: sid, pergunta, respostas: [texto] });
+      registrarEvento({ tenantId: t.id, tipo: "PERGUNTA", canal: "WEB", tema, resolvido: !semBase });
+    }
     res.json({ reply: texto || "Não consegui gerar uma resposta. Pode reformular a pergunta?", origem: "local" });
   } catch (err) {
     console.error("[chat]", err.message);
