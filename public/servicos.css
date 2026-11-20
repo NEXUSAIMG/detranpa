@@ -160,3 +160,26 @@ label.campo select, label.campo input { padding: 9px 10px; border: 1px solid var
 .processando .spin { width: 34px; height: 34px; border-width: 4px; margin: 0 auto 12px; }
 .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: #111A33; color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 14px; z-index: 90; box-shadow: 0 8px 24px rgba(0,0,0,.2); max-width: calc(100% - 32px); }
 @media print { .sim-fita, .topo, .abas, .modal-x, .acoes, .demo-faixa { display: none !important; } .modal { position: static; background: none; } .app { display: none; } }
+
+/* Catálogo de serviços */
+.cat-busca input { width: 100%; padding: 12px 14px; border: 1px solid var(--linha); border-radius: 12px; font-size: 15px; background: #fff; }
+.cat-chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 12px 0 4px; }
+.chip { border: 1px solid var(--linha); background: #fff; border-radius: 99px; padding: 6px 12px; cursor: pointer; font-size: 13px; color: var(--ink-2); }
+.chip.on { background: var(--ayio-navy); color: #fff; border-color: var(--ayio-navy); }
+.cat-tit { margin: 20px 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); }
+.cat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
+.serv { text-align: left; cursor: pointer; background: var(--card); border: 1px solid var(--linha); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; transition: border-color .12s, box-shadow .12s; color: var(--ink); }
+.serv:hover { border-color: var(--ayio-teal); box-shadow: 0 6px 16px rgba(17,26,51,.07); }
+.serv b { font-size: 14px; } .serv > span { font-size: 12.5px; color: var(--ink-2); }
+.serv-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 4px; } .serv-tags .tag { font-style: normal; font-size: 11px; }
+
+/* Anexos, campo largo e "avançar o tempo" */
+label.campo.largo { grid-column: 1 / -1; }
+label.campo textarea { padding: 9px 10px; border: 1px solid var(--linha); border-radius: 9px; font: inherit; resize: vertical; }
+.anexos { border: 1px dashed #B9C3D3; border-radius: 12px; padding: 10px 12px; margin: 4px 0 12px; display: flex; flex-direction: column; gap: 6px; }
+.anexos small { color: var(--ink-3); font-size: 12px; }
+.anexo { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13.5px; }
+.anexo-nome { flex: 1 1 200px; } .anexo-arq { color: var(--ink-3); font-size: 12.5px; flex: 1 1 140px; overflow-wrap: anywhere; }
+.anexo label.btn { display: inline-block; }
+.tempo { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: space-between; background: repeating-linear-gradient(135deg, var(--sim-bg) 0 14px, #FBEFC0 14px 28px); border: 1px solid #EBD58A; color: var(--sim); border-radius: 12px; padding: 10px 14px; margin-bottom: 14px; font-size: 13.5px; }
+.tempo small { color: #7A5D12; }
