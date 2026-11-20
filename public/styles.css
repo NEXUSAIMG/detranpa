@@ -476,3 +476,7 @@ a { color: var(--ayio-teal-deep); }
 .lemb-tipos label:has(input:checked) { border-color: var(--ayio-teal); background: var(--t-claro, #E3F6F2); }
 .lemb-aceite { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; margin: 10px 0 6px; line-height: 1.4; }
 .lemb-aceite input { margin-top: 3px; }
+
+/* Atalho para o "Meu DETRAN" em simulação (só demonstração) */
+a.docs-cta.sim-cta { text-decoration: none; color: #fff; box-sizing: border-box; background: repeating-linear-gradient(135deg, #5C4400 0 14px, #6B5108 14px 28px); }
+a.docs-cta.sim-cta small { color: #FFE9A8; }

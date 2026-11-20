@@ -60,9 +60,10 @@
     mostrarStatus();
     montarFiltros();
     const h = (location.hash || "").slice(1);
-    irPara(["visao", "atendimento", "chamados", "cidadaos", "equipe", "config"].includes(h) ? h : "visao");
+    document.querySelectorAll(".so-demo").forEach((el) => el.classList.toggle("hidden", !T.demonstracao));
+    irPara(["visao", "atendimento", "chamados", "cidadaos", "equipe", "config"].concat(T.demonstracao ? ["unidades"] : []).includes(h) ? h : "visao");
     pulsar(); setInterval(pulsar, 5000);
-    setInterval(() => { if (document.hidden) return; if (S.sec === "atendimento") { carregarLista(); if (S.convId) abrirConversa(S.convId, true); } else if (S.sec === "visao") carregarVisao(); }, 8000);
+    setInterval(() => { if (document.hidden) return; if (S.sec === "atendimento") { carregarLista(); if (S.convId) abrirConversa(S.convId, true); } else if (S.sec === "visao") carregarVisao(); else if (S.sec === "unidades") carregarUnidades(); }, 8000);
     if ("Notification" in window && Notification.permission === "default") setTimeout(() => Notification.requestPermission().catch(() => {}), 3000);
   }
 
@@ -74,7 +75,7 @@
   };
 
   // ── Navegação ──
-  const TITULOS = { visao: "Visão geral", atendimento: "Atendimento", chamados: "Chamados", cidadaos: "Cidadãos", equipe: "Equipe", config: "Configurações" };
+  const TITULOS = { visao: "Visão geral", atendimento: "Atendimento", chamados: "Chamados", cidadaos: "Cidadãos", equipe: "Equipe", config: "Configurações", unidades: "Unidades e integrações (simulação)" };
   document.querySelectorAll(".nav[data-sec]").forEach((b) => (b.onclick = () => irPara(b.dataset.sec)));
   $("menu-mob").onclick = () => document.querySelector(".lado").classList.toggle("aberto");
   function irPara(sec) {
@@ -83,7 +84,32 @@
     document.querySelectorAll(".sec").forEach((s) => s.classList.toggle("hidden", s.id !== "sec-" + sec));
     $("titulo-sec").textContent = TITULOS[sec];
     document.querySelector(".lado").classList.remove("aberto");
-    ({ visao: carregarVisao, atendimento: carregarLista, chamados: carregarChamados, cidadaos: carregarCidadaos, equipe: carregarEquipe, config: carregarConfig })[sec]();
+    ({ visao: carregarVisao, atendimento: carregarLista, chamados: carregarChamados, cidadaos: carregarCidadaos, equipe: carregarEquipe, config: carregarConfig, unidades: carregarUnidades })[sec]();
+  }
+
+  // ── Unidades e integrações (simulação; só DETRAN em demonstração) ──
+  async function carregarUnidades() {
+    const [f, i] = await Promise.all([Sessao.api("/sim/filas"), Sessao.api("/sim/integracoes")]);
+    if (!f.ok || !i.ok) { $("uni-tab").innerHTML = `<div class="msg err">${esc((f.data || i.data).error || "Simulação indisponível.")}</div>`; return; }
+    const U = f.data.unidades, abertas = U.filter((u) => u.aberta);
+    const tot = (k) => U.reduce((s, u) => s + u[k], 0);
+    const pior = abertas.slice().sort((a, b) => b.esperaMin - a.esperaMin)[0];
+    const melhor = abertas.slice().sort((a, b) => a.esperaMin - b.esperaMin)[0];
+    $("uni-kpis").innerHTML = [
+      ["Aguardando agora", tot("aguardando"), `${abertas.length}/${U.length} unidades abertas`],
+      ["Guichês abertos", tot("guichesAbertos"), `de ${tot("guiches")} no total`],
+      ["Atendidos hoje", tot("atendidosHoje"), "todas as unidades"],
+      ["Maior espera", pior ? `${pior.esperaMin} min` : "—", pior ? pior.nome : "unidades fechadas"],
+      ["Menor espera", melhor ? `${melhor.esperaMin} min` : "—", melhor ? `${melhor.nome} — o bot sugere esta` : ""],
+    ].map(([t, v, s]) => `<div class="kpi"><small>${esc(t)}</small><b>${esc(v)}</b><span>${esc(s)}</span></div>`).join("");
+    const cor = { Tranquila: "#157A4C", Movimentada: "#A35A00", Lotada: "#B3261E", Fechada: "#8A93A6" };
+    $("uni-tab").innerHTML = `<div style="overflow-x:auto"><table class="tabela"><thead><tr><th>Unidade</th><th>Tipo</th><th>Status</th><th>Aguardando</th><th>Espera</th><th>Guichês</th><th>Atendidos hoje</th></tr></thead><tbody>${U.map((u) => `<tr>
+      <td><b>${esc(u.nome)}</b><br><small>${esc(u.cidade)}</small></td><td>${esc(u.tipo)}</td>
+      <td><span style="color:${cor[u.status]};font-weight:700">● ${u.status}</span></td><td>${u.aguardando}</td>
+      <td>${u.aberta ? u.esperaMin + " min" : "—"}</td><td>${u.guichesAbertos}/${u.guiches}</td><td>${u.atendidosHoje}</td></tr>`).join("")}</tbody></table></div>`;
+    $("uni-integ").innerHTML = `<div style="overflow-x:auto"><table class="tabela"><thead><tr><th>Sistema</th><th>Status</th><th>Latência</th><th>Chamadas hoje</th><th>Última sincronização</th></tr></thead><tbody>${i.data.itens.map((x) => `<tr>
+      <td><b>${esc(x.nome)}</b><br><small>${esc(x.desc)}</small></td><td><span style="color:${x.status === "Operacional" ? "#157A4C" : "#A35A00"};font-weight:700">● ${x.status}</span></td>
+      <td>${x.latenciaMs} ms</td><td>${x.chamadasHoje.toLocaleString("pt-BR")}</td><td>${fmtHora(x.ultimaSync)}</td></tr>`).join("")}</tbody></table></div>`;
   }
 
   // ── Pulso: contadores, alerta de fila, notificação ──

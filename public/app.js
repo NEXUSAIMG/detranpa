@@ -192,7 +192,7 @@ async function enviar(texto) {
   try {
     const resp = await fetch(API("/chat"), {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages: conversa, sessionId: SESSION_ID }),
+      body: JSON.stringify({ messages: conversa, sessionId: SESSION_ID, ...simAtual() }),
     });
     const data = await resp.json().catch(() => ({}));
     hideTyping();
@@ -986,6 +986,14 @@ function abrirDefesa(texto, tipo) {
     cta2.innerHTML = `<span class="docs-cta-icon">⚖️</span><span><strong>Defesa de multa</strong><small>Defesa prévia, recurso à JARI ou ao ${CONSELHO}.</small></span>`;
     cta2.onclick = escolherDefesa;
     cta.insertAdjacentElement("afterend", cta2);
+    // Demonstração: atalho para o "Meu DETRAN" simulado.
+    if (window.TENANT?.demonstracao) {
+      const cta3 = document.createElement("a");
+      cta3.className = "docs-cta sim-cta"; cta3.href = (window.TENANT_BASE || "") + "/servicos";
+      const s = simAtual();
+      cta3.innerHTML = `<span class="docs-cta-icon">🧪</span><span><strong>Meu DETRAN (simulação)</strong><small>${s.simCidadao ? "Cidadão fictício ativo — pergunte aqui sobre os débitos, a CNH e os agendamentos dele." : "Veja como ficam consultas, guias, agendamento e filas com dados fictícios."}</small></span><span class="docs-cta-arrow">→</span>`;
+      cta2.insertAdjacentElement("afterend", cta3);
+    }
   }
 
   async function carregar() {
@@ -1202,3 +1210,12 @@ function abrirDefesa(texto, tipo) {
   });
   if (els.overlayBody) obs.observe(els.overlayBody, { childList: true, subtree: true });
 })();
+
+// Simulação (só demonstração): cidadão fictício escolhido em /<uf>/servicos.
+function simAtual() {
+  if (!window.TENANT?.demonstracao) return {};
+  try {
+    const s = JSON.parse(localStorage.getItem("detran_sim_" + window.TENANT.slug) || "{}");
+    return s.cidadao ? { simCidadao: s.cidadao, simSessao: s.sessao } : {};
+  } catch (_) { return {}; }
+}

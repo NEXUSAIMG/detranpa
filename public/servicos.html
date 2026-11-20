@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Meu DETRAN (simulação) — {{SIGLA}}</title>
+  <link rel="icon" href="{{MARCA}}" />
+  <link rel="stylesheet" href="/servicos.css" />
+</head>
+<body>
+  <div class="sim-fita" role="note"><b>SIMULAÇÃO</b> · dados fictícios · nenhuma consulta, guia, pagamento ou agendamento aqui tem valor ou chega ao {{SIGLA}}</div>
+
+  <header class="topo">
+    <div class="in">
+      <a class="marca" href="/{{SLUG}}"><img src="{{MARCA}}" alt="" /><span><b>Meu DETRAN</b><small>{{SIGLA}} · ambiente de simulação</small></span></a>
+      <div class="topo-dir">
+        <div id="quem" class="quem hidden"></div>
+        <a class="btn-topo" href="/{{SLUG}}">💬 Assistente</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Escolha do cidadão fictício -->
+  <section id="escolha" class="escolha hidden">
+    <div class="escolha-in">
+      <h1>Entre como um cidadão fictício</h1>
+      <p class="sub">Esta tela mostra como ficariam os serviços com as integrações oficiais (SENATRAN, <span data-o="fazendaSigla"></span>, vistoria, prefeituras e agenda das unidades). Escolha um perfil — nenhum CPF ou placa real é aceito.</p>
+      <div id="personas" class="personas"></div>
+      <p class="nota">Tudo o que você fizer aqui (pagar, protocolar, agendar) fica só neste navegador por 7 dias e pode ser zerado a qualquer momento.</p>
+    </div>
+  </section>
+
+  <!-- Painel do cidadão -->
+  <div id="app" class="app hidden">
+    <nav id="abas" class="abas" aria-label="Serviços">
+      <button data-aba="inicio" class="on">🏠 <span>Início</span></button>
+      <button data-aba="veiculo">🚗 <span>Veículo</span></button>
+      <button data-aba="cnh">🪪 <span>CNH</span></button>
+      <button data-aba="debitos">💳 <span>Débitos e guias</span><i id="badge-deb" class="badge hidden"></i></button>
+      <button data-aba="agenda">📅 <span>Agendamentos</span></button>
+      <button data-aba="processos">📂 <span>Processos</span></button>
+      <button data-aba="filas">⏱️ <span>Unidades e filas</span></button>
+      <button data-aba="integracoes">🔌 <span>Integrações</span></button>
+    </nav>
+    <main id="conteudo" class="conteudo" aria-live="polite"></main>
+  </div>
+
+  <!-- Modal (guia, comprovante, remarcar) -->
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-card"><button class="modal-x" aria-label="Fechar">×</button><div id="modal-corpo"></div></div>
+  </div>
+
+  <script src="/servicos.js"></script>
+</body>
+</html>

@@ -34,6 +34,7 @@ import { registrarGestao } from "../lib/gestao.js";
 import { registrarConferencia } from "../lib/conferencia.js";
 import { registrarPrivacidade } from "../lib/privacidade.js";
 import { registrarLembretes } from "../lib/lembretes.js";
+import { registrarSimulacao, contextoParaChat } from "../lib/simulacao.js";
 import { configDe } from "../lib/gestao-config.js";
 import { chaveNaUrl, liberadoDemo, gravarCookieDemo, paginaRestrita } from "../lib/demo.js";
 import { cssDoTema, marcaProvisoriaSvg } from "../lib/tema.js";
@@ -169,9 +170,12 @@ app.post(`${T}/chat`, comTenant, async (req, res) => {
     || createHash("sha256").update(ip).digest("hex").slice(0, 16);
   const tema = classificarTema(pergunta);
   const { botayio } = integracoes(t);
+  // Simulação (só demonstração): cidadão fictício escolhido em "Meu DETRAN" -> responde com os dados dele.
+  const simP = t.demonstracao ? String(req.body?.simCidadao || "").replace(/[^a-z]/g, "").slice(0, 20) : "";
+  const simCtx = simP ? await contextoParaChat(t, String(req.body?.simSessao || "").replace(/[^\w-]/g, "").slice(0, 40) || "anon", simP).catch(() => "") : "";
 
   // 1) BotAyio (texto)
-  if (!temImagem(ultima) && botayio.url && botayio.secret) {
+  if (!simCtx && !temImagem(ultima) && botayio.url && botayio.secret) {
     try {
       const restart = !hist.some((m) => m.role === "assistant");
       const resp = await perguntarAoBot(botayio, `detran-${t.slug}-web-${sid}`, pergunta, restart);
@@ -199,7 +203,7 @@ app.post(`${T}/chat`, comTenant, async (req, res) => {
   // 2) IA local (fotos, ou plano B)
   if (!llmConfigurado()) return res.status(500).json({ error: SEM_CHAVE });
   try {
-    let texto = await chamarLLM({ system: promptCidadao(t, await formsDoTenant(t)), messages: hist, maxTokens: MAX_TOKENS });
+    let texto = await chamarLLM({ system: promptCidadao(t, await formsDoTenant(t)) + simCtx, messages: hist, maxTokens: MAX_TOKENS });
     let semBase = false;
     if (texto.includes("[[SEMBASE]]")) { semBase = true; texto = texto.replace(/\[\[SEMBASE\]\]/g, "").trim(); }
     registrarTroca({ tenantId: t.id, canal: "WEB", contato: sid, pergunta, respostas: [texto] });
@@ -318,8 +322,11 @@ registrarPrivacidade(app, { limitar: (chave, max) => rateLimited(chave, max) });
 // Lembretes pelo WhatsApp (CNH, defesa, licenciamento) + rotina diária (cron)
 registrarLembretes(app, { limitar: (chave, max) => rateLimited(chave, max) });
 
+// "Meu DETRAN" em modo simulação (só DETRAN em demonstração)
+registrarSimulacao(app);
+
 // ═════════════════════════ PÁGINAS ═════════════════════════
-const PAGINAS = { chat: "index.html", tutor: "tutor.html", balcao: "balcao.html", painel: "painel-custos.html", admin: "admin.html", atendimento: "atendimento.html", gestao: "gestao.html", privacidade: "privacidade.html" };
+const PAGINAS = { chat: "index.html", tutor: "tutor.html", balcao: "balcao.html", painel: "painel-custos.html", admin: "admin.html", atendimento: "atendimento.html", gestao: "gestao.html", privacidade: "privacidade.html", servicos: "servicos.html" };
 const htmlCache = new Map();
 const lerHtml = (arq) => {
   if (!htmlCache.has(arq) || process.env.NODE_ENV === "development") htmlCache.set(arq, readFileSync(join(ROOT, "public", arq), "utf8"));
@@ -405,6 +412,12 @@ app.get("/:slug/admin", (req, res) => pagina(req, res, "admin"));
 app.get("/:slug/atendimento", (req, res) => pagina(req, res, "atendimento"));
 app.get("/:slug/gestao", (req, res) => pagina(req, res, "gestao"));
 app.get("/:slug/privacidade", (req, res) => pagina(req, res, "privacidade"));
+app.get("/:slug/servicos", async (req, res) => {
+  // Só existe em ambiente de demonstração.
+  const t = SLUG_RE.test(String(req.params.slug || "").toLowerCase()) ? await buscarTenant(String(req.params.slug).toLowerCase()).catch(() => null) : null;
+  if (!t || !t.demonstracao) return res.status(404).send("Página não encontrada.");
+  pagina(req, res, "servicos");
+});
 app.get("/:slug/tutor", (req, res) => pagina(req, res, "tutor"));
 app.get("/:slug/balcao", (req, res) => pagina(req, res, "balcao"));
 app.get("/:slug/painel", (req, res) => pagina(req, res, "painel"));

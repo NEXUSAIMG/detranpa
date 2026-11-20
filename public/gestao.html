@@ -34,6 +34,7 @@
       <button class="nav" data-sec="chamados"><span class="ic">📋</span><span>Chamados</span><b class="badge warn hidden" id="bdg-vencidos">0</b></button>
       <button class="nav" data-sec="cidadaos"><span class="ic">👤</span><span>Cidadãos</span></button>
       <button class="nav" data-sec="equipe"><span class="ic">👥</span><span>Equipe</span></button>
+      <button class="nav so-demo hidden" data-sec="unidades"><span class="ic">⏱️</span><span>Unidades e integrações</span><b class="badge" style="background:#A35A00">SIM</b></button>
       <button class="nav so-gestor hidden" data-sec="config"><span class="ic">⚙</span><span>Configurações</span></button>
       <a class="nav so-gestor hidden" id="ir-tutoria" href="#"><span class="ic">🎓</span><span>Tutoria do bot</span></a>
       <div class="lado-pe">
@@ -79,6 +80,16 @@
           <div class="cartao"><h4>Satisfação</h4><div id="graf-notas"></div></div>
           <div class="cartao largo"><h4>Equipe no período</h4><div id="tab-ranking"></div></div>
         </div>
+      </section>
+
+      <!-- Unidades e integrações (só demonstração: dados simulados) -->
+      <section id="sec-unidades" class="sec hidden">
+        <div class="msg" style="background:#FFF4CC;color:#5C4400;border:1px solid #EBD58A;margin-bottom:14px"><b>Simulação.</b> Como ficará este painel com o sistema de senhas das unidades e as integrações oficiais conectados. Números fictícios.</div>
+        <div class="linha-tit"><h3>Filas nas unidades</h3><span class="ao-vivo">ao vivo</span></div>
+        <div class="kpis" id="uni-kpis"></div>
+        <div class="cartao" style="margin-bottom:14px"><div id="uni-tab"></div></div>
+        <div class="linha-tit"><h3>Integrações</h3></div>
+        <div class="cartao"><div id="uni-integ"></div></div>
       </section>
 
       <!-- Atendimento -->
