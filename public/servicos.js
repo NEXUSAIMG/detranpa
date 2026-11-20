@@ -113,6 +113,7 @@
     const diasCnh = Math.round((new Date(D.cnh.validade) - Date.now()) / 864e5);
     if (D.cnh.situacao === "Permissão para Dirigir") al.push(["al", `Sua <b>Permissão para Dirigir</b> vence em ${diasCnh} dias. Peça a troca pela CNH definitiva (gratuita).`, "serv:cnh-troca", "Trocar agora"]);
     else if (D.cnh.situacao !== "Regular") al.push(["er", `CNH <b>${esc(D.cnh.situacao.toLowerCase())}</b>: ${esc(D.cnh.observacoes)}.`, "cnh", "Ver CNH"]);
+    if (D.apreensao) al.push(["er", `Seu veículo está no <b>parque de retenção</b> há ${D.apreensao.dias} dia(s) — as diárias continuam correndo.`, "serv:vei-apreendido", "Liberar"]);
     if (D.infracoes.some((i) => i.indicavel)) al.push(["al", "Há infração em que você pode <b>indicar o real condutor</b> e não receber os pontos.", "serv:cnh-condutor", "Indicar condutor"]);
     if (D.debitos.some((d) => d.tipo === "DIVIDA_ATIVA" && d.situacao !== "PAGO")) al.push(["er", "Você tem débito inscrito em <b>dívida ativa</b>.", "serv:mul-divida", "Ver dívida"]);
     const taxaPend = D.protocolos.filter((p) => p.taxaId && !p.taxaPaga);
@@ -258,8 +259,10 @@
         <div><dt>RENAVAM</dt><dd>${esc(v.renavam)}</dd></div><div><dt>Município</dt><dd>${esc(v.municipio)}</dd></div>
         <div><dt>Situação</dt><dd>${esc(v.situacao)}</dd></div><div><dt>Licenciado até</dt><dd>${esc(v.licenciadoAte)}</dd></div>
         <div><dt>Proprietário</dt><dd>${esc(D.cidadao.nome)}</dd></div><div><dt>CRLV-e</dt><dd>${String(v.licenciadoAte) === String(new Date().getFullYear()) ? "Disponível na CDT" : "Bloqueado até quitar o licenciamento"}</dd></div>
-        ${v.endereco ? `<div><dt>Endereço</dt><dd>${esc(v.endereco)}</dd></div>` : ""}
+        ${v.endereco ? `<div><dt>Endereço</dt><dd>${esc(v.endereco)}</dd></div>` : ""}${v.categoria ? `<div><dt>Categoria</dt><dd>${esc(v.categoria)}</dd></div>` : ""}
       </dl></div>
+      ${D.apreensao ? `<div class="card"><h3>Parque de retenção</h3><div class="alerta er">⛔ <span><b>${esc(D.apreensao.local)}</b> desde ${dBR(D.apreensao.desde)} (${D.apreensao.dias} dia(s))<br><small>${esc(D.apreensao.motivo)} · remoção ${brl(D.apreensao.remocao)} + diária ${brl(D.apreensao.diaria)}</small></span><button class="btn peq" data-serv="vei-apreendido">Liberar</button></div></div>` : ""}
+      ${v.intencao ? `<div class="card"><h3>Intenção de venda</h3><div class="alerta al">📝 <span>Intenção de venda ativa para <b>${esc(v.intencao.comprador)}</b> desde ${dhBR(v.intencao.desde)} — ATPV-e aguardando assinatura no app CDT.</span><button class="btn peq sec" data-serv="vei-intencao-cancelar">Cancelar</button></div></div>` : ""}
       ${v.avisos?.length ? `<div class="card"><h3>Atualizações</h3><div class="alertas">${v.avisos.map((a) => `<div class="alerta ok">✅ <span>${esc(a)}</span></div>`).join("")}</div></div>` : ""}
       <div class="card"><h3>Restrições e avisos</h3>${v.restricoes.length || v.recall.length ? `<div class="alertas">${[...v.restricoes.map((r) => ["al", r]), ...v.recall.map((r) => ["er", r])].map(([c, r]) => `<div class="alerta ${c}">⚠️ <span>${esc(r)}</span>${/registrado em/i.test(r) ? `<button class="btn peq" data-serv="vei-transf-uf">Transferir</button>` : /Alienação/.test(r) ? `<button class="btn peq sec" data-serv="vei-gravame">Ver gravame</button>` : ""}</div>`).join("")}</div>` : `<div class="alerta ok">✅ Nenhuma restrição administrativa, judicial ou de recall.</div>`}</div>
       <div class="card"><h3>Serviços deste veículo</h3><div class="acoes">

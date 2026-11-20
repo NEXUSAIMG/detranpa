@@ -99,6 +99,9 @@ async function abrirTenant(slug) {
   $("demo-link").classList.toggle("hidden", !r.data.linkDemo);
   $("demo-url").value = r.data.linkDemo ? location.origin + r.data.linkDemo : "";
   $("demo-copiar").onclick = () => { $("demo-url").select(); navigator.clipboard?.writeText($("demo-url").value); $("demo-copiar").textContent = "Copiado ✓"; setTimeout(() => ($("demo-copiar").textContent = "Copiar"), 1500); };
+  $("sim-link").classList.toggle("hidden", !r.data.linkSim);
+  $("sim-url").value = r.data.linkSim ? location.origin + r.data.linkSim : "";
+  $("sim-copiar").onclick = () => { $("sim-url").select(); navigator.clipboard?.writeText($("sim-url").value); $("sim-copiar").textContent = "Copiado ✓"; setTimeout(() => ($("sim-copiar").textContent = "Copiar"), 1500); };
   CAMPOS.forEach((c) => ($(`t-${c}`).value = t[c] || ""));
   $("t-conteudo").value = JSON.stringify(t.conteudo || {}, null, 2);
   $("t-ativo-wrap").classList.toggle("hidden", !souSuper); $("t-ativo").checked = t.ativo;

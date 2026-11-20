@@ -987,7 +987,7 @@ function abrirDefesa(texto, tipo) {
     cta2.onclick = escolherDefesa;
     cta.insertAdjacentElement("afterend", cta2);
     // Demonstração: atalho para o "Meu DETRAN" simulado.
-    if (window.TENANT?.demonstracao) {
+    if ((window.TENANT?.demonstracao || window.SIM_LIBERADO)) {
       const cta3 = document.createElement("a");
       cta3.className = "docs-cta sim-cta"; cta3.href = (window.TENANT_BASE || "") + "/servicos";
       const s = simAtual();
@@ -1213,7 +1213,7 @@ function abrirDefesa(texto, tipo) {
 
 // Simulação (só demonstração): cidadão fictício escolhido em /<uf>/servicos.
 function simAtual() {
-  if (!window.TENANT?.demonstracao) return {};
+  if (!(window.TENANT?.demonstracao || window.SIM_LIBERADO)) return {};
   try {
     const s = JSON.parse(localStorage.getItem("detran_sim_" + window.TENANT.slug) || "{}");
     return s.cidadao ? { simCidadao: s.cidadao, simSessao: s.sessao } : {};

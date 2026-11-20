@@ -37,7 +37,7 @@ import { registrarLembretes } from "../lib/lembretes.js";
 import { registrarSimulacao, contextoParaChat } from "../lib/simulacao.js";
 import { registrarCatalogoSim } from "../lib/simulacao-servicos.js";
 import { configDe } from "../lib/gestao-config.js";
-import { chaveNaUrl, liberadoDemo, gravarCookieDemo, paginaRestrita } from "../lib/demo.js";
+import { chaveNaUrl, liberadoDemo, gravarCookieDemo, paginaRestrita, chaveSimNaUrl, gravarCookieSim, simPorCookie } from "../lib/demo.js";
 import { cssDoTema, marcaProvisoriaSvg } from "../lib/tema.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -172,7 +172,7 @@ app.post(`${T}/chat`, comTenant, async (req, res) => {
   const tema = classificarTema(pergunta);
   const { botayio } = integracoes(t);
   // Simulação (só demonstração): cidadão fictício escolhido em "Meu DETRAN" -> responde com os dados dele.
-  const simP = t.demonstracao ? String(req.body?.simCidadao || "").replace(/[^a-z]/g, "").slice(0, 20) : "";
+  const simP = simPorCookie(req, t) ? String(req.body?.simCidadao || "").replace(/[^a-z]/g, "").slice(0, 20) : "";
   const simCtx = simP ? await contextoParaChat(t, String(req.body?.simSessao || "").replace(/[^\w-]/g, "").slice(0, 40) || "anon", simP).catch(() => "") : "";
 
   // 1) BotAyio (texto)
@@ -338,7 +338,7 @@ const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").
 
 const urlSegura = (u) => (/^https?:\/\//i.test(String(u || "")) ? String(u) : "#");
 
-function renderPagina(arq, t) {
+function renderPagina(arq, t, sim = false) {
   const cfg = configPublica(t);
   const c = cfg.conteudo || {};
   const json = JSON.stringify(cfg).replace(/</g, "\\u003c");
@@ -359,7 +359,7 @@ function renderPagina(arq, t) {
   let html = lerHtml(arq)
     .replace(/\{\{\{CANAIS\}\}\}/g, canais)
     .replace(/\{\{([A-Z]+)\}\}/g, (m, k) => (k in vars ? esc(vars[k]) : m));
-  const boot = `<script>window.TENANT=${json};window.API_BASE="/api/t/${t.slug}";window.TENANT_BASE="/${t.slug}";</script>`;
+  const boot = `<script>window.TENANT=${json};window.API_BASE="/api/t/${t.slug}";window.TENANT_BASE="/${t.slug}";${sim ? "window.SIM_LIBERADO=true;" : ""}</script>`;
   // Demonstração: fora do Google e com faixa avisando que não é canal oficial.
   const demoHead = t.demonstracao
     ? `<meta name="robots" content="noindex, nofollow" /><style>.demo-faixa{position:sticky;top:0;z-index:50;background:#FFF4CC;color:#5C4400;font:600 12.5px/1.35 system-ui,sans-serif;text-align:center;padding:7px 12px;border-bottom:1px solid #EBD58A}.demo-faixa a{color:#5C4400;text-decoration:underline}body.demo .app{height:calc(100dvh - 34px)}</style>`
@@ -390,7 +390,7 @@ async function pagina(req, res, qual) {
       }
       if (!liberadoDemo(req, t)) return res.status(403).set("Content-Type", "text/html; charset=utf-8").send(paginaRestrita(t));
     }
-    res.set("Content-Type", "text/html; charset=utf-8").send(renderPagina(PAGINAS[qual], t));
+    res.set("Content-Type", "text/html; charset=utf-8").send(renderPagina(PAGINAS[qual], t, simPorCookie(req, t)));
   } catch (err) { console.error("[pagina]", err); res.status(503).send("Serviço indisponível no momento."); }
 }
 
@@ -415,9 +415,19 @@ app.get("/:slug/atendimento", (req, res) => pagina(req, res, "atendimento"));
 app.get("/:slug/gestao", (req, res) => pagina(req, res, "gestao"));
 app.get("/:slug/privacidade", (req, res) => pagina(req, res, "privacidade"));
 app.get("/:slug/servicos", async (req, res) => {
-  // Só existe em ambiente de demonstração.
+  // Demonstração: abre com o link da demo. DETRAN cliente: só com o link privado da simulação (?sim=CHAVE -> cookie).
   const t = SLUG_RE.test(String(req.params.slug || "").toLowerCase()) ? await buscarTenant(String(req.params.slug).toLowerCase()).catch(() => null) : null;
-  if (!t || !t.demonstracao) return res.status(404).send("Página não encontrada.");
+  if (!t) return res.status(404).send("Página não encontrada.");
+  if (!t.demonstracao) {
+    res.set("X-Robots-Tag", "noindex, nofollow"); res.set("Cache-Control", "private, no-store");
+    if (chaveSimNaUrl(req, t)) {
+      gravarCookieSim(req, res, t);
+      const resto = new URLSearchParams(req.query); resto.delete("sim");
+      const q = resto.toString();
+      return res.redirect(302, req.path + (q ? `?${q}` : ""));
+    }
+    if (!simPorCookie(req, t)) return res.status(404).send("Página não encontrada.");
+  }
   pagina(req, res, "servicos");
 });
 app.get("/:slug/tutor", (req, res) => pagina(req, res, "tutor"));

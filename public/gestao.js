@@ -60,8 +60,8 @@
     mostrarStatus();
     montarFiltros();
     const h = (location.hash || "").slice(1);
-    document.querySelectorAll(".so-demo").forEach((el) => el.classList.toggle("hidden", !T.demonstracao));
-    irPara(["visao", "atendimento", "chamados", "cidadaos", "equipe", "config"].concat(T.demonstracao ? ["unidades"] : []).includes(h) ? h : "visao");
+    document.querySelectorAll(".so-demo").forEach((el) => el.classList.toggle("hidden", !(T.demonstracao || window.SIM_LIBERADO)));
+    irPara(["visao", "atendimento", "chamados", "cidadaos", "equipe", "config"].concat((T.demonstracao || window.SIM_LIBERADO) ? ["unidades"] : []).includes(h) ? h : "visao");
     pulsar(); setInterval(pulsar, 5000);
     setInterval(() => { if (document.hidden) return; if (S.sec === "atendimento") { carregarLista(); if (S.convId) abrirConversa(S.convId, true); } else if (S.sec === "visao") carregarVisao(); else if (S.sec === "unidades") carregarUnidades(); }, 8000);
     if ("Notification" in window && Notification.permission === "default") setTimeout(() => Notification.requestPermission().catch(() => {}), 3000);
