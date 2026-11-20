@@ -31,6 +31,7 @@ import { registrarWhatsApp } from "../whatsapp.js";
 import { registrarAdmin } from "../lib/admin.js";
 import { registrarAtendimento } from "../lib/atendimento.js";
 import { registrarGestao } from "../lib/gestao.js";
+import { registrarTutoriaGestao } from "../lib/tutoria-gestao.js";
 import { registrarConferencia } from "../lib/conferencia.js";
 import { registrarPrivacidade } from "../lib/privacidade.js";
 import { registrarLembretes } from "../lib/lembretes.js";
@@ -321,6 +322,7 @@ registrarAtendimento(app);
 
 // Central de Gestão de cada DETRAN (chamados, fila, indicadores, equipe)
 registrarGestao(app, { limitar: (chave, max) => rateLimited(chave, max) });
+registrarTutoriaGestao(app);
 
 // Conferência de documentos antes do protocolo (checklist por serviço + foto)
 registrarConferencia(app, { limitar: (chave, max) => rateLimited(chave, max) });

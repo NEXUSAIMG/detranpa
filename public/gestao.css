@@ -267,3 +267,33 @@ textarea.in { resize: vertical; }
   .eu-nome { display: none; }
   .tv-kpis { grid-template-columns: repeat(2, 1fr); } .tv-grade { grid-template-columns: 1fr; }
 }
+
+/* ── Tutoria do bot (Central de Gestão) ── */
+.tu-intro { margin: 0 0 12px; color: var(--tinta-2); font-size: 13.5px; }
+.tu-abas { padding: 0; margin-bottom: 12px; background: transparent; }
+.tu-abas b { background: #B3261E; color: #fff; border-radius: 999px; font-size: 11px; padding: 1px 7px; margin-left: 4px; }
+.tu-abas b:empty { display: none; }
+.tu-grade { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 14px; align-items: start; }
+@media (max-width: 900px) { .tu-grade { grid-template-columns: 1fr; } }
+#sec-tutoria .f { display: block; font-size: 12.5px; font-weight: 600; color: var(--tinta-2); margin: 12px 0 5px; }
+#sec-tutoria textarea.in { resize: vertical; line-height: 1.45; }
+.tu-linha { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 620px) { .tu-linha { grid-template-columns: 1fr; } }
+.tu-acoes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.tu-item { margin-bottom: 12px; }
+.tu-topo { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; color: var(--tinta-3); }
+.tu-q { font-size: 14px; margin-bottom: 6px; }
+.tu-resp { font-size: 13.5px; line-height: 1.5; background: #F6F8FB; border: 1px solid var(--borda); border-radius: 10px; padding: 10px 12px; margin: 6px 0; overflow-wrap: anywhere; }
+.tu-item details summary { cursor: pointer; font-size: 13px; color: var(--ayio-navy); font-weight: 600; margin: 4px 0; }
+.tu-tag { font-size: 11.5px; font-weight: 700; border-radius: 999px; padding: 2px 9px; background: #EEF1F6; color: var(--tinta-2); }
+.tu-tag.ok { background: #E3F4EA; color: #157A4C; }
+.tu-tag.warn { background: #FFF1D6; color: #8A5300; }
+.tu-tag.off { background: #EEF1F6; color: #6B7488; }
+.tu-conf { font-size: 11.5px; font-weight: 700; border-radius: 999px; padding: 2px 9px; }
+.tu-conf.ok { background: #E3F4EA; color: #157A4C; }
+.tu-conf.baixa { background: #FDECEC; color: #A61B1B; }
+.tu-form { border-top: 1px dashed var(--borda); margin-top: 10px; padding-top: 4px; }
+.tu-teste { margin-top: 12px; border-left: 3px solid var(--ayio-teal); padding: 4px 0 4px 12px; }
+.tu-teste small { color: var(--tinta-3); }
+.tu-hist { border-top: 1px solid var(--borda); padding: 8px 0; font-size: 13px; }
+.tu-busca { margin-bottom: 12px; }
