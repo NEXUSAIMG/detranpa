@@ -33,6 +33,7 @@ import { registrarAtendimento } from "../lib/atendimento.js";
 import { registrarGestao } from "../lib/gestao.js";
 import { registrarConferencia } from "../lib/conferencia.js";
 import { registrarPrivacidade } from "../lib/privacidade.js";
+import { registrarLembretes } from "../lib/lembretes.js";
 import { configDe } from "../lib/gestao-config.js";
 import { chaveNaUrl, liberadoDemo, gravarCookieDemo, paginaRestrita } from "../lib/demo.js";
 import { cssDoTema, marcaProvisoriaSvg } from "../lib/tema.js";
@@ -313,6 +314,9 @@ registrarConferencia(app, { limitar: (chave, max) => rateLimited(chave, max) });
 
 // LGPD: retenção, limpeza diária (cron), eliminação a pedido e aviso de privacidade
 registrarPrivacidade(app, { limitar: (chave, max) => rateLimited(chave, max) });
+
+// Lembretes pelo WhatsApp (CNH, defesa, licenciamento) + rotina diária (cron)
+registrarLembretes(app, { limitar: (chave, max) => rateLimited(chave, max) });
 
 // ═════════════════════════ PÁGINAS ═════════════════════════
 const PAGINAS = { chat: "index.html", tutor: "tutor.html", balcao: "balcao.html", painel: "painel-custos.html", admin: "admin.html", atendimento: "atendimento.html", gestao: "gestao.html", privacidade: "privacidade.html" };

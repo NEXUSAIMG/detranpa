@@ -466,3 +466,13 @@ a { color: var(--ayio-teal-deep); }
 .aviso-lgpd a { color: var(--ayio-teal-deep); font-weight: 600; }
 .aviso-lgpd button { margin-left: auto; border: 0; border-radius: 8px; padding: 4px 10px; font: 600 12px system-ui, sans-serif; background: var(--ayio-navy); color: #fff; cursor: pointer; }
 .disclaimer .link-priv { color: inherit; text-decoration: underline; }
+
+/* ── Lembretes no WhatsApp ── */
+.lemb-form { display: flex; flex-direction: column; gap: 6px; }
+.lemb-form input[type="date"], .lemb-form input[type="tel"], .lemb-form select { padding: 10px 12px; border: 1px solid #D3DCE6; border-radius: 10px; font: inherit; font-size: 15px; background: #fff; }
+.lemb-lbl { font-size: 13px; font-weight: 700; color: var(--ayio-navy); margin-top: 8px; }
+.lemb-tipos { display: flex; flex-direction: column; gap: 6px; }
+.lemb-tipos label { display: flex; gap: 8px; align-items: center; padding: 10px 12px; border: 1px solid #E3E8F0; border-radius: 10px; cursor: pointer; font-size: 14px; }
+.lemb-tipos label:has(input:checked) { border-color: var(--ayio-teal); background: var(--t-claro, #E3F6F2); }
+.lemb-aceite { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; margin: 10px 0 6px; line-height: 1.4; }
+.lemb-aceite input { margin-top: 3px; }

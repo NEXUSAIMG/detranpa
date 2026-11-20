@@ -175,3 +175,99 @@ function renderRecs(){
     return `<div class="bx-rec"><h5>${esc(r.servico || "Atendimento")}</h5><div class="m">${esc(meta)} — ${dt}</div>${r.resumo ? `<div class="r">${esc(r.resumo)}</div>` : ""}</div>`;
   }).join("") : '<p style="color:#5B6C64;font-size:13px">Nenhum atendimento encontrado.</p>';
 }
+
+/* ── Conferência de documentos (mesmo checklist do site, para o guichê) ── */
+(function () {
+  let SERV = [], IA = false, estado = {}, atual = null;
+  const STX = { OK: ["✓", "Conferido"], TENHO: ["✓", "Apresentado"], VENCIDO: ["!", "Vencido"], OUTRO: ["✗", "Documento errado"], ILEGIVEL: ["?", "Ilegível"], PENDENTE: ["!", "Pendente"], CONFERIR: ["?", "Conferir"] };
+  const ok = (s) => ["OK", "TENHO"].includes(s);
+  $("conf").onclick = abrir;
+  $("conf-x").onclick = () => $("conf-ov").classList.add("hidden");
+  $("conf-ov").addEventListener("click", (e) => { if (e.target === $("conf-ov")) $("conf-ov").classList.add("hidden"); });
+  $("conf-novo").onclick = () => { estado = {}; $("cl-fone").value = ""; $("cl-aceite").checked = false; $("cl-msg").textContent = ""; render(); };
+  $("conf-serv").onchange = () => { atual = SERV.find((s) => s.id === $("conf-serv").value); estado = {}; render(); };
+
+  async function abrir() {
+    $("conf-ov").classList.remove("hidden");
+    if (!SERV.length) {
+      const r = await api("/api/conferencia");
+      SERV = (r.ok && r.data.servicos) || []; IA = Boolean(r.ok && r.data.ia);
+      $("conf-serv").innerHTML = SERV.map((s) => `<option value="${esc(s.id)}">${s.icone || ""} ${esc(s.titulo)}</option>`).join("");
+      atual = SERV[0];
+    }
+    render();
+  }
+
+  function obrigatorios() { return atual ? atual.itens.filter((i) => !(i.condicional && estado[i.id]?.aplica === false)) : []; }
+  function render() {
+    if (!atual) return;
+    const obr = obrigatorios();
+    const pend = obr.filter((i) => !ok(estado[i.id]?.status));
+    $("conf-resumo").className = "bc-resumo" + (pend.length ? "" : " ok");
+    $("conf-resumo").innerHTML = pend.length ? `<b>${obr.length - pend.length} de ${obr.length}</b> conferidos · pendentes: ${pend.map((i) => esc(i.nome)).join(", ")}` : "<b>✅ Documentação completa: pode dar entrada.</b>";
+    $("conf-itens").innerHTML = atual.itens.map((i) => {
+      const e = estado[i.id] || {}; const na = i.condicional && e.aplica === false; const st = STX[e.status];
+      return `<div class="bc-item ${na ? "na" : ""}" data-i="${esc(i.id)}"><div class="bc-st ${esc(e.status || "")}">${na ? "–" : st ? st[0] : ""}</div>
+        <div class="bc-txt"><b>${esc(i.nome)}</b>${i.condicional ? " <small style='display:inline'>(se for o caso)</small>" : ""}<small>${esc(i.desc || "")}</small>
+        ${e.motivo ? `<div class="bc-mot">${st ? `<b>${st[1]}:</b> ` : ""}${esc(e.motivo)}</div>` : ""}
+        <div class="bc-acoes">
+          ${!na ? `<button data-a="tenho">✓ Apresentado</button><button data-a="falta">✗ Não trouxe</button>` : ""}
+          ${!na && i.foto && IA ? `<label>📷 Conferir foto<input type="file" accept="image/*" capture="environment" hidden></label>` : ""}
+          ${i.condicional ? `<button data-a="aplica">${na ? "Aplica-se" : "Não se aplica"}</button>` : ""}
+        </div></div></div>`;
+    }).join("");
+    $("conf-itens").querySelectorAll(".bc-item").forEach((el) => {
+      const item = atual.itens.find((x) => x.id === el.dataset.i);
+      const set = (v) => { estado[item.id] = v; render(); };
+      el.querySelectorAll("[data-a]").forEach((b) => (b.onclick = () => {
+        const a = b.dataset.a;
+        if (a === "tenho") set({ status: "TENHO" });
+        else if (a === "falta") set({ status: "PENDENTE", motivo: "Não apresentado." });
+        else if (a === "aplica") set(estado[item.id]?.aplica === false ? {} : { aplica: false });
+      }));
+      const inp = el.querySelector('input[type="file"]');
+      if (inp) inp.onchange = async () => {
+        const f = inp.files && inp.files[0]; if (!f) return;
+        el.querySelector(".bc-st").textContent = "…";
+        try {
+          const img = await comprimir(f);
+          const r = await api("/api/conferencia/analisar", { method: "POST", body: JSON.stringify({ servico: atual.id, item: item.id, imagem: img.dataUrl }) });
+          if (!r.ok) throw new Error(r.data.error || "Não consegui conferir.");
+          set({ status: r.data.status, motivo: r.data.motivo });
+        } catch (e) { set({ ...(estado[item.id] || {}), motivo: e.message }); }
+      };
+    });
+  }
+
+  function pendenciasTexto() {
+    return obrigatorios().filter((i) => !ok(estado[i.id]?.status)).map((i, n) => `${n + 1}. ${i.nome}${estado[i.id]?.motivo ? ` — ${estado[i.id].motivo}` : ` — ${i.desc || "apresentar"}`}`);
+  }
+  $("conf-termo").onclick = () => {
+    const T = window.TENANT || {};
+    const p = pendenciasTexto();
+    const hoje = new Date().toLocaleDateString("pt-BR");
+    const texto = [
+      `${String(T.governo || "").toUpperCase()} / ${String(T.nome || "").toUpperCase()} - ${T.sigla || ""}`, "", "TERMO DE EXIGÊNCIA", "",
+      `Serviço pretendido: ${atual.titulo}`, "Cidadão: ______________________________   CPF: ____________________", "Protocolo: ____________________", "",
+      p.length ? "Para prosseguir com o serviço, é necessário apresentar/corrigir:" : "A documentação apresentada está completa para dar entrada no serviço.",
+      ...p, "", "Prazo para cumprimento: ____________________", "",
+      `${T.cidadeSede || ""}, ${hoje}.`, "", "Atendente: ______________________________   Matrícula: __________",
+    ].join("\n");
+    $("conf-ov").classList.add("hidden"); // o termo abre por cima; a conferência continua guardada
+    abrirTermo(texto);
+  };
+  $("conf-reg").onclick = () => {
+    abrirReg();
+    $("reg-servico").value = atual.titulo;
+    const p = pendenciasTexto();
+    $("reg-resumo").value = p.length ? "Pendências:\n" + p.join("\n") : "Documentação completa conferida no balcão.";
+    $("conf-ov").classList.add("hidden");
+  };
+  $("cl-ok").onclick = async () => {
+    const tipo = $("cl-tipo").value, dt = $("cl-data").value;
+    const body = { tipo, telefone: $("cl-fone").value, aceite: $("cl-aceite").checked, ...(tipo === "DEFESA" ? { dataRecebimento: dt } : { data: dt }) };
+    if (!body.aceite) { $("cl-msg").textContent = "Confirme que o cidadão aceitou receber."; return; }
+    const r = await api("/api/lembretes", { method: "POST", body: JSON.stringify(body) });
+    $("cl-msg").textContent = r.ok ? "✓ Convite enviado. Peça para o cidadão responder SIM no WhatsApp." : "⚠️ " + (r.data.error || "Não foi possível.");
+  };
+})();

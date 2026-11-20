@@ -142,6 +142,8 @@
               </div>
               <h4>Chamados</h4>
               <div id="f-chamados"></div>
+              <h4>Lembretes</h4>
+              <div id="f-lembretes"></div>
               <button class="btn perigo mini so-gestor hidden" id="f-apagar" style="margin-top:16px">🗑 Apagar dados deste cidadão (LGPD)</button>
             </div>
           </aside>
@@ -198,6 +200,9 @@
             <label class="f">Fuso horário</label><select id="cf-fuso" class="sel"></select>
             <h4>Fila</h4>
             <div class="linha2"><div><label class="f">Amarelo após (min)</label><input id="cf-alerta" class="in" type="number" min="1" /></div><div><label class="f">Vermelho após (min)</label><input id="cf-critica" class="in" type="number" min="2" /></div></div>
+            <h4>🔔 Calendário de licenciamento</h4>
+            <p class="sub" style="margin:0 0 6px">Vencimento por final de placa (dd/mm). Com ele preenchido, o cidadão pede o lembrete só com o final da placa.</p>
+            <div class="sla" id="cf-cal" style="grid-template-columns:repeat(5,1fr)"></div>
           </div>
         </div>
         <div class="cartao" style="margin-top:14px">

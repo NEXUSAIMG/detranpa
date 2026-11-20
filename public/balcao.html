@@ -81,6 +81,7 @@
       <div class="bx-composer">
         <input id="file" type="file" accept="image/*" capture="environment" style="display:none">
         <button class="bx-icon" id="foto" title="Fotografar documento">📷</button>
+        <button class="bx-icon" id="conf" title="Conferência de documentos (checklist do serviço)">✅</button>
         <button class="bx-icon" id="termo" title="Gerar termo de exigência">📄</button>
         <button class="bx-icon" id="reg" title="Registrar atendimento">📌</button>
         <textarea id="inp" rows="1" placeholder="Descreva o caso (ex.: transferência de veículo) ou fotografe os documentos…"></textarea>
@@ -120,6 +121,50 @@
     <pre id="termo-paper" class="bx-paper"></pre>
   </div>
 </div>
+<div id="conf-ov" class="bx-ov hidden">
+  <div class="bx-modal bx-conf">
+    <div class="bx-modal-top"><span>✅ Conferência de documentos</span><button id="conf-x" aria-label="Fechar">✕</button></div>
+    <div class="bx-panel">
+      <div class="bx-frow" style="align-items:end">
+        <label style="flex:1">Serviço<select id="conf-serv"></select></label>
+        <button id="conf-novo" class="bx-mbtn" title="Começar um novo atendimento">↺ Novo cidadão</button>
+      </div>
+      <div id="conf-resumo" class="bc-resumo"></div>
+      <div id="conf-itens"></div>
+      <div class="bx-modal-actions" style="flex-wrap:wrap">
+        <button id="conf-termo" class="bx-mbtn primary">📄 Termo com as pendências</button>
+        <button id="conf-reg" class="bx-mbtn">📌 Registrar atendimento</button>
+      </div>
+      <details class="bc-lemb">
+        <summary>🔔 Oferecer lembrete pelo WhatsApp ao cidadão</summary>
+        <div class="bx-frow">
+          <label>Tipo<select id="cl-tipo"><option value="CNH">Vencimento da CNH</option><option value="LICENCIAMENTO">Licenciamento</option><option value="DEFESA">Prazo de defesa (data de recebimento)</option></select></label>
+          <label>Data<input id="cl-data" type="date"></label>
+        </div>
+        <label>WhatsApp do cidadão<input id="cl-fone" type="tel" placeholder="(91) 99999-9999"></label>
+        <label class="bc-aceite"><input type="checkbox" id="cl-aceite"> O cidadão aceitou receber. Ele vai confirmar respondendo SIM no WhatsApp.</label>
+        <div class="bx-modal-actions"><button id="cl-ok" class="bx-mbtn">Enviar convite do lembrete</button></div>
+        <div id="cl-msg" class="lb-msg"></div>
+      </details>
+    </div>
+  </div>
+</div>
+<style>
+  .bx-conf { max-width: 760px; }
+  .bc-resumo { margin: 10px 0; padding: 10px 12px; border-radius: 10px; background: #FFF8E6; font-size: 13.5px; }
+  .bc-resumo.ok { background: var(--t-claro, #E3F6F2); }
+  .bc-item { display: flex; gap: 10px; align-items: flex-start; padding: 10px; border: 1px solid #E3E8F0; border-radius: 10px; margin-bottom: 6px; background: #fff; }
+  .bc-item.na { opacity: .5; }
+  .bc-st { flex: 0 0 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; color: #fff; background: #CBD2DC; font-size: 13px; }
+  .bc-st.OK, .bc-st.TENHO { background: var(--ayio-teal, #14AD92); } .bc-st.VENCIDO, .bc-st.OUTRO { background: #DC2626; } .bc-st.ILEGIVEL, .bc-st.PENDENTE, .bc-st.CONFERIR { background: #F59E0B; }
+  .bc-txt { flex: 1; min-width: 0; font-size: 13.5px; } .bc-txt b { color: var(--ayio-navy, #192662); }
+  .bc-txt small { display: block; color: #5B6680; } .bc-mot { margin-top: 4px; font-size: 12.5px; padding: 5px 8px; border-radius: 7px; background: #F4F6FA; }
+  .bc-acoes { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
+  .bc-acoes button, .bc-acoes label { font-size: 12px; padding: 5px 9px; border-radius: 8px; border: 1px solid #D5DCE7; background: #fff; cursor: pointer; }
+  .bc-lemb { margin-top: 14px; border-top: 1px dashed #D5DCE7; padding-top: 10px; font-size: 13.5px; }
+  .bc-lemb summary { cursor: pointer; font-weight: 700; color: var(--ayio-navy, #192662); margin-bottom: 8px; }
+  .bc-aceite { display: flex; gap: 6px; align-items: flex-start; font-size: 12.5px; margin: 8px 0; }
+</style>
 <script src="/sessao.js"></script>
 <script src="/balcao.js"></script>
 </body>

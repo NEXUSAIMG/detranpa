@@ -132,7 +132,8 @@
       + kpi("1ª resposta humana", durTxt(p.tprMedioMin), "tempo médio")
       + kpi("Duração do atendimento", durTxt(p.tmaMedioMin), `${p.encerradas} encerrados`)
       + kpi("Satisfação", p.nota != null ? `${String(p.nota).replace(".", ",")} ★` : "—", p.avaliacoes ? `${p.csat}% satisfeitos · ${p.avaliacoes} notas` : "sem notas ainda", p.nota != null && p.nota < 3.5 ? "alerta" : "")
-      + kpi("Chamados", `${p.chamadosResolvidos}/${p.chamadosAbertos}`, p.resolucaoMediaH != null ? `resolvidos · ${durTxt(p.resolucaoMediaH * 60)} em média` : "resolvidos / abertos");
+      + kpi("Chamados", `${p.chamadosResolvidos}/${p.chamadosAbertos}`, p.resolucaoMediaH != null ? `resolvidos · ${durTxt(p.resolucaoMediaH * 60)} em média` : "resolvidos / abertos")
+      + kpi("Lembretes no WhatsApp", p.lembretesAtivos, `${p.lembretesEnviados} enviado(s) no período`, "neutro");
     grafDias(v.porDia); grafTemas(v.temas); grafCalor(v.calor); grafNotas(p.distNotas, p.nota); tabRanking(v.ranking);
   }
   function grafDias(porDia) {
@@ -307,6 +308,14 @@
     $("f-etqs").innerHTML = S.etiquetas.map((e) => `<button class="etq ${marcadas.has(e.id) ? "on" : ""}" data-id="${esc(e.id)}" style="--c:${esc(e.cor)}">${esc(e.nome)}</button>`).join("") || '<span class="vazio-p">Sem etiquetas cadastradas.</span>';
     $("f-etqs").querySelectorAll(".etq").forEach((b) => (b.onclick = () => { b.classList.toggle("on"); salvarFicha(true); }));
     fichaChamados(d.chamados);
+    if (d.conversa.canal === "WHATSAPP") fichaLembretes(d.conversa.contato); else $("f-lembretes").innerHTML = '<span class="vazio-p">Só para conversas do WhatsApp.</span>';
+  }
+  async function fichaLembretes(contato) {
+    const r = await api("/lembretes?contato=" + encodeURIComponent(contato));
+    const ls = (r.ok && r.data.lembretes) || [];
+    const ST = { ATIVO: "ativo", PENDENTE: "aguardando SIM", CONCLUIDO: "concluído", CANCELADO: "cancelado" };
+    $("f-lembretes").innerHTML = ls.length ? ls.map((l) => `<div class="mini-ch">🔔 <b>${esc(l.nome || l.tipo)}</b>${l.descricao ? ` <small>(${esc(l.descricao)})</small>` : ""}<div>${new Date(l.dataAlvo).toLocaleDateString("pt-BR", { timeZone: "UTC" })} · ${ST[l.status] || l.status}${["ATIVO", "PENDENTE"].includes(l.status) ? ` <button class="btn ghost mini" data-cl="${esc(l.id)}">cancelar</button>` : ""}</div></div>`).join("") : '<span class="vazio-p">Nenhum. O cidadão pode pedir pelo site ou mandando "lembrete" no WhatsApp.</span>';
+    $("f-lembretes").querySelectorAll("[data-cl]").forEach((b) => (b.onclick = async (e) => { e.stopPropagation(); if (!confirmar("Cancelar este lembrete?")) return; await api("/lembretes/" + b.dataset.cl, { method: "DELETE" }); fichaLembretes(contato); }));
   }
   function fichaChamados(chs) {
     $("f-chamados").innerHTML = chs.length ? chs.map((c) => `<div class="mini-ch" data-id="${esc(c.id)}"><b>${esc(c.protocolo)}</b> <span class="pill st-${esc(c.status)}">${esc(S.statusTexto[c.status])}</span><div>${esc(c.assunto)}</div></div>`).join("") : '<span class="vazio-p">Nenhum chamado.</span>';
@@ -529,6 +538,7 @@
     $("cf-ini").value = c.horario.inicio; $("cf-fim").value = c.horario.fim; $("cf-fora").value = c.horario.mensagemFora;
     $("cf-fuso").innerHTML = FUSOS.map((f) => `<option ${f === c.fuso ? "selected" : ""}>${f}</option>`).join("");
     $("cf-alerta").value = c.esperaAlertaMin; $("cf-critica").value = c.esperaCriticaMin;
+    $("cf-cal").innerHTML = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"].map((f) => `<div><label>Final ${f}</label><input class="in" data-final="${f}" placeholder="dd/mm" maxlength="5" value="${esc((c.calendarioLicenciamento || {})[f] || "")}" /></div>`).join("");
     $("cf-retConv").value = c.retencaoConversasDias; $("cf-retCh").value = c.retencaoChamadosDias;
     $("cf-encarregado").value = c.encarregado || ""; $("cf-politica").value = c.politicaUrl || ""; $("cf-avisoWa").checked = c.avisoWhatsApp !== false;
     $("lgpd-ver").href = Sessao.base + "/privacidade";
@@ -563,6 +573,7 @@
       esperaAlertaMin: Number($("cf-alerta").value), esperaCriticaMin: Number($("cf-critica").value),
       retencaoConversasDias: Number($("cf-retConv").value), retencaoChamadosDias: Number($("cf-retCh").value),
       encarregado: $("cf-encarregado").value, politicaUrl: $("cf-politica").value, avisoWhatsApp: $("cf-avisoWa").checked,
+      calendarioLicenciamento: Object.fromEntries([...$("cf-cal").querySelectorAll("input")].map((i) => [i.dataset.final, i.value.trim()]).filter(([, v]) => v)),
       horario: { ativo: $("cf-hativo").checked, dias: [...$("cf-dias").querySelectorAll("input:checked")].map((i) => Number(i.value)), inicio: $("cf-ini").value, fim: $("cf-fim").value, mensagemFora: $("cf-fora").value },
     };
     const r = await api("/config", put(b));

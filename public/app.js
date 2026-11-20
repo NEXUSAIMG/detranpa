@@ -1115,3 +1115,90 @@ function abrirDefesa(texto, tipo) {
     composer.insertAdjacentElement("afterbegin", box);
   }).catch(() => {});
 })();
+
+/* ═══════════════════ LEMBRETES PELO WHATSAPP ═══════════════════
+   O cidadão escolhe o lembrete, informa a data e o WhatsApp e aceita receber.
+   O número recebe "responda SIM" — só depois disso os avisos são enviados. */
+(function () {
+  let INFO = null;
+  async function info() { if (!INFO) { const r = await fetch(API("/lembretes")); INFO = await r.json().catch(() => ({})); } return INFO; }
+
+  if (els.emptyDocs) {
+    const cta = document.createElement("button");
+    cta.className = "docs-cta lemb-cta";
+    cta.innerHTML = '<span class="docs-cta-icon">🔔</span><span><strong>Lembretes no WhatsApp</strong><small>Vencimento da CNH, prazo da defesa e licenciamento.</small></span>';
+    cta.onclick = () => window.__abrirLembrete();
+    els.emptyDocs.insertAdjacentElement("afterend", cta);
+  }
+
+  const hoje = () => new Date().toLocaleDateString("en-CA");
+  window.__abrirLembrete = async function (pre = {}) {
+    els.overlay.classList.remove("hidden");
+    els.overlayTitle.textContent = "Lembretes no WhatsApp";
+    els.docsBack.classList.add("hidden");
+    els.overlayBody.innerHTML = '<p class="doc-intro">Carregando…</p>';
+    const d = await info();
+    if (!d.disponivel) {
+      els.overlayBody.innerHTML = `<p class="doc-intro">Os lembretes pelo WhatsApp ainda não estão disponíveis no ${escapeHtml(TENANT.sigla || "DETRAN")}. Enquanto isso, use as <b>Calculadoras</b> para salvar o prazo na agenda do seu celular.</p>`;
+      return;
+    }
+    const temCal = (d.finais || []).length > 0;
+    els.overlayBody.innerHTML = `
+      <p class="doc-intro">Eu aviso no seu WhatsApp antes do prazo. Você pode parar quando quiser, respondendo <b>PARAR LEMBRETES</b>.</p>
+      <div class="calc-card lemb-form">
+        <label class="lemb-lbl">Do que você quer ser lembrado?</label>
+        <div class="lemb-tipos">
+          <label><input type="radio" name="lt" value="CNH"> 🪪 Vencimento da CNH</label>
+          <label><input type="radio" name="lt" value="DEFESA"> ⚖️ Prazo da defesa da multa</label>
+          <label><input type="radio" name="lt" value="LICENCIAMENTO"> 🚗 Licenciamento do veículo</label>
+        </div>
+        <div id="lb-campos"></div>
+        <label class="lemb-lbl" for="lb-fone">Seu WhatsApp (com DDD)</label>
+        <input id="lb-fone" type="tel" inputmode="tel" placeholder="(91) 99999-9999" autocomplete="tel">
+        <label class="lemb-aceite"><input type="checkbox" id="lb-aceite"> Aceito receber lembretes do ${escapeHtml(TENANT.sigla || "DETRAN")} pelo WhatsApp neste número. Vou confirmar respondendo SIM.</label>
+        <button class="btn btn-primary" id="lb-ok">Criar lembrete</button>
+        <div id="lb-msg" class="calc-out"></div>
+        <p class="calc-sub">Ou mande direto no WhatsApp: <b>lembrete cnh 15/03/2027</b>. Seu número fica guardado só para os avisos e sai junto com eles (veja a <a href="${(window.TENANT_BASE || "")}/privacidade">privacidade</a>).</p>
+      </div>`;
+    const campos = (tipo) => {
+      const c = document.getElementById("lb-campos");
+      if (tipo === "CNH") c.innerHTML = `<label class="lemb-lbl" for="lb-data">Data de validade da sua CNH</label><input id="lb-data" type="date" min="${hoje()}">`;
+      else if (tipo === "DEFESA") c.innerHTML = `<label class="lemb-lbl" for="lb-data">Quando você recebeu a notificação?</label><input id="lb-data" type="date" max="${hoje()}" value="${pre.recebimento || ""}"><div class="calc-sub">O prazo é de 30 dias a partir do recebimento. Eu aviso 10, 3 e 1 dia antes.</div>`;
+      else if (tipo === "LICENCIAMENTO") c.innerHTML = temCal
+        ? `<label class="lemb-lbl" for="lb-final">Último número da placa</label><select id="lb-final"><option value="">Escolha</option>${d.finais.map((f) => `<option>${f}</option>`).join("")}</select>`
+        : `<label class="lemb-lbl" for="lb-data">Data de vencimento do licenciamento</label><input id="lb-data" type="date" min="${hoje()}"><div class="calc-sub">Veja a data no calendário de licenciamento do portal.</div>`;
+      else c.innerHTML = "";
+    };
+    els.overlayBody.querySelectorAll('input[name="lt"]').forEach((r) => (r.onchange = () => campos(r.value)));
+    if (pre.tipo) { const r = els.overlayBody.querySelector(`input[name="lt"][value="${pre.tipo}"]`); if (r) { r.checked = true; campos(pre.tipo); } }
+    document.getElementById("lb-ok").onclick = async () => {
+      const tipo = (els.overlayBody.querySelector('input[name="lt"]:checked') || {}).value;
+      const out = document.getElementById("lb-msg");
+      const body = { tipo, telefone: document.getElementById("lb-fone").value, aceite: document.getElementById("lb-aceite").checked };
+      const dt = document.getElementById("lb-data"), fin = document.getElementById("lb-final");
+      if (dt) { if (tipo === "DEFESA") body.dataRecebimento = dt.value; else body.data = dt.value; }
+      if (fin) body.final = fin.value;
+      if (!tipo) return (out.innerHTML = '<div class="calc-note" style="color:#c0392b">Escolha o tipo de lembrete.</div>');
+      if (!body.aceite) return (out.innerHTML = '<div class="calc-note" style="color:#c0392b">Marque que aceita receber os lembretes.</div>');
+      const b = document.getElementById("lb-ok"); b.disabled = true;
+      try {
+        const r = await fetch(API("/lembretes"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j.error || "Não deu certo agora.");
+        out.innerHTML = `<div class="calc-note" style="color:var(--ayio-teal-deep)">✅ Quase lá! Mandei uma mensagem para o seu WhatsApp. <b>Responda SIM</b> lá para ativar o lembrete (data: ${new Date(j.dataAlvo).toLocaleDateString("pt-BR", { timeZone: "UTC" })}).</div>`;
+      } catch (e) { out.innerHTML = `<div class="calc-note" style="color:#c0392b">⚠️ ${escapeHtml(e.message)}</div>`; b.disabled = false; }
+    };
+  };
+
+  // Na calculadora "Prazo da defesa": atalho para o lembrete com a data já preenchida.
+  const obs = new MutationObserver(() => {
+    const out = document.getElementById("c-prazo-out"), dt = document.getElementById("c-data");
+    if (!out || !dt || out.dataset.lemb) return;
+    out.dataset.lemb = "1";
+    const b = document.createElement("button");
+    b.className = "btn btn-soft"; b.style.marginTop = "8px"; b.textContent = "🔔 Me lembrar pelo WhatsApp";
+    b.onclick = () => window.__abrirLembrete({ tipo: "DEFESA", recebimento: dt.value });
+    out.insertAdjacentElement("afterend", b);
+  });
+  if (els.overlayBody) obs.observe(els.overlayBody, { childList: true, subtree: true });
+})();

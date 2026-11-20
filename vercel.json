@@ -11,7 +11,7 @@
     { "src": "public/**", "use": "@vercel/static" }
   ],
   "crons": [
-    { "path": "/api/cron/limpeza", "schedule": "23 6 * * *" }
+    { "path": "/api/cron/diario", "schedule": "7 13 * * *" }
   ],
   "routes": [
     { "src": "/api/(.*)", "dest": "/api/index.js" },

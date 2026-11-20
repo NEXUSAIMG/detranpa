@@ -20,6 +20,7 @@ import { registrarTroca, registrarEvento, buscarConversa, registrarEntradaHumano
 import { tratarAvaliacao, tratarConsultaProtocolo } from "./lib/gestao.js";
 import { configDe, dentroDoHorario } from "./lib/gestao-config.js";
 import { apagarCidadao, textoAvisoWhatsApp } from "./lib/privacidade.js";
+import { tratarComandoLembrete } from "./lib/lembretes.js";
 
 const SESSAO_HORAS = Number(process.env.WHATSAPP_SESSAO_HORAS || 12);
 const FALLBACK_ERRO = "Tivemos uma instabilidade momentânea no atendimento automático. Pode reenviar tua mensagem em instantes, por favor?";
@@ -127,6 +128,15 @@ async function processarMensagem(tenant, m) {
     await kvDel(`detran:${tenant.slug}:wa:last:${phone}`).catch(() => {});
     await enviarTexto(z, phone, `Pronto: apagamos as suas conversas e dados de contato no ${tenant.sigla}. Se mandar uma nova mensagem, um novo atendimento começa.`).catch((e) => console.warn("[Zapayio]", e.message));
     return { status: "lgpd-apagado" };
+  }
+
+  // Lembretes: "lembrete cnh 15/03/2027", "meus lembretes", "parar lembretes", "SIM" (confirmação).
+  const respLembrete = texto ? await tratarComandoLembrete(tenant, phone, texto).catch((e) => { console.error("[lembretes]", e.message); return null; }) : null;
+  if (respLembrete) {
+    await enviarTexto(z, phone, respLembrete).catch((e) => console.warn("[Zapayio]", e.message));
+    if (conv?.status === "HUMANO") await registrarEntradaHumano(conv, { texto, nome: m.nome });
+    else await registrarTroca({ tenantId: tenant.id, canal: "WHATSAPP", contato: phone, nome: m.nome, pergunta: texto, respostas: [respLembrete], categoria: "lembrete" });
+    return { status: "lembrete" };
   }
 
   // Conversa com atendente humano: nada vai para o bot; a mensagem (ou a

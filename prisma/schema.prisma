@@ -71,6 +71,30 @@ model Tenant {
   contatos         Contato[]
   respostasRapidas RespostaRapida[]
   etiquetas        Etiqueta[]
+  lembretes        Lembrete[]
+}
+
+// Lembrete pelo WhatsApp (vencimento da CNH, prazo de defesa, licenciamento).
+// Só é enviado depois que o dono do número confirma (responde SIM) ou quando
+// ele mesmo pede pelo WhatsApp. status: PENDENTE | ATIVO | CONCLUIDO | CANCELADO
+model Lembrete {
+  id            String    @id @default(cuid())
+  tenantId      String
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contato       String    @db.VarChar(20) // telefone com DDI (55...)
+  tipo          String    @db.VarChar(20) // CNH | DEFESA | LICENCIAMENTO
+  dataAlvo      DateTime // vencimento / prazo final
+  descricao     String?   @db.VarChar(160) // ex.: "placa final 7"
+  avisos        Json // dias antes do prazo em que avisa, ex.: [30, 7, 0]
+  enviados      Json? // avisos já enviados
+  status        String    @default("PENDENTE") @db.VarChar(12)
+  origem        String    @db.VarChar(12) // SITE | WHATSAPP | BALCAO
+  consentidoEm  DateTime? // quando o dono do número aceitou
+  ultimoEnvioEm DateTime?
+  criadoEm      DateTime  @default(now())
+
+  @@index([tenantId, status, dataAlvo])
+  @@index([tenantId, contato])
 }
 
 // Chamado com protocolo (ex.: PA-2026-000123), aberto pela equipe do DETRAN,
