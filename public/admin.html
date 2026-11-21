@@ -44,6 +44,11 @@
     .login-box { max-width: 380px; margin: 14vh auto 0; }
     .hidden { display: none !important; }
     .bot-out { white-space: pre-wrap; background: #F1F5F9; border: 1px solid #DCE3EC; border-radius: 10px; padding: 12px; font-size: 13px; margin-top: 10px; }
+    .rede-resumo { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin: 10px 0 14px; }
+    .rede-resumo div { background: #F1F5F9; border: 1px solid #DCE3EC; border-radius: 10px; padding: 10px 12px; }
+    .rede-resumo small { display: block; font-size: 11.5px; color: #5B6577; font-weight: 600; }
+    .rede-resumo b { font-size: 20px; color: #192662; }
+    #rede-tab td.rede-alerta { color: #B3261E; font-weight: 700; }
   </style>
 </head>
 <body>
@@ -82,6 +87,12 @@
           <h3>DETRANs</h3>
           <p class="sub">Clique para editar dados, integrações, usuários e formulários.</p>
           <table class="lst"><thead><tr><th>Endereço</th><th>DETRAN</th><th>Integrações</th><th>Usuários</th><th>Formulários</th><th>Conversas</th></tr></thead><tbody id="lista-corpo"></tbody></table>
+        </div>
+        <div class="card">
+          <h3>🌐 Rede de DETRANs <select id="rede-dias" class="in" style="width:auto;display:inline-block;margin-left:8px;padding:4px 8px"><option value="7">7 dias</option><option value="30" selected>30 dias</option><option value="90">90 dias</option></select></h3>
+          <p class="sub">Os mesmos indicadores para todos os estados. Só a equipe Ayio vê os nomes; cada DETRAN vê apenas a média da rede, no Observatório.</p>
+          <div id="rede-resumo" class="rede-resumo"></div>
+          <div style="overflow-x:auto"><table class="lst" id="rede-tab"></table></div>
         </div>
         <div class="card">
           <h3>➕ Novo DETRAN</h3>
@@ -189,6 +200,20 @@
             <h3 style="margin-top:18px">🧪 Testar o bot</h3>
             <div class="row"><input id="bot-q" class="in" style="flex:1" placeholder="Ex.: como renovo a CNH?" /><button id="bot-ok" class="btn soft">Perguntar</button></div>
             <div id="bot-out"></div>
+
+            <h3 style="margin-top:22px">🪪 Meu DETRAN com dados oficiais <span id="md-pill"></span></h3>
+            <p class="sub">Quando o DETRAN liberar a API e o credenciamento no gov.br, o cidadão entra com o gov.br e o assistente responde sobre a situação DELE (débitos, CNH, pontos, veículos). Desligado, nada muda. Contrato da API: <code>docs/CONECTOR_MEU_DETRAN.md</code>.</p>
+            <div class="grid2">
+              <div><label class="f">Situação</label><select id="md-modo" class="in"><option value="desligado">Desligado</option><option value="api">Ligado (API oficial + gov.br)</option></select></div>
+              <div><label class="f">URL da API do DETRAN (https://…)</label><input id="md-api" class="in" placeholder="https://api.detran.uf.gov.br/meu-detran/v1" /></div>
+              <div><label class="f">Token da API</label><input id="md-token" class="in" type="password" autocomplete="new-password" placeholder="cadastrado — deixe em branco para manter" /></div>
+              <div><label class="f">Ambiente gov.br</label><select id="md-amb" class="in"><option value="homologacao">Homologação (staging)</option><option value="producao">Produção</option></select></div>
+              <div><label class="f">gov.br client_id</label><input id="md-cid" class="in" /></div>
+              <div><label class="f">gov.br client_secret</label><input id="md-csec" class="in" type="password" autocomplete="new-password" placeholder="cadastrado — deixe em branco para manter" /></div>
+            </div>
+            <div class="hint" id="md-retorno"></div>
+            <div id="md-msg"></div>
+            <div class="row"><button id="md-ok" class="btn pri">Salvar Meu DETRAN</button></div>
           </section>
 
           <section id="aba-usuarios" class="hidden">

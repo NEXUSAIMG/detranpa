@@ -34,6 +34,7 @@ import { registrarGestao } from "../lib/gestao.js";
 import { registrarTutoriaGestao, buscarNaBase, mascarar } from "../lib/tutoria-gestao.js";
 import { analisarSuspeita, pareceVerificacao, textoParaChat } from "../lib/antigolpe.js";
 import { registrarObservatorio } from "../lib/observatorio.js";
+import { registrarMeuDetran, contextoMeuDetran } from "../lib/meu-detran.js";
 import { registrarConferencia } from "../lib/conferencia.js";
 import { registrarPrivacidade } from "../lib/privacidade.js";
 import { registrarLembretes } from "../lib/lembretes.js";
@@ -177,6 +178,8 @@ app.post(`${T}/chat`, comTenant, async (req, res) => {
   // Simulação (só demonstração): cidadão fictício escolhido em "Meu DETRAN" -> responde com os dados dele.
   const simP = simPorCookie(req, t) ? String(req.body?.simCidadao || "").replace(/[^a-z]/g, "").slice(0, 20) : "";
   const simCtx = simP ? await contextoParaChat(t, String(req.body?.simSessao || "").replace(/[^\w-]/g, "").slice(0, 40) || "anon", simP).catch(() => "") : "";
+  // "Meu DETRAN" oficial: dados da própria pessoa, só com login gov.br (cookie de sessão curta).
+  const realCtx = simCtx ? "" : await contextoMeuDetran(req, t).catch((e) => { console.warn(`[meu-detran:${t.slug}]`, e.message); return ""; });
 
   // 0) Antigolpe: a pessoa colou um link, um código de barras ou perguntou se
   // uma cobrança é golpe -> análise determinística na hora, sem passar pelo bot.
@@ -196,7 +199,7 @@ app.post(`${T}/chat`, comTenant, async (req, res) => {
   if (!temImagem(ultima) && botayio.url && botayio.secret) {
     try {
       const restart = !hist.some((m) => m.role === "assistant");
-      const extra = simCtx ? { contexto: simCtx.trim().slice(0, 7900), simulacao: true } : {};
+      const extra = simCtx ? { contexto: simCtx.trim().slice(0, 7900), simulacao: true } : realCtx ? { contexto: realCtx.trim().slice(0, 7900) } : {};
       const resp = await perguntarAoBot(botayio, `detran-${t.slug}-web-${simCtx ? "sim-" : ""}${sid}`, pergunta, restart, extra);
       if (simCtx && !resp.contexto_aplicado) throw new Error("BotAyio sem suporte a contexto (versão antiga)");
       const partes = [];
@@ -232,7 +235,7 @@ app.post(`${T}/chat`, comTenant, async (req, res) => {
   // 2) IA local (fotos, ou plano B)
   if (!llmConfigurado()) return res.status(500).json({ error: SEM_CHAVE });
   try {
-    let texto = await chamarLLM({ system: promptCidadao(t, await formsDoTenant(t)) + simCtx, messages: hist, maxTokens: MAX_TOKENS });
+    let texto = await chamarLLM({ system: promptCidadao(t, await formsDoTenant(t)) + simCtx + realCtx, messages: hist, maxTokens: MAX_TOKENS });
     let semBase = false;
     if (texto.includes("[[SEMBASE]]")) { semBase = true; texto = texto.replace(/\[\[SEMBASE\]\]/g, "").trim(); }
     if (!simCtx) {
@@ -360,6 +363,9 @@ registrarAtendimento(app);
 registrarGestao(app, { limitar: (chave, max) => rateLimited(chave, max) });
 registrarTutoriaGestao(app);
 registrarObservatorio(app);
+
+// "Meu DETRAN" oficial (conector da API do DETRAN + login gov.br); desligado por padrão
+registrarMeuDetran(app, { limitar: (chave, max) => rateLimited(chave, max) });
 
 // Conferência de documentos antes do protocolo (checklist por serviço + foto)
 registrarConferencia(app, { limitar: (chave, max) => rateLimited(chave, max) });

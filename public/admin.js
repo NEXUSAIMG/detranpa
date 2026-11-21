@@ -63,7 +63,27 @@ async function mostrarLista() {
     <td>${t.usuarios}</td><td>${t.formularios}</td><td>${t.conversas}</td></tr>`).join("") || '<tr><td colspan="6">Nenhum DETRAN cadastrado.</td></tr>';
   document.querySelectorAll("#lista-corpo tr.click").forEach((tr) => (tr.onclick = () => abrirTenant(tr.dataset.slug)));
   $("n-copiar-forms").innerHTML = '<option value="">— nenhum —</option>' + tenantsCache.map((t) => `<option value="${esc(t.slug)}">${esc(t.sigla)}</option>`).join("");
+  carregarRede();
 }
+
+// ── Rede de DETRANs (equipe Ayio) ──
+async function carregarRede() {
+  if (!$("rede-tab")) return;
+  const r = await api(`/api/admin/rede?dias=${$("rede-dias").value}`);
+  if (!r.ok) { $("rede-resumo").innerHTML = `<div class="msg err">${esc(r.data.error || "Não foi possível carregar a rede.")}</div>`; return; }
+  const R = r.data.resumo, f = (v, s = "") => (v == null ? "—" : `${v}${s}`);
+  const caixa = (rot, v) => `<div><small>${rot}</small><b>${v}</b></div>`;
+  $("rede-resumo").innerHTML = caixa("Estados com movimento", `${R.comMovimento}/${R.estados}`) + caixa("Perguntas", R.perguntas)
+    + caixa("Sem resposta (média)", f(R.taxaSemBase, "%")) + caixa("Para atendente (média)", f(R.taxaTransbordo, "%"))
+    + caixa("Satisfação (média)", f(R.satisfacao, "%")) + caixa("Golpes conferidos", R.golpes);
+  const linhas = r.data.detrans.slice().sort((a, b) => b.perguntas - a.perguntas);
+  const ruim = (v, lim) => (v != null && v >= lim ? ' class="rede-alerta"' : "");
+  $("rede-tab").innerHTML = `<thead><tr><th>DETRAN</th><th>Perguntas</th><th>Conversas</th><th>Sem resposta</th><th>Para atendente</th><th>Satisfação</th><th>Nota do atendimento</th><th>Espera (mediana)</th><th>WhatsApp</th><th>Golpes</th></tr></thead><tbody>`
+    + linhas.map((d) => `<tr><td><b>${esc(d.sigla)}</b>${d.demonstracao ? ' <span class="pill">demo</span>' : ""}</td><td>${d.perguntas}</td><td>${d.conversas}</td>
+      <td${ruim(d.taxaSemBase, 15)}>${f(d.taxaSemBase, "%")}</td><td>${f(d.taxaTransbordo, "%")}</td><td>${f(d.satisfacao, "%")}</td>
+      <td>${f(d.notaAtendimento)}</td><td${ruim(d.esperaMediana, 30)}>${f(d.esperaMediana, " min")}</td><td>${f(d.whatsapp, "%")}</td><td>${d.golpes}${d.golpesProvaveis ? ` <small>(${d.golpesProvaveis} golpe)</small>` : ""}</td></tr>`).join("") + "</tbody>";
+}
+if ($("rede-dias")) $("rede-dias").onchange = carregarRede;
 $("voltar").onclick = mostrarLista;
 
 $("n-ok").onclick = async () => {
@@ -119,7 +139,30 @@ function trocarAba(aba) {
   ["dados", "integ", "usuarios", "forms"].forEach((a) => $(`aba-${a}`).classList.toggle("hidden", a !== aba));
   if (aba === "usuarios") carregarUsuarios();
   if (aba === "forms") carregarForms();
+  if (aba === "integ") carregarMeuDetran();
 }
+
+// ── Meu DETRAN com dados oficiais (API do DETRAN + gov.br) ──
+async function carregarMeuDetran() {
+  const r = await tApi("/meu-detran");
+  if (!r.ok) return msg("md-msg", r.data.error || "Não foi possível carregar.");
+  const s = r.data;
+  $("md-modo").value = s.modo; $("md-api").value = s.apiUrl || ""; $("md-amb").value = s.govbrAmbiente; $("md-cid").value = s.govbrClientId || "";
+  $("md-token").placeholder = s.api ? "cadastrado — deixe em branco para manter" : "não cadastrado";
+  $("md-csec").placeholder = s.govbr ? "cadastrado — deixe em branco para manter" : "não cadastrado";
+  $("md-pill").innerHTML = `<span class="pill ${s.pronto ? "ok" : "no"}">${s.pronto ? "ligado" : s.modo === "api" ? "incompleto" : "desligado"}</span>`;
+  $("md-retorno").textContent = `URL de retorno para cadastrar no gov.br: ${location.origin}/api/t/${slugAtual}/govbr/retorno`;
+}
+$("md-ok").onclick = async () => {
+  const b = { modo: $("md-modo").value, apiUrl: $("md-api").value.trim(), govbrAmbiente: $("md-amb").value, govbrClientId: $("md-cid").value.trim() };
+  if ($("md-token").value) b.apiToken = $("md-token").value;
+  if ($("md-csec").value) b.govbrClientSecret = $("md-csec").value;
+  const r = await tApi("/meu-detran", put(b));
+  $("md-token").value = ""; $("md-csec").value = "";
+  if (!r.ok) return msg("md-msg", r.data.error || "Erro ao salvar.");
+  msg("md-msg", r.data.pronto ? "Salvo e ligado: o botão “Entrar com gov.br” aparece no site." : r.data.modo === "api" ? "Salvo, mas ainda falta URL/token da API ou as credenciais do gov.br." : "Salvo (desligado).", "ok");
+  carregarMeuDetran();
+};
 
 $("dados-ok").onclick = async () => {
   const b = {};

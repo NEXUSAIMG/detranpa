@@ -66,7 +66,30 @@
     $("ob-calor").innerHTML = h;
 
     const mb = Math.max(1, ...d.balcao.map((b) => b.n));
+    renderRede(d.rede);
     $("ob-balcao").innerHTML = d.balcao.length ? `<div class="barras-h">${d.balcao.map((b) => `<div class="b"><span title="${esc(b.servico)}">${esc(b.servico)}</span><div class="trilho"><div class="enche" style="width:${(b.n / mb) * 100}%"></div></div><span class="n">${b.n}</span></div>`).join("")}</div>` : vazio("Nenhum atendimento de balcão registrado no período.");
+  }
+
+  // Comparação anônima com a rede. "Melhor" depende do indicador.
+  function renderRede(rede) {
+    const el = $("ob-rede"); if (!el) return;
+    const M = rede?.media, V = rede?.voce;
+    if (!M?.disponivel || !V) { el.innerHTML = vazio(esc(M?.motivo || "Comparação indisponível.")); return; }
+    const linhas = [
+      ["Perguntas sem resposta na base", "taxaSemBase", "%", "menor"],
+      ["Conversas que foram para atendente", "taxaTransbordo", "%", "menor"],
+      ["Satisfação (👍)", "satisfacao", "%", "maior"],
+      ["Nota do atendimento humano", "notaAtendimento", "", "maior"],
+      ["Espera pela 1ª resposta humana (mediana)", "esperaMediana", " min", "menor"],
+      ["Perguntas pelo WhatsApp", "whatsapp", "%", null],
+    ];
+    const f = (v, s) => (v == null ? "—" : `${v}${s}`);
+    el.innerHTML = `<table class="ob-tab"><thead><tr><th>Indicador</th><th>Seu DETRAN</th><th>Média da rede</th><th></th></tr></thead><tbody>${linhas.map(([rot, k, s, bom]) => {
+      const v = V[k], m = M[k];
+      let sel = "";
+      if (bom && v != null && m != null && v !== m) { const melhor = bom === "menor" ? v < m : v > m; sel = melhor ? '<span class="ob-var desce">melhor que a média</span>' : '<span class="ob-var sobe">abaixo da média</span>'; }
+      return `<tr><td>${rot}</td><td><b>${f(v, s)}</b></td><td class="mudo">${f(m, s)}</td><td>${sel}</td></tr>`;
+    }).join("")}</tbody></table><p class="ob-dica">Média de ${M.estados} DETRANs com movimento no período. Os outros estados não são identificados.</p>`;
   }
 
   function ensinar(pergunta) {

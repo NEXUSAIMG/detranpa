@@ -495,3 +495,10 @@ a.docs-cta.sim-cta small { color: #FFE9A8; }
 .conf-cruz { border: 1px solid #EBC77A; background: #FFF6E0; color: #5C4400; border-radius: 12px; padding: 10px 14px; margin: 10px 0; font-size: 13.5px; }
 .conf-cruz ul { margin: 6px 0; padding-left: 20px; }
 .conf-cruz .btn { padding: 3px 10px; font-size: 12.5px; }
+/* ── Meu DETRAN oficial (gov.br) ── */
+.govbr-cta { border-color: #1351B4 !important; }
+.govbr-cta strong { color: #1351B4; }
+.govbr-sair { border: 0; background: none; color: #1351B4; text-decoration: underline; cursor: pointer; font: inherit; padding: 0 0 0 4px; }
+.govbr-aviso { border-radius: 10px; padding: 10px 12px; margin: 8px 0; font-size: 13.5px; }
+.govbr-aviso.ok { background: #E9F7EF; color: #164B2E; border: 1px solid #9ED3B3; }
+.govbr-aviso.err { background: #FFF6E0; color: #5C4400; border: 1px solid #EBC77A; }

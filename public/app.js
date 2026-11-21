@@ -1162,6 +1162,36 @@ function abrirDefesa(texto, tipo) {
   window.__abrirConferencia = abrirServicos;
 })();
 
+/* ═══════════════════ MEU DETRAN OFICIAL (login gov.br) ═══════════════════
+   Só aparece quando o DETRAN ligou a integração oficial (API + gov.br). */
+(function () {
+  const params = new URLSearchParams(location.search);
+  const retorno = params.get("govbr");
+  fetch(API("/meu-detran/status")).then((r) => r.json()).then((st) => {
+    if (!st || !st.ativo || !els.emptyDocs) return;
+    const cta = document.createElement(st.logado ? "div" : "a");
+    cta.className = "docs-cta govbr-cta";
+    if (st.logado) {
+      cta.innerHTML = `<span class="docs-cta-icon">🪪</span><span><strong>Conectado ao gov.br${st.logado.nome ? ` — ${escapeHtml(st.logado.nome)}` : ""}</strong><small>Pergunte sobre os seus débitos, a sua CNH e os seus veículos. <button type="button" class="govbr-sair">Sair</button></small></span>`;
+      cta.querySelector(".govbr-sair").onclick = async (e) => { e.stopPropagation(); await fetch(API("/govbr/sair"), { method: "POST" }); location.href = location.pathname; };
+    } else {
+      cta.href = API("/govbr/entrar");
+      cta.innerHTML = '<span class="docs-cta-icon">🪪</span><span><strong>Entrar com gov.br</strong><small>Para consultar a SUA situação: débitos, CNH, pontos e veículos — com os dados oficiais.</small></span><span class="docs-cta-arrow">→</span>';
+    }
+    els.emptyDocs.insertAdjacentElement("beforebegin", cta);
+  }).catch(() => {});
+  if (retorno) {
+    const t = { ok: "Pronto! Você entrou com o gov.br. Agora pode perguntar sobre a sua situação.", erro: "Não foi possível entrar com o gov.br agora. Tente de novo.", cancelado: "Login gov.br cancelado.", expirado: "O login demorou demais. Tente de novo." }[retorno];
+    if (t && els.emptyDocs) {
+      const av = document.createElement("div");
+      av.className = `govbr-aviso ${retorno === "ok" ? "ok" : "err"}`; av.setAttribute("role", "status"); av.textContent = t;
+      els.emptyDocs.insertAdjacentElement("beforebegin", av);
+      setTimeout(() => av.remove(), 9000);
+    }
+    history.replaceState(null, "", location.pathname);
+  }
+})();
+
 /* Atalhos por link (?acao=...), usados nos lembretes e respostas do WhatsApp. */
 (function () {
   try {
