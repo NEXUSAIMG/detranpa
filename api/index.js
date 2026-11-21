@@ -31,7 +31,9 @@ import { registrarWhatsApp } from "../whatsapp.js";
 import { registrarAdmin } from "../lib/admin.js";
 import { registrarAtendimento } from "../lib/atendimento.js";
 import { registrarGestao } from "../lib/gestao.js";
-import { registrarTutoriaGestao } from "../lib/tutoria-gestao.js";
+import { registrarTutoriaGestao, buscarNaBase, mascarar } from "../lib/tutoria-gestao.js";
+import { analisarSuspeita, pareceVerificacao, textoParaChat } from "../lib/antigolpe.js";
+import { registrarObservatorio } from "../lib/observatorio.js";
 import { registrarConferencia } from "../lib/conferencia.js";
 import { registrarPrivacidade } from "../lib/privacidade.js";
 import { registrarLembretes } from "../lib/lembretes.js";
@@ -176,6 +178,18 @@ app.post(`${T}/chat`, comTenant, async (req, res) => {
   const simP = simPorCookie(req, t) ? String(req.body?.simCidadao || "").replace(/[^a-z]/g, "").slice(0, 20) : "";
   const simCtx = simP ? await contextoParaChat(t, String(req.body?.simSessao || "").replace(/[^\w-]/g, "").slice(0, 40) || "anon", simP).catch(() => "") : "";
 
+  // 0) Antigolpe: a pessoa colou um link, um código de barras ou perguntou se
+  // uma cobrança é golpe -> análise determinística na hora, sem passar pelo bot.
+  if (!temImagem(ultima) && pareceVerificacao(pergunta)) {
+    const r = analisarSuspeita(pergunta, t);
+    const reply = textoParaChat(r);
+    if (!simCtx) {
+      registrarTroca({ tenantId: t.id, canal: "WEB", contato: sid, pergunta, respostas: reply.split("\n[[BREAK]]\n"), categoria: "golpe" });
+      registrarEvento({ tenantId: t.id, tipo: "GOLPE", canal: "WEB", tema: r.nivel, resolvido: true });
+    }
+    return res.json({ reply, origem: "antigolpe", antigolpe: r });
+  }
+
   // 1) BotAyio (texto). Na simulação vai com o contexto do cidadão fictício e a
   // marca `simulacao` (BotAyio não grava). Se o BotAyio não confirmar que aplicou
   // o contexto (versão antiga), a resposta é descartada e segue a IA local.
@@ -191,11 +205,18 @@ app.post(`${T}/chat`, comTenant, async (req, res) => {
         if (txt) partes.push(txt);
         if (item.arquivo?.url) partes.push(`📎 ${item.arquivo.nome || "Arquivo"}: ${item.arquivo.url}`);
       }
+      // [[SEMBASE]] é registro interno: não vai para o cidadão; marca a lacuna.
+      const semBase = partes.some((p) => p.includes("[[SEMBASE]]"));
+      for (let i = partes.length - 1; i >= 0; i--) {
+        partes[i] = partes[i].replace(/\s*\[\[SEMBASE\]\]\s*/g, "\n").trim();
+        if (!partes[i]) partes.splice(i, 1);
+      }
       const reply = partes.join("\n[[BREAK]]\n");
       const transbordo = Boolean(resp.handed_off);
       if (!simCtx) { // simulação não entra nas conversas nem nas estatísticas do DETRAN
         registrarTroca({ tenantId: t.id, canal: "WEB", contato: sid, pergunta, respostas: partes, categoria: resp.categoria, transbordo });
-        registrarEvento({ tenantId: t.id, tipo: "PERGUNTA", canal: "WEB", tema: resp.categoria || tema, resolvido: true, transbordo });
+        registrarEvento({ tenantId: t.id, tipo: "PERGUNTA", canal: "WEB", tema: resp.categoria || tema, resolvido: !semBase, transbordo });
+        if (semBase) registrarEvento({ tenantId: t.id, tipo: "SEMBASE", canal: "WEB", tema: mascarar(pergunta).replace(/\s+/g, " ").trim().slice(0, 60) });
       }
       return res.json({ reply: reply || "Não consegui gerar uma resposta. Pode reformular a pergunta?", origem: simCtx ? "botayio-sim" : "botayio" });
     } catch (err) {
@@ -217,6 +238,7 @@ app.post(`${T}/chat`, comTenant, async (req, res) => {
     if (!simCtx) {
       registrarTroca({ tenantId: t.id, canal: "WEB", contato: sid, pergunta, respostas: [texto] });
       registrarEvento({ tenantId: t.id, tipo: "PERGUNTA", canal: "WEB", tema, resolvido: !semBase });
+      if (semBase && !temImagem(ultima)) registrarEvento({ tenantId: t.id, tipo: "SEMBASE", canal: "WEB", tema: mascarar(pergunta).replace(/\s+/g, " ").trim().slice(0, 60) });
     }
     res.json({ reply: texto || "Não consegui gerar uma resposta. Pode reformular a pergunta?", origem: "local" });
   } catch (err) {
@@ -235,6 +257,16 @@ app.post(`${T}/defesa`, comTenant, async (req, res) => {
   if (!hist.length || hist[hist.length - 1].role !== "user") hist.push({ role: "user", content: "Redija o rascunho da peça com base na conversa acima." });
   try { res.json({ defesa: await chamarLLM({ system: promptDefesa(req.tenant, tipo), messages: hist, maxTokens: 2800 }), tipo }); }
   catch (e) { console.error("[defesa]", e.message); res.status(502).json({ error: "Não foi possível gerar agora. Tente de novo." }); }
+});
+
+// Antigolpe (público): confere mensagem, link ou código de barras antes de pagar.
+app.post(`${T}/antigolpe`, comTenant, (req, res) => {
+  if (rateLimited(`golpe:${req.tenant.slug}:${ipDe(req)}`, 15)) return res.status(429).json({ error: "Aguarde um instante e tente de novo." });
+  const texto = String(req.body?.texto || "").slice(0, 6000);
+  if (!texto.trim()) return res.status(400).json({ error: "Cole a mensagem, o link ou o código de barras." });
+  const r = analisarSuspeita(texto, req.tenant);
+  if (r.nivel !== "sem_dados") registrarEvento({ tenantId: req.tenant.id, tipo: "GOLPE", canal: "WEB", tema: r.nivel, resolvido: true });
+  res.json(r);
 });
 
 // Feedback do cidadão (público)
@@ -280,8 +312,12 @@ app.post(`${T}/atendente`, comTenant, exigir("balcao"), async (req, res) => {
   const hist = limparHistorico(req.body?.messages, { maxImgs: 3 });
   if (!hist.length || hist[hist.length - 1].role !== "user") return res.status(400).json({ error: "A última mensagem deve ser do atendente." });
   try {
-    const texto = await chamarLLM({ system: promptOperador(req.tenant), messages: hist, maxTokens: Math.max(MAX_TOKENS, 1800) });
-    res.json({ reply: texto || "Sem resposta. Reformule a pergunta." });
+    // Mesma base do bot (BotAyio): busca pelas 2 últimas falas do atendente.
+    const consulta = hist.filter((m) => m.role === "user").slice(-2).map((m) => textoDe(m.content)).join(" ").trim();
+    const trechos = await buscarNaBase(req.tenant, consulta, 8);
+    const texto = await chamarLLM({ system: promptOperador(req.tenant, trechos), messages: hist, maxTokens: Math.max(MAX_TOKENS, 1800) });
+    const fontes = trechos.map((x, i) => ({ n: i + 1, topico: x.topico, baseLegal: x.base_legal || null, tutoria: Boolean(x.prioritaria) }));
+    res.json({ reply: texto || "Sem resposta. Reformule a pergunta.", fontes, origemBase: trechos.length ? "bot" : "local" });
   } catch (e) { console.error("[atendente]", e.message); res.status(502).json({ error: "Não foi possível responder agora." }); }
 });
 app.post(`${T}/termo`, comTenant, exigir("balcao"), async (req, res) => {
@@ -323,6 +359,7 @@ registrarAtendimento(app);
 // Central de Gestão de cada DETRAN (chamados, fila, indicadores, equipe)
 registrarGestao(app, { limitar: (chave, max) => rateLimited(chave, max) });
 registrarTutoriaGestao(app);
+registrarObservatorio(app);
 
 // Conferência de documentos antes do protocolo (checklist por serviço + foto)
 registrarConferencia(app, { limitar: (chave, max) => rateLimited(chave, max) });

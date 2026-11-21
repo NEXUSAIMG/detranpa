@@ -67,7 +67,13 @@ async function enviar() {
   if (!ok) { addBot("⚠️ " + (data.error || "Falha ao responder.")); conversa.pop(); return; }
   const u = conversa[conversa.length - 1]; if (u && Array.isArray(u.content)) u.content = (typeof txt === "string" && txt) ? txt : "(documentos enviados)";
   conversa.push({ role: "assistant", content: data.reply || "" });
-  addBot(data.reply || "Sem resposta.");
+  const row = addBot(data.reply || "Sem resposta.");
+  // Fontes: trechos da mesma base do bot (site/WhatsApp) que embasaram a resposta.
+  if (Array.isArray(data.fontes) && data.fontes.length) {
+    const f = document.createElement("div"); f.className = "bx-fontes";
+    f.innerHTML = "<b>Base usada:</b> " + data.fontes.map((x) => `<span title="${esc(x.baseLegal || "")}">[${x.n}] ${x.tutoria ? "🎓 " : ""}${esc(x.topico || "")}${x.baseLegal ? ` · ${esc(x.baseLegal)}` : ""}</span>`).join("");
+    row.querySelector(".bx-b").appendChild(f);
+  }
 }
 $("send").onclick = enviar;
 $("inp").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); } });

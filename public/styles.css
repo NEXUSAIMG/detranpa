@@ -480,3 +480,15 @@ a { color: var(--ayio-teal-deep); }
 /* Atalho para o "Meu DETRAN" em simulação (só demonstração) */
 a.docs-cta.sim-cta { text-decoration: none; color: #fff; box-sizing: border-box; background: repeating-linear-gradient(135deg, #5C4400 0 14px, #6B5108 14px 28px); }
 a.docs-cta.sim-cta small { color: #FFE9A8; }
+
+/* ── Antigolpe ── */
+.golpe-in { width: 100%; box-sizing: border-box; border: 1px solid var(--paper-edge); border-radius: 10px; padding: 10px 12px; font: inherit; font-size: 14px; background: var(--surface); color: inherit; resize: vertical; margin-bottom: 10px; }
+#g-out { margin: 14px 0 6px; }
+.golpe-res { border-radius: 12px; padding: 12px 14px; border: 1px solid var(--paper-edge); background: var(--surface); font-size: 14px; }
+.golpe-res h4 { margin: 0 0 6px; font-size: 16px; }
+.golpe-res p { margin: 8px 0 2px; }
+.golpe-res ul { margin: 4px 0 0; padding-left: 20px; }
+.golpe-res li { margin: 3px 0; }
+.golpe-res.golpe { border-color: #E5A29C; background: #FDECEA; color: #5F1712; }
+.golpe-res.atencao { border-color: #EBC77A; background: #FFF6E0; color: #5C4400; }
+.golpe-res.sem_sinais { border-color: #9ED3B3; background: #E9F7EF; color: #164B2E; }

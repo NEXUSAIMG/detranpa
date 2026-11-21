@@ -274,5 +274,14 @@
     } finally { if ($("doc-ok")) { $("doc-ok").disabled = false; $("doc-ok").textContent = "Enviar"; } }
   }
 
-  window.TutoriaGestao = { carregar };
+  // Vindo do Observatório: abre "Ensinar" já com a pergunta que ficou sem resposta.
+  let pendente = null;
+  async function ensinarCom(pergunta) {
+    pendente = String(pergunta || "");
+    aba = "ensinar";
+    await carregar();
+    if (pendente && $("tu-perg")) { $("tu-perg").value = pendente; $("tu-resp")?.focus(); }
+    pendente = null;
+  }
+  window.TutoriaGestao = { carregar, ensinarCom };
 })();

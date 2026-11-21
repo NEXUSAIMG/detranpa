@@ -16,7 +16,9 @@ import { comTenant, integracoes, statusIntegracoes } from "./lib/tenants.js";
 import { exigir } from "./lib/auth.js";
 import { mesmoSegredo } from "./lib/cripto.js";
 import { perguntarAoBot, textoComBotoes } from "./lib/botayio.js";
-import { registrarTroca, registrarEvento, buscarConversa, registrarEntradaHumano } from "./lib/registro.js";
+import { registrarTroca, registrarEvento, buscarConversa, registrarEntradaHumano, classificarTema } from "./lib/registro.js";
+import { analisarSuspeita, pareceVerificacao, textoParaChat } from "./lib/antigolpe.js";
+import { mascarar } from "./lib/tutoria-gestao.js";
 import { tratarAvaliacao, tratarConsultaProtocolo } from "./lib/gestao.js";
 import { configDe, dentroDoHorario } from "./lib/gestao-config.js";
 import { apagarCidadao, textoAvisoWhatsApp } from "./lib/privacidade.js";
@@ -151,6 +153,19 @@ async function processarMensagem(tenant, m) {
     if (m.temMidia) await enviarTexto(z, phone, AVISO_SO_TEXTO).catch((e) => console.warn("[Zapayio]", e.message));
     return { status: "sem texto" };
   }
+  // Antigolpe: mensagem encaminhada com link/código de barras ou "isso é golpe?".
+  if (pareceVerificacao(texto)) {
+    const r = analisarSuspeita(texto, tenant);
+    const partes = adaptarParaWhatsApp(textoParaChat(r, { negrito: "*" }), tenant);
+    if (!conv && configDe(tenant).avisoWhatsApp) partes.unshift(textoAvisoWhatsApp(tenant)); // LGPD no 1º contato
+    for (const p of partes) await enviarTexto(z, phone, p).catch((e) => console.warn("[Zapayio]", e.message));
+    await Promise.all([
+      registrarTroca({ tenantId: tenant.id, canal: "WHATSAPP", contato: phone, nome: m.nome, pergunta: texto, respostas: partes, categoria: "golpe", status: conv?.status === "ENCERRADA" ? "BOT" : undefined }),
+      registrarEvento({ tenantId: tenant.id, tipo: "GOLPE", canal: "WHATSAPP", tema: r.nivel, resolvido: true }),
+    ]);
+    return { status: "antigolpe", nivel: r.nivel };
+  }
+
   const sessionId = `detran-${tenant.slug}-${phone}`;
   const lastKey = `detran:${tenant.slug}:wa:last:${phone}`;
   const anterior = await kvGetStr(lastKey).catch(() => null);
@@ -189,6 +204,7 @@ async function processarMensagem(tenant, m) {
     }
   }
   const transbordo = Boolean(resp.handed_off);
+  const semBase = (resp.contents || []).some((c) => String(c?.text || "").includes("[[SEMBASE]]"));
   // Pediu atendente fora do expediente: avisa (a conversa fica na fila mesmo assim).
   if (transbordo) {
     const cfg = configDe(tenant);
@@ -199,7 +215,8 @@ async function processarMensagem(tenant, m) {
   }
   await Promise.all([
     registrarTroca({ tenantId: tenant.id, canal: "WHATSAPP", contato: phone, nome: m.nome, pergunta: texto, respostas: enviadosTxt, categoria: resp.categoria, transbordo, status: reabrindo ? "BOT" : undefined }),
-    registrarEvento({ tenantId: tenant.id, tipo: "PERGUNTA", canal: "WHATSAPP", tema: resp.categoria || "outros", resolvido: true, transbordo }),
+    registrarEvento({ tenantId: tenant.id, tipo: "PERGUNTA", canal: "WHATSAPP", tema: resp.categoria || classificarTema(texto), resolvido: !semBase, transbordo }),
+    semBase ? registrarEvento({ tenantId: tenant.id, tipo: "SEMBASE", canal: "WHATSAPP", tema: mascarar(texto).replace(/\s+/g, " ").trim().slice(0, 60) }) : null,
   ]);
   return { status: "ok", restart, enviados, handedOff: transbordo, categoria: resp.categoria || null };
 }

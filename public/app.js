@@ -821,6 +821,50 @@ function abrirDefesa(texto, tipo) {
   }
 })();
 
+/* ═══════════════════ ANTIGOLPE ═══════════════════ */
+(function () {
+  const escH = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  if (els.emptyDocs) {
+    const cta = document.createElement("button");
+    cta.className = "docs-cta golpe-cta";
+    cta.innerHTML = '<span class="docs-cta-icon">🛡️</span><span><strong>É golpe? Confira antes de pagar</strong><small>Cole a mensagem, o link ou o código de barras que você recebeu.</small></span>';
+    cta.onclick = abrirGolpe;
+    els.emptyDocs.insertAdjacentElement("afterend", cta);
+  }
+  function abrirGolpe() {
+    els.overlay.classList.remove("hidden");
+    els.overlayTitle.textContent = "É golpe? Confira antes de pagar";
+    els.docsBack.classList.add("hidden");
+    els.overlayBody.innerHTML = ''
+      + '<p class="doc-intro">Recebeu SMS, WhatsApp ou e-mail cobrando multa, IPVA ou licenciamento? Cole aqui o texto, o link ou o número do código de barras. A conferência é na hora.</p>'
+      + '<textarea id="g-texto" class="golpe-in" rows="6" placeholder="Ex.: DETRAN: sua CNH será bloqueada hoje. Regularize em https://... ou pague via PIX..."></textarea>'
+      + '<button class="btn btn-primary" id="g-ok">Conferir</button>'
+      + '<div id="g-out" aria-live="polite"></div>'
+      + '<p class="calc-sub">Não peça nem informe senha, código ou dados de cartão a ninguém. Em caso de dúvida, consulte seus débitos digitando você mesmo o endereço do portal oficial.</p>';
+    const ok = document.getElementById("g-ok");
+    ok.onclick = async () => {
+      const texto = document.getElementById("g-texto").value.trim();
+      const out = document.getElementById("g-out");
+      if (!texto) { out.innerHTML = '<div class="golpe-res sem_dados">Cole a mensagem, o link ou o código de barras.</div>'; return; }
+      ok.disabled = true; ok.textContent = "Conferindo…";
+      try {
+        const r = await fetch(API("/antigolpe"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ texto }) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || "Não deu para conferir agora.");
+        const icone = { golpe: "🚨", atencao: "⚠️", sem_sinais: "✅", sem_dados: "🔎" }[d.nivel];
+        out.innerHTML = `<div class="golpe-res ${d.nivel}"><h4>${icone} ${escH(d.titulo)}</h4>`
+          + (d.sinais.length ? `<p><b>O que encontrei:</b></p><ul>${d.sinais.map((s) => `<li>${escH(s)}</li>`).join("")}</ul>` : "")
+          + (d.boletos.length ? `<ul>${d.boletos.map((b) => `<li>${escH(b.tipo)}${b.valor ? ` — valor ${escH(b.valor)}` : ""}${b.valido ? "" : " — código com erro"}</li>`).join("")}</ul>` : "")
+          + `<p><b>O que fazer:</b></p><ul>${d.oQueFazer.map((s) => `<li>${escH(s)}</li>`).join("")}</ul>`
+          + (d.aviso ? `<p class="calc-sub">${escH(d.aviso)}</p>` : "") + "</div>";
+      } catch (e) {
+        out.innerHTML = `<div class="golpe-res atencao">${escH(e.message)}</div>`;
+      } finally { ok.disabled = false; ok.textContent = "Conferir"; }
+    };
+  }
+  window.__abrirGolpe = abrirGolpe;
+})();
+
 /* ═══════════════════ CALCULADORAS ═══════════════════ */
 (function () {
   if (els.emptyDocs) {

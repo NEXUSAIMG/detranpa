@@ -66,7 +66,7 @@
     montarFiltros();
     const h = (location.hash || "").slice(1);
     document.querySelectorAll(".so-demo").forEach((el) => el.classList.toggle("hidden", !(T.demonstracao || window.SIM_LIBERADO)));
-    irPara(["visao", "atendimento", "chamados", "cidadaos", "equipe", "config"].concat((T.demonstracao || window.SIM_LIBERADO) ? ["unidades"] : [], S.podeTutoria ? ["tutoria"] : []).includes(h) ? h : "visao");
+    irPara(["visao", "atendimento", "chamados", "cidadaos", "equipe", "config"].concat((T.demonstracao || window.SIM_LIBERADO) ? ["unidades"] : [], S.podeTutoria ? ["tutoria"] : [], S.podeGerir ? ["observatorio"] : []).includes(h) ? h : "visao");
     pulsar(); setInterval(pulsar, 5000);
     setInterval(() => { if (document.hidden) return; if (S.sec === "atendimento") { carregarLista(); if (S.convId) abrirConversa(S.convId, true); } else if (S.sec === "visao") carregarVisao(); else if (S.sec === "unidades") carregarUnidades(); }, 8000);
     if ("Notification" in window && Notification.permission === "default") setTimeout(() => Notification.requestPermission().catch(() => {}), 3000);
@@ -80,7 +80,7 @@
   };
 
   // ── Navegação ──
-  const TITULOS = { visao: "Visão geral", atendimento: "Atendimento", chamados: "Chamados", cidadaos: "Cidadãos", equipe: "Equipe", config: "Configurações", unidades: "Unidades e integrações (simulação)", tutoria: "Tutoria do bot" };
+  const TITULOS = { visao: "Visão geral", atendimento: "Atendimento", chamados: "Chamados", cidadaos: "Cidadãos", equipe: "Equipe", config: "Configurações", unidades: "Unidades e integrações (simulação)", tutoria: "Tutoria do bot", observatorio: "Observatório de demandas" };
   document.querySelectorAll(".nav[data-sec]").forEach((b) => (b.onclick = () => irPara(b.dataset.sec)));
   $("menu-mob").onclick = () => document.querySelector(".lado").classList.toggle("aberto");
   function irPara(sec) {
@@ -89,7 +89,7 @@
     document.querySelectorAll(".sec").forEach((s) => s.classList.toggle("hidden", s.id !== "sec-" + sec));
     $("titulo-sec").textContent = TITULOS[sec];
     document.querySelector(".lado").classList.remove("aberto");
-    ({ visao: carregarVisao, atendimento: carregarLista, chamados: carregarChamados, cidadaos: carregarCidadaos, equipe: carregarEquipe, config: carregarConfig, unidades: carregarUnidades, tutoria: () => window.TutoriaGestao.carregar() })[sec]();
+    ({ visao: carregarVisao, atendimento: carregarLista, chamados: carregarChamados, cidadaos: carregarCidadaos, equipe: carregarEquipe, config: carregarConfig, unidades: carregarUnidades, tutoria: () => window.TutoriaGestao.carregar(), observatorio: () => window.Observatorio.carregar() })[sec]();
   }
 
   // ── Unidades e integrações (simulação; só DETRAN em demonstração) ──

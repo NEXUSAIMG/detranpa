@@ -36,6 +36,7 @@
       <button class="nav" data-sec="equipe"><span class="ic">👥</span><span>Equipe</span></button>
       <button class="nav so-demo hidden" data-sec="unidades"><span class="ic">⏱️</span><span>Unidades e integrações</span><b class="badge" style="background:#A35A00">SIM</b></button>
       <button class="nav so-gestor hidden" data-sec="config"><span class="ic">⚙</span><span>Configurações</span></button>
+      <button class="nav so-gestor hidden" data-sec="observatorio"><span class="ic">🔭</span><span>Observatório</span></button>
       <button class="nav so-tutoria hidden" data-sec="tutoria"><span class="ic">🎓</span><span>Tutoria do bot</span></button>
       <div class="lado-pe">
         <button class="nav" id="abrir-tv"><span class="ic">📺</span><span>Modo TV</span></button>
@@ -80,6 +81,28 @@
           <div class="cartao"><h4>Satisfação</h4><div id="graf-notas"></div></div>
           <div class="cartao largo"><h4>Equipe no período</h4><div id="tab-ranking"></div></div>
         </div>
+      </section>
+
+      <!-- Observatório de demandas: temas, lacunas da base, golpes e o que está em alta -->
+      <section id="sec-observatorio" class="sec hidden">
+        <div class="linha-tit">
+          <h3>O que o cidadão está procurando</h3>
+          <div class="seg" id="ob-periodo">
+            <button data-d="7">7 dias</button><button data-d="30" class="on">30 dias</button><button data-d="90">90 dias</button>
+          </div>
+        </div>
+        <div id="ob-msg"></div>
+        <div class="kpis" id="ob-kpis"></div>
+        <div class="grade2">
+          <div class="cartao largo"><h4>Assuntos — agora × período anterior</h4><div id="ob-temas"></div></div>
+          <div class="cartao"><h4>O bot não soube responder <small class="ob-sub">(ensine pela Tutoria)</small></h4><div id="ob-lacunas"></div></div>
+          <div class="cartao"><h4>Em alta <small class="ob-sub">(cresceu em relação ao período anterior)</small></h4><div id="ob-alta"></div></div>
+          <div class="cartao"><h4>Golpes conferidos pelo cidadão</h4><div id="ob-golpes"></div></div>
+          <div class="cartao"><h4>Perguntas que mais se repetem</h4><div id="ob-freq"></div></div>
+          <div class="cartao"><h4>Quando procuram (dia × hora)</h4><div id="ob-calor" class="calor"></div></div>
+          <div class="cartao"><h4>Balcão — serviços mais atendidos</h4><div id="ob-balcao"></div></div>
+        </div>
+        <p class="ob-nota">Dados pessoais (CPF, telefone, placa, e-mail) aparecem mascarados. Conversas de simulação não entram.</p>
       </section>
 
       <!-- Tutoria do bot: ensinar, corrigir, avisos e normas (entra no ar na hora) -->
@@ -295,6 +318,7 @@
   <div class="toast hidden" id="toast"></div>
   <script src="/sessao.js"></script>
   <script src="/tutoria-gestao.js"></script>
+  <script src="/observatorio.js"></script>
   <script src="/gestao.js"></script>
 </body>
 </html>
