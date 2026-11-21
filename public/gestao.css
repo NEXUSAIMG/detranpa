@@ -324,3 +324,11 @@ textarea.in { resize: vertical; }
 .ob-nuvem span { background: #EEF1F6; border-radius: 999px; padding: 3px 10px; font-size: 12px; }
 .ob-dica { font-size: 12px; color: var(--tinta-3); margin: 10px 0 0; }
 @media (max-width: 720px) { .ob-tab th:nth-child(2), .ob-tab td.ob-barra { display: none; } }
+/* ── Tutoria: normas novas do CONTRAN ── */
+.tu-normas { margin-bottom: 14px; }
+.tu-badge { background: #B3261E; color: #fff; border-radius: 999px; font-size: 11px; padding: 2px 8px; margin-left: 6px; vertical-align: middle; }
+.tu-normas-lista { list-style: none; padding: 0; margin: 8px 0; }
+.tu-normas-lista li { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 0; border-bottom: 1px solid #F0F2F6; }
+.tu-normas-lista li small { display: block; color: var(--tinta-3); font-size: 12px; margin-top: 2px; }
+.tu-normas-lista li.feita b { color: var(--tinta-2); font-weight: 600; }
+.tu-normas-lista .tu-acoes { margin: 0; }

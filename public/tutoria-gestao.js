@@ -233,8 +233,37 @@
   }
 
   // ── Normas e documentos ──
+  // ── Normas novas do CONTRAN (detectadas pela rotina diária) ──
+  const ROT_DEC = { incluida: "✅ Incluída na base", ja_tem: "✔ Já estava na base", ignorada: "Ignorada" };
+  async function cartaoNormas(acao) {
+    const alvo = $("tu-normas"); if (!alvo) return;
+    alvo.innerHTML = `<div class="cartao"><h4>Normas novas do CONTRAN</h4><p class="vazio-p">${acao ? "Verificando no gov.br…" : "Carregando…"}</p></div>`;
+    const r = acao ? await api("/normas/verificar", post({})) : await api("/normas");
+    if (!r.ok) { alvo.innerHTML = `<div class="cartao"><h4>Normas novas do CONTRAN</h4><div class="msg err">${esc(r.data?.error || "Não foi possível verificar.")}</div></div>`; return; }
+    const itens = r.data.itens || [];
+    const pend = itens.filter((x) => !x.decisao);
+    alvo.innerHTML = `<div class="cartao tu-normas">
+      <h4>Normas novas do CONTRAN ${pend.length ? `<b class="tu-badge">${pend.length} para revisar</b>` : ""}</h4>
+      <p class="vazio-p">Todo dia o sistema confere se o CONTRAN publicou resolução nova no gov.br. Abra, leia e decida: incluir na base do bot (entra na hora), marcar que já está na base ou ignorar.</p>
+      ${itens.length ? `<ul class="tu-normas-lista">${itens.map((x) => `<li class="${x.decisao ? "feita" : ""}">
+        <div><b>${esc(x.titulo)}</b><small>Detectada em ${new Date(x.detectadaEm).toLocaleDateString("pt-BR")}${x.decisao ? ` · ${ROT_DEC[x.decisao.decisao] || x.decisao.decisao}${x.decisao.autor ? ` por ${esc(x.decisao.autor)}` : ""}` : ""}</small></div>
+        <div class="tu-acoes">
+          <a class="btn soft" href="${esc(x.url)}" target="_blank" rel="noopener">Abrir no gov.br ↗</a>
+          ${x.decisao ? `<button class="btn soft" data-n="${x.numero}" data-acao="desfazer">Desfazer</button>` : `<button class="btn pri" data-n="${x.numero}" data-acao="incluir">Incluir na base</button><button class="btn soft" data-n="${x.numero}" data-acao="ja_tem">Já está na base</button><button class="btn soft" data-n="${x.numero}" data-acao="ignorar">Ignorar</button>`}
+        </div></li>`).join("")}</ul>` : `<p class="vazio-p">Nenhuma norma nova detectada até agora.</p>`}
+      <div class="tu-acoes"><button class="btn soft" id="tu-normas-verif">Verificar agora</button></div></div>`;
+    $("tu-normas-verif").onclick = () => cartaoNormas(true);
+    alvo.querySelectorAll("[data-acao]").forEach((b) => (b.onclick = async () => {
+      b.disabled = true; const t0 = b.textContent; if (b.dataset.acao === "incluir") b.textContent = "Baixando e incluindo…";
+      const rr = await api(`/normas/${b.dataset.n}`, post({ acao: b.dataset.acao }));
+      if (!rr.ok) { b.disabled = false; b.textContent = t0; return falhou(rr); }
+      if (b.dataset.acao === "incluir") msg(rr.data.jaExistia ? "Essa norma já estava na base do bot." : `Incluída na base do bot (${rr.data.trechos} trechos). Já vale para as próximas perguntas.`, "ok");
+      if (b.dataset.acao === "incluir") telaDocumentos(); else cartaoNormas(false);
+    }));
+  }
+
   async function telaDocumentos() {
-    $("tu-corpo").innerHTML = `<div class="cartao">
+    $("tu-corpo").innerHTML = `<div id="tu-normas"></div><div class="cartao">
       <h4>Enviar norma ou documento</h4>
       <p class="vazio-p">Portaria, instrução normativa, resolução, manual. O texto inteiro entra na base do bot. PDF, DOCX ou TXT de até 4 MB.</p>
       <div class="tu-linha"><div><label class="f" for="doc-arq">Arquivo</label><input id="doc-arq" class="in" type="file" accept=".pdf,.docx,.txt,.md" /></div>
@@ -242,6 +271,7 @@
       <div class="tu-acoes"><button class="btn pri" id="doc-ok">Enviar</button></div>
     </div><div id="tu-lista"><div class="vazio-p">Carregando…</div></div>`;
     $("doc-ok").onclick = enviarDoc;
+    cartaoNormas(false);
     const r = await api("/documentos");
     if (!r.ok) { $("tu-lista").innerHTML = ""; return falhou(r); }
     const docs = r.data.itens;

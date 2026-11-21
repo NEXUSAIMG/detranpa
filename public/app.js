@@ -1067,7 +1067,16 @@ function abrirDefesa(texto, tipo) {
       const problemas = obrig.filter((i) => ["VENCIDO", "OUTRO", "ILEGIVEL", "PENDENTE", "CONFERIR"].includes(estado[i.id]?.status));
       const faltam = obrig.filter((i) => !estado[i.id]?.status && !(i.condicional && estado[i.id]?.aplica === false));
       const pct = Math.round((prontos.length / Math.max(1, obrig.length)) * 100);
-      const tudo = !problemas.length && !faltam.length;
+      // Cruzamento: documentos conferidos por foto em nomes diferentes.
+      const nomes = {};
+      s.itens.forEach((i) => { const tt = estado[i.id]?.titular; if (tt) (nomes[tt] ||= []).push(i.nome); });
+      const nomesDif = Object.keys(nomes);
+      const temResid = s.itens.some((i) => /resid/i.test(i.nome + " " + (i.desc || "")));
+      const alertaNomes = nomesDif.length > 1
+        ? `<div class="conf-cruz"><b>⚠️ Os documentos estão em nomes diferentes:</b><ul>${nomesDif.map((n) => `<li>${escapeHtml(n)} — ${nomes[n].map(escapeHtml).join(", ")}</li>`).join("")}</ul>`
+          + `${temResid ? `Se o comprovante de residência estiver no nome de outra pessoa (pai, mãe, cônjuge, locador), leve também uma <b>declaração de residência</b> assinada por ela${(formsCache || []).some((f) => f.id === "declaracao-residencia") ? ' — <button class="btn btn-soft" data-form="declaracao-residencia">📝 preencher aqui</button>' : ""}.` : "Confira se todos são mesmo da pessoa que vai fazer o serviço."}</div>`
+        : "";
+      const tudo = !problemas.length && !faltam.length && nomesDif.length <= 1;
       const itens = s.itens.map((i) => {
         const e = estado[i.id] || {}; const st = ST[e.status];
         const naoAplica = i.condicional && e.aplica === false;
@@ -1088,11 +1097,13 @@ function abrirDefesa(texto, tipo) {
         <div class="conf-resumo ${tudo ? "pronto" : ""}"><div class="conf-pct"><span style="width:${pct}%"></span></div>
           <b>${tudo ? "✅ Tudo certo para dar entrada!" : `${prontos.length} de ${obrig.length} documentos prontos`}</b>
           <span>${tudo ? "Leve os originais. Confira o horário e o endereço no portal oficial." : [problemas.length ? `${problemas.length} com problema` : "", faltam.length ? `${faltam.length} ainda não conferido(s)` : ""].filter(Boolean).join(" · ")}</span></div>
+        ${alertaNomes}
         <p class="doc-intro">${escapeHtml(s.resumo || "")} ${IA ? "As fotos servem só para a conferência e não ficam guardadas." : ""}</p>
         <div class="guia-steps">${itens}</div>
         <div class="preview-actions"><button class="btn btn-primary" id="conf-print">🖨️ Imprimir checklist</button>${TENANT.portalUrl ? `<a class="btn btn-soft" href="${escapeHtml(TENANT.portalUrl)}" target="_blank" rel="noopener">↗ Portal oficial</a>` : ""}</div>
         <p class="doc-intro" style="font-size:12px">A lista é uma orientação com base nas regras gerais. O ${escapeHtml(TENANT.sigla || "DETRAN")} pode pedir algo a mais no seu caso.</p>`;
       els.overlayBody.querySelector(".guia-back").onclick = abrirServicos;
+      els.overlayBody.querySelectorAll("[data-form]").forEach((b) => (b.onclick = () => openForm(b.getAttribute("data-form"), false)));
       els.overlayBody.querySelectorAll(".conf-item").forEach((el) => {
         const item = s.itens.find((x) => x.id === el.getAttribute("data-i"));
         const set = (v) => { estado[item.id] = v; guardar(id, estado); render(); };
@@ -1113,7 +1124,7 @@ function abrirDefesa(texto, tipo) {
             const r = await fetch(API("/conferencia/analisar"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ servico: s.id, item: item.id, imagem }) });
             const d = await r.json().catch(() => ({}));
             if (!r.ok) throw new Error(d.error || "Não consegui conferir agora.");
-            set({ status: d.status, motivo: d.motivo });
+            set({ status: d.status, motivo: d.motivo, titular: d.titular || null });
           } catch (e) { set({ ...(estado[item.id] || {}), motivo: e.message }); }
         };
       });
@@ -1148,6 +1159,16 @@ function abrirDefesa(texto, tipo) {
     window.addEventListener("afterprint", cleanup);
     setTimeout(() => window.print(), 60); setTimeout(cleanup, 4000);
   }
+  window.__abrirConferencia = abrirServicos;
+})();
+
+/* Atalhos por link (?acao=...), usados nos lembretes e respostas do WhatsApp. */
+(function () {
+  try {
+    const acao = new URLSearchParams(location.search).get("acao");
+    const mapa = { conferir: window.__abrirConferencia, defesa: escolherDefesa, golpe: window.__abrirGolpe };
+    if (acao && typeof mapa[acao] === "function") setTimeout(() => mapa[acao](), 300);
+  } catch (_) {}
 })();
 
 /* ═══════════════════ AVISO DE PRIVACIDADE (LGPD) ═══════════════════

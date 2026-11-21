@@ -22,7 +22,8 @@ import { mascarar } from "./lib/tutoria-gestao.js";
 import { tratarAvaliacao, tratarConsultaProtocolo } from "./lib/gestao.js";
 import { configDe, dentroDoHorario } from "./lib/gestao-config.js";
 import { apagarCidadao, textoAvisoWhatsApp } from "./lib/privacidade.js";
-import { tratarComandoLembrete } from "./lib/lembretes.js";
+import { tratarComandoLembrete, resolverAtalhoLembrete } from "./lib/lembretes.js";
+import { sttConfigurado, transcreverUrl } from "./lib/transcricao.js";
 
 const SESSAO_HORAS = Number(process.env.WHATSAPP_SESSAO_HORAS || 12);
 const FALLBACK_ERRO = "Tivemos uma instabilidade momentânea no atendimento automático. Pode reenviar tua mensagem em instantes, por favor?";
@@ -77,7 +78,7 @@ export function lerMensagem(p) {
   const midia = p.image ? `📷 Imagem: ${p.image.imageUrl || ""}` : p.audio ? `🎤 Áudio: ${p.audio.audioUrl || ""}`
     : p.video ? `🎬 Vídeo: ${p.video.videoUrl || ""}` : p.document ? `📎 ${p.document.fileName || "Documento"}: ${p.document.documentUrl || ""}`
     : p.sticker ? "(figurinha)" : "";
-  return { phone, texto, temMidia, midia: midia.trim(), messageId: String(p.messageId || ""), nome: p.senderName || p.chatName || "" };
+  return { phone, texto, temMidia, midia: midia.trim(), audioUrl: p.audio?.audioUrl || null, messageId: String(p.messageId || ""), nome: p.senderName || p.chatName || "" };
 }
 
 // Usado pela tela de atendimento: o atendente responde pelo WhatsApp do DETRAN.
@@ -101,7 +102,8 @@ export function adaptarParaWhatsApp(texto, { slug }) {
 
 async function processarMensagem(tenant, m) {
   const { zapayio: z, botayio: b } = integracoes(tenant);
-  const { phone, texto } = m;
+  const { phone } = m;
+  let { texto } = m;
   const conv = await buscarConversa(tenant.id, "WHATSAPP", phone);
 
   // Nota da pesquisa de satisfação (1 a 5) depois de um atendimento encerrado.
@@ -149,10 +151,32 @@ async function processarMensagem(tenant, m) {
     return { status: "humano" };
   }
 
+  // Áudio: transcreve (se houver provedor) e segue como se fosse texto.
+  if (!texto && m.audioUrl && sttConfigurado()) {
+    digitando(z, phone, true);
+    const ouvido = await transcreverUrl(m.audioUrl).catch((e) => { console.warn("[audio]", e.message); return ""; });
+    if (ouvido) {
+      texto = ouvido.slice(0, 2000);
+      await enviarTexto(z, phone, `🎧 Entendi: "${texto.length > 220 ? texto.slice(0, 220) + "…" : texto}"`).catch(() => {});
+    } else {
+      digitando(z, phone, false);
+      await enviarTexto(z, phone, "Não consegui entender o áudio. 🙏 Pode mandar de novo, mais perto do microfone, ou escrever?").catch(() => {});
+      return { status: "audio-falhou" };
+    }
+  }
   if (!texto) {
     if (m.temMidia) await enviarTexto(z, phone, AVISO_SO_TEXTO).catch((e) => console.warn("[Zapayio]", e.message));
     return { status: "sem texto" };
   }
+  // "1" ou "2" logo depois de um aviso de lembrete: atalho com a solução.
+  const atalho = await resolverAtalhoLembrete(tenant, phone, texto).catch(() => null);
+  if (atalho?.texto) {
+    await enviarTexto(z, phone, atalho.texto).catch((e) => console.warn("[Zapayio]", e.message));
+    await registrarTroca({ tenantId: tenant.id, canal: "WHATSAPP", contato: phone, nome: m.nome, pergunta: texto, respostas: [atalho.texto], categoria: "lembrete" });
+    return { status: "lembrete-atalho" };
+  }
+  if (atalho?.pergunta) texto = atalho.pergunta;
+
   // Antigolpe: mensagem encaminhada com link/código de barras ou "isso é golpe?".
   if (pareceVerificacao(texto)) {
     const r = analisarSuspeita(texto, tenant);

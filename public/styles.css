@@ -492,3 +492,6 @@ a.docs-cta.sim-cta small { color: #FFE9A8; }
 .golpe-res.golpe { border-color: #E5A29C; background: #FDECEA; color: #5F1712; }
 .golpe-res.atencao { border-color: #EBC77A; background: #FFF6E0; color: #5C4400; }
 .golpe-res.sem_sinais { border-color: #9ED3B3; background: #E9F7EF; color: #164B2E; }
+.conf-cruz { border: 1px solid #EBC77A; background: #FFF6E0; color: #5C4400; border-radius: 12px; padding: 10px 14px; margin: 10px 0; font-size: 13.5px; }
+.conf-cruz ul { margin: 6px 0; padding-left: 20px; }
+.conf-cruz .btn { padding: 3px 10px; font-size: 12.5px; }
