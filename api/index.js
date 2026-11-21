@@ -35,6 +35,8 @@ import { registrarTutoriaGestao, buscarNaBase, mascarar } from "../lib/tutoria-g
 import { analisarSuspeita, pareceVerificacao, textoParaChat } from "../lib/antigolpe.js";
 import { registrarObservatorio } from "../lib/observatorio.js";
 import { registrarMeuDetran, contextoMeuDetran } from "../lib/meu-detran.js";
+import { registrarJornadas } from "../lib/jornadas-api.js";
+import { detectarJornada } from "../lib/jornadas.js";
 import { registrarConferencia } from "../lib/conferencia.js";
 import { registrarPrivacidade } from "../lib/privacidade.js";
 import { registrarLembretes } from "../lib/lembretes.js";
@@ -221,7 +223,9 @@ app.post(`${T}/chat`, comTenant, async (req, res) => {
         registrarEvento({ tenantId: t.id, tipo: "PERGUNTA", canal: "WEB", tema: resp.categoria || tema, resolvido: !semBase, transbordo });
         if (semBase) registrarEvento({ tenantId: t.id, tipo: "SEMBASE", canal: "WEB", tema: mascarar(pergunta).replace(/\s+/g, " ").trim().slice(0, 60) });
       }
-      return res.json({ reply: reply || "Não consegui gerar uma resposta. Pode reformular a pergunta?", origem: simCtx ? "botayio-sim" : "botayio" });
+      // Despachante Parente: pergunta de uma jornada -> o site mostra "me acompanhe passo a passo".
+      const jor = detectarJornada(pergunta);
+      return res.json({ reply: (reply || "Não consegui gerar uma resposta. Pode reformular a pergunta?") + (jor && !transbordo ? `\n[[JORNADA:${jor}]]` : ""), origem: simCtx ? "botayio-sim" : "botayio" });
     } catch (err) {
       console.error(`[BotAyio:${t.slug}] chat web:`, err.message);
       if (!llmConfigurado()) {
@@ -243,7 +247,8 @@ app.post(`${T}/chat`, comTenant, async (req, res) => {
       registrarEvento({ tenantId: t.id, tipo: "PERGUNTA", canal: "WEB", tema, resolvido: !semBase });
       if (semBase && !temImagem(ultima)) registrarEvento({ tenantId: t.id, tipo: "SEMBASE", canal: "WEB", tema: mascarar(pergunta).replace(/\s+/g, " ").trim().slice(0, 60) });
     }
-    res.json({ reply: texto || "Não consegui gerar uma resposta. Pode reformular a pergunta?", origem: "local" });
+    const jor = temImagem(ultima) ? null : detectarJornada(pergunta);
+    res.json({ reply: (texto || "Não consegui gerar uma resposta. Pode reformular a pergunta?") + (jor ? `\n[[JORNADA:${jor}]]` : ""), origem: "local" });
   } catch (err) {
     console.error("[chat]", err.message);
     res.status(502).json({ error: "Não foi possível obter a resposta agora. Tente novamente em instantes." });
@@ -366,6 +371,9 @@ registrarObservatorio(app);
 
 // "Meu DETRAN" oficial (conector da API do DETRAN + login gov.br); desligado por padrão
 registrarMeuDetran(app, { limitar: (chave, max) => rateLimited(chave, max) });
+
+// "Despachante Parente": jornadas guiadas (venda de veículo, renovação de CNH, defesa de multa)
+registrarJornadas(app, { limitar: (chave, max) => rateLimited(chave, max) });
 
 // Conferência de documentos antes do protocolo (checklist por serviço + foto)
 registrarConferencia(app, { limitar: (chave, max) => rateLimited(chave, max) });

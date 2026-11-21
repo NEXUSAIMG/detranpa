@@ -332,3 +332,6 @@ textarea.in { resize: vertical; }
 .tu-normas-lista li small { display: block; color: var(--tinta-3); font-size: 12px; margin-top: 2px; }
 .tu-normas-lista li.feita b { color: var(--tinta-2); font-weight: 600; }
 .tu-normas-lista .tu-acoes { margin: 0; }
+.ob-funil { margin-bottom: 16px; }
+.ob-funil .barras-h .b { grid-template-columns: 200px 1fr 44px; }
+@media (max-width: 720px) { .ob-funil .barras-h .b { grid-template-columns: 120px 1fr 36px; } }

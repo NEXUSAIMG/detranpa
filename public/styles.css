@@ -502,3 +502,27 @@ a.docs-cta.sim-cta small { color: #FFE9A8; }
 .govbr-aviso { border-radius: 10px; padding: 10px 12px; margin: 8px 0; font-size: 13.5px; }
 .govbr-aviso.ok { background: #E9F7EF; color: #164B2E; border: 1px solid #9ED3B3; }
 .govbr-aviso.err { background: #FFF6E0; color: #5C4400; border: 1px solid #EBC77A; }
+/* ── Despachante Parente (jornadas) ── */
+.jor-cta { border-color: var(--moss) !important; }
+.jor-chip { position: fixed; right: 16px; bottom: 92px; z-index: 40; border: 0; border-radius: 999px; padding: 9px 14px; background: var(--moss); color: #fff; font: 600 13px/1.2 inherit; box-shadow: 0 4px 14px rgba(0,0,0,.18); cursor: pointer; max-width: calc(100vw - 32px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jor-chip.hidden { display: none; }
+.jor-barra { height: 8px; background: var(--paper-edge); border-radius: 999px; overflow: hidden; margin: 2px 0 14px; }
+.jor-barra span { display: block; height: 100%; background: var(--moss); border-radius: 999px; transition: width .3s; }
+.jor-grade { display: grid; grid-template-columns: 210px 1fr; gap: 16px; }
+@media (max-width: 640px) { .jor-grade { grid-template-columns: 1fr; } .jor-passos { display: none; } }
+.jor-passos { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+.jor-passos li { display: flex; gap: 8px; align-items: center; padding: 6px 0; color: #7A8790; }
+.jor-passos li span { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--paper-edge); display: inline-flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0; }
+.jor-passos li.feito { color: #1E7B4A; } .jor-passos li.feito span { background: #1E7B4A; border-color: #1E7B4A; color: #fff; }
+.jor-passos li.atual { color: var(--ayio-navy, #192662); font-weight: 700; } .jor-passos li.atual span { border-color: var(--moss); }
+.jor-etapa { background: var(--surface); border: 1px solid var(--paper-edge); border-radius: 14px; padding: 16px; }
+.jor-etapa small { color: #7A8790; font-weight: 600; }
+.jor-etapa h4 { margin: 4px 0 8px; font-size: 17px; }
+.jor-etapa p { margin: 0 0 12px; line-height: 1.55; }
+.jor-etapa.fim { border-color: #9ED3B3; background: #E9F7EF; }
+.jor-prazos div { border-radius: 10px; padding: 8px 10px; margin: 6px 0; background: #F1F5F9; font-size: 13.5px; }
+.jor-prazos div.perto { background: #FFF6E0; color: #5C4400; }
+.jor-prazos div.aviso { background: #E8F0FE; color: #1A3E7A; }
+.jor-acoes { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
+.jor-rodape { display: flex; justify-content: space-between; margin-top: 14px; }
+.linklike { border: 0; background: none; color: #5A6A62; text-decoration: underline; cursor: pointer; font: inherit; font-size: 12.5px; padding: 0; }

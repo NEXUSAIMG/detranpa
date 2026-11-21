@@ -67,7 +67,26 @@
 
     const mb = Math.max(1, ...d.balcao.map((b) => b.n));
     renderRede(d.rede);
+    renderJornadas(d.jornadas || []);
     $("ob-balcao").innerHTML = d.balcao.length ? `<div class="barras-h">${d.balcao.map((b) => `<div class="b"><span title="${esc(b.servico)}">${esc(b.servico)}</span><div class="trilho"><div class="enche" style="width:${(b.n / mb) * 100}%"></div></div><span class="n">${b.n}</span></div>`).join("")}</div>` : vazio("Nenhum atendimento de balcão registrado no período.");
+  }
+
+  // Funil das jornadas: a maior queda entre duas etapas é onde o processo trava.
+  function renderJornadas(js) {
+    const el = $("ob-jornadas"); if (!el) return;
+    if (!js.length) { el.innerHTML = vazio("Ninguém usou o acompanhamento passo a passo no período. Ele é oferecido no chat e no WhatsApp quando a pessoa fala em vender o veículo, renovar a CNH ou contestar multa."); return; }
+    el.innerHTML = js.map((j) => {
+      const ini = Math.max(1, j.etapas[0].n);
+      let pior = null;
+      for (let i = 1; i < j.etapas.length; i++) {
+        const a = j.etapas[i - 1].n, b = j.etapas[i].n;
+        if (a && (pior === null || a - b > pior.perda)) pior = { perda: a - b, de: j.etapas[i - 1].titulo, pct: Math.round(((a - b) / a) * 100) };
+      }
+      const fim = j.etapas[j.etapas.length - 1].n;
+      return `<div class="ob-funil"><b>${j.icone} ${esc(j.titulo)}</b> <small class="ob-sub">${j.etapas[0].n} começaram · ${fim} concluíram (${Math.round((fim / ini) * 100)}%)</small>
+        <div class="barras-h">${j.etapas.map((x) => `<div class="b"><span title="${esc(x.titulo)}">${esc(x.titulo)}</span><div class="trilho"><div class="enche" style="width:${(x.n / ini) * 100}%"></div></div><span class="n">${x.n}</span></div>`).join("")}</div>
+        ${pior && pior.perda > 0 ? `<p class="ob-dica">⚠️ Maior desistência depois de <b>${esc(pior.de)}</b> (${pior.pct}% param ali). Vale revisar o que pedimos nessa etapa.</p>` : ""}</div>`;
+    }).join("");
   }
 
   // Comparação anônima com a rede. "Melhor" depende do indicador.

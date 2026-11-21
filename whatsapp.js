@@ -22,7 +22,8 @@ import { mascarar } from "./lib/tutoria-gestao.js";
 import { tratarAvaliacao, tratarConsultaProtocolo } from "./lib/gestao.js";
 import { configDe, dentroDoHorario } from "./lib/gestao-config.js";
 import { apagarCidadao, textoAvisoWhatsApp } from "./lib/privacidade.js";
-import { tratarComandoLembrete, resolverAtalhoLembrete } from "./lib/lembretes.js";
+import { tratarComandoLembrete, resolverAtalhoLembrete, criarLembrete } from "./lib/lembretes.js";
+import { tratarJornadaWhatsApp, ofertaJornadaWhatsApp } from "./lib/jornadas-api.js";
 import { sttConfigurado, transcreverUrl } from "./lib/transcricao.js";
 
 const SESSAO_HORAS = Number(process.env.WHATSAPP_SESSAO_HORAS || 12);
@@ -177,6 +178,20 @@ async function processarMensagem(tenant, m) {
   }
   if (atalho?.pergunta) texto = atalho.pergunta;
 
+  // Despachante Parente: comandos da jornada em andamento (OK, PULAR, 1/2, datas, SAIR) ou "ACOMPANHAR".
+  if (!atalho) {
+    const jor = await tratarJornadaWhatsApp(tenant, phone, texto, {
+      criarLembreteWA: async (tipo, data) => !(await criarLembrete(tenant, { contato: phone, origem: "WHATSAPP", tipo, data, dataRecebimento: data })).erro,
+    }).catch((e) => { console.warn(`[jornadas:${tenant.slug}]`, e.message); return null; });
+    if (jor) {
+      const textos = [...jor.textos];
+      if (!conv && configDe(tenant).avisoWhatsApp) textos.unshift(textoAvisoWhatsApp(tenant));
+      for (const p of textos) await enviarTexto(z, phone, p).catch((e) => console.warn("[Zapayio]", e.message));
+      await registrarTroca({ tenantId: tenant.id, canal: "WHATSAPP", contato: phone, nome: m.nome, pergunta: texto, respostas: textos, categoria: "jornada", status: conv?.status === "ENCERRADA" ? "BOT" : undefined });
+      return { status: "jornada" };
+    }
+  }
+
   // Antigolpe: mensagem encaminhada com link/código de barras ou "isso é golpe?".
   if (pareceVerificacao(texto)) {
     const r = analisarSuspeita(texto, tenant);
@@ -228,6 +243,11 @@ async function processarMensagem(tenant, m) {
     }
   }
   const transbordo = Boolean(resp.handed_off);
+  // Pergunta de uma jornada (vendi o carro, renovar CNH, contestar multa): oferece o acompanhamento.
+  if (!transbordo) {
+    const oferta = await ofertaJornadaWhatsApp(tenant, phone, texto).catch(() => null);
+    if (oferta) { try { await enviarTexto(z, phone, oferta); enviados++; enviadosTxt.push(oferta); } catch (e) { console.warn("[Zapayio]", e.message); } }
+  }
   const semBase = (resp.contents || []).some((c) => String(c?.text || "").includes("[[SEMBASE]]"));
   // Pediu atendente fora do expediente: avisa (a conversa fica na fila mesmo assim).
   if (transbordo) {

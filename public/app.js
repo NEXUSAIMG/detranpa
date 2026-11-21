@@ -161,6 +161,7 @@ async function revealParts(parts, formId, wantsDefesa) {
     const _bb = addBubble("assistant", parts[i], i === parts.length - 1 ? formId : null);
     if (i === parts.length - 1) {
       if (wantsDefesa && window.__defesaButton) window.__defesaButton(_bb);
+      if (window.__jornadaOferta && window.__jornadaButton) window.__jornadaButton(_bb, window.__jornadaOferta);
       if (window.__feedback) window.__feedback(_bb);
     }
   }
@@ -208,6 +209,9 @@ async function enviar(texto) {
       if (m) { formId = m[1].toLowerCase(); reply = reply.replace(m[0], "").trim(); }
       const wantsDefesa = /\[\[DEFESA\]\]/i.test(reply);
       if (wantsDefesa) reply = reply.replace(/\[\[DEFESA\]\]/gi, "").trim();
+      const mj = reply.match(/\[\[JORNADA:([a-z]+)\]\]/i);
+      if (mj) reply = reply.replace(/\s*\[\[JORNADA:[a-z]+\]\]/gi, "").trim();
+      window.__jornadaOferta = mj ? mj[1].toLowerCase() : null;
       const limpo = reply.replace(/\[\[BREAK\]\]/g, "\n\n").replace(/\n{3,}/g, "\n\n").trim();
       conversa.push({ role: "assistant", content: limpo });
       const parts = splitReply(reply);
@@ -821,6 +825,126 @@ function abrirDefesa(texto, tipo) {
   }
 })();
 
+/* ═══════════════════ DESPACHANTE PARENTE (jornadas guiadas) ═══════════════════
+   O assistente conduz o serviço etapa por etapa e guarda onde a pessoa parou
+   (neste navegador, por um código aleatório; nada de CPF). */
+(function () {
+  const escJ = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const DONO = (() => {
+    try { let v = localStorage.getItem(LS("jornada")); if (!v) { v = (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2, 12); localStorage.setItem(LS("jornada"), v); } return v; }
+    catch (_) { return SESSION_ID; }
+  })();
+  const api = async (p, body) => {
+    const r = await fetch(API("/jornadas" + p + (body ? "" : `${p.includes("?") ? "&" : "?"}sessao=${encodeURIComponent(DONO)}`)), body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...body, sessao: DONO }) } : {});
+    return { ok: r.ok, data: await r.json().catch(() => ({})) };
+  };
+  let atual = null, catalogo = [];
+
+  // Chip fixo "Minha jornada" quando há uma em andamento.
+  const chip = document.createElement("button");
+  chip.type = "button"; chip.className = "jor-chip hidden"; chip.onclick = () => abrir();
+  document.body.appendChild(chip);
+  function atualizarChip() {
+    if (atual && !atual.concluida) { chip.innerHTML = `🧭 ${escJ(atual.jornada.titulo)} · ${atual.progresso.atual}/${atual.progresso.total}`; chip.classList.remove("hidden"); }
+    else chip.classList.add("hidden");
+  }
+
+  if (els.emptyDocs) {
+    const cta = document.createElement("button");
+    cta.className = "docs-cta jor-cta";
+    cta.innerHTML = '<span class="docs-cta-icon">🧭</span><span><strong>Despachante Parente — resolva passo a passo</strong><small>Vendi meu veículo · Renovar a CNH · Contestar multa. Eu acompanho até o fim, com prazos e lembretes.</small></span><span class="docs-cta-arrow">→</span>';
+    cta.onclick = () => abrir();
+    els.emptyDocs.insertAdjacentElement("beforebegin", cta);
+  }
+  (async () => { const r = await api("/atual"); if (r.ok) { atual = r.data.cartao; atualizarChip(); } })().catch(() => {});
+
+  // Botão na resposta do chat quando a pergunta é de uma jornada.
+  window.__jornadaButton = function (bubble, id) {
+    if (!bubble || (atual && !atual.concluida)) return;
+    const btn = document.createElement("button");
+    btn.type = "button"; btn.className = "form-suggest jor-sug";
+    btn.innerHTML = '<span class="fs-doc">🧭</span> Quero que você me acompanhe passo a passo';
+    btn.onclick = () => comecar(id);
+    bubble.appendChild(btn);
+  };
+
+  async function abrir() {
+    els.overlay.classList.remove("hidden"); els.docsBack.classList.add("hidden");
+    els.overlayTitle.textContent = "Despachante Parente";
+    const r = await api("/atual"); atual = r.ok ? r.data.cartao : null; atualizarChip();
+    if (atual) return render();
+    if (!catalogo.length) { const c = await fetch(API("/jornadas")).then((x) => x.json()).catch(() => ({})); catalogo = c.jornadas || []; }
+    els.overlayBody.innerHTML = '<p class="doc-intro">Escolha o que você precisa resolver. Eu te guio etapa por etapa, guardo onde você parou, conto os prazos e te lembro. Nada é pago nem assinado por mim: eu preparo e te levo ao canal oficial de cada passo.</p>'
+      + `<div class="doc-grid">${catalogo.map((j) => `<button class="doc-card" data-j="${escJ(j.id)}"><h4>${j.icone} ${escJ(j.titulo)}</h4><p>${escJ(j.resumo)}</p><div class="doc-sub">${j.etapas} etapas</div></button>`).join("")}</div>`;
+    els.overlayBody.querySelectorAll("[data-j]").forEach((b) => (b.onclick = () => comecar(b.dataset.j)));
+  }
+  async function comecar(id) {
+    els.overlay.classList.remove("hidden"); els.docsBack.classList.add("hidden");
+    els.overlayTitle.textContent = "Despachante Parente";
+    const r = await api("/iniciar", { id });
+    if (!r.ok) { els.overlayBody.innerHTML = `<div class="golpe-res atencao">${escJ(r.data.error || "Não foi possível começar.")}</div>`; return; }
+    atual = r.data.cartao; atualizarChip(); render();
+  }
+  async function responder(acao, valor) {
+    const r = await api("/responder", { acao, valor });
+    if (r.data.cartao) atual = r.data.cartao;
+    atualizarChip(); render(r.ok ? null : r.data.error);
+    // Lembrete pelo WhatsApp com a data já preenchida (o cidadão confirma pelo próprio WhatsApp).
+    for (const a of r.data.avisos || []) {
+      const box = document.getElementById("jor-aviso");
+      if (box && window.__abrirLembrete) {
+        box.innerHTML = `<button class="btn btn-soft" id="jor-lemb">🔔 Receber lembrete no WhatsApp (${a.lembrete === "DEFESA" ? "prazo da defesa" : "vencimento da CNH"})</button>`;
+        document.getElementById("jor-lemb").onclick = () => window.__abrirLembrete(a.lembrete === "DEFESA" ? { tipo: "DEFESA", recebimento: a.data } : { tipo: "CNH", data: a.data });
+      }
+    }
+  }
+  function render(erro) {
+    const c = atual; if (!c) return abrir();
+    const e = c.etapa;
+    els.overlayTitle.textContent = `${c.jornada.icone} ${c.jornada.titulo}`;
+    const passos = c.progresso.etapas.map((x) => `<li class="${x.feito ? "feito" : x.atual ? "atual" : ""}"><span>${x.feito ? "✓" : ""}</span>${escJ(x.titulo)}</li>`).join("");
+    const prazos = c.prazos.length ? `<div class="jor-prazos">${c.prazos.map((p) => `<div class="${p.aviso ? "aviso" : p.faltam >= 0 && p.faltam <= 5 ? "perto" : ""}">📅 ${escJ(p.rotulo)}: <b>${escJ(p.dataBR)}</b>${p.faltam >= 0 ? ` <small>(faltam ${p.faltam} dias)</small>` : p.aviso ? "" : " <small>(já passou)</small>"}</div>`).join("")}</div>` : "";
+    let acoes = "";
+    if (e.tipo === "escolha") acoes = e.opcoes.map((o) => `<button class="btn btn-primary" data-op="${escJ(o.id)}">${escJ(o.rotulo)}</button>`).join("");
+    else if (e.tipo === "data") acoes = `<input type="date" id="jor-data" class="golpe-in" style="max-width:220px;margin:0" value="${escJ(e.valor || "")}"><button class="btn btn-primary" data-a="data">Salvar data</button>${e.opcional ? '<button class="btn btn-soft" data-a="pular">Pular</button>' : ""}`;
+    else if (e.tipo !== "fim") {
+      if (e.link) acoes += `<a class="btn btn-soft" href="${escJ(e.link)}" target="_blank" rel="noopener">↗ Portal oficial</a>`;
+      if (e.formId) acoes += `<button class="btn btn-soft" data-x="form">📝 Preencher o documento</button>`;
+      if (e.servico) acoes += `<button class="btn btn-soft" data-x="conferir">✅ Conferir documentos</button>`;
+      if (e.tipo === "defesa") acoes += `<button class="btn btn-soft" data-x="defesa">⚖️ Gerar o rascunho</button>`;
+      if (e.id === "debitos" || e.id === "guia") acoes += `<button class="btn btn-soft" data-x="golpe">🛡️ É golpe? Conferir cobrança</button>`;
+      acoes += `<button class="btn btn-primary" data-a="feito">Feito ✓ — próxima etapa</button>`;
+    } else acoes = `<button class="btn btn-primary" data-x="nova">Resolver outra coisa</button>`;
+    els.overlayBody.innerHTML = `
+      <div class="jor-barra"><span style="width:${Math.round((c.progresso.atual / c.progresso.total) * 100)}%"></span></div>
+      <div class="jor-grade"><ol class="jor-passos">${passos}</ol>
+        <div class="jor-etapa ${c.concluida ? "fim" : ""}">
+          <small>Etapa ${c.progresso.atual} de ${c.progresso.total}</small>
+          <h4>${escJ(e.titulo)}</h4>
+          <p>${escJ(e.texto)}</p>
+          ${prazos}
+          ${erro ? `<div class="golpe-res atencao">${escJ(erro)}</div>` : ""}
+          <div class="jor-acoes">${acoes}</div>
+          <div id="jor-aviso"></div>
+          <div class="jor-rodape">${c.progresso.atual > 1 && !c.concluida ? '<button class="linklike" data-a="voltar">← Etapa anterior</button>' : ""}<button class="linklike" data-x="sair">${c.concluida ? "Fechar esta jornada" : "Parar o acompanhamento"}</button></div>
+        </div></div>`;
+    els.overlayBody.querySelectorAll("[data-op]").forEach((b) => (b.onclick = () => responder("opcao", b.dataset.op)));
+    els.overlayBody.querySelectorAll("[data-a]").forEach((b) => (b.onclick = () => {
+      if (b.dataset.a === "data") { const v = document.getElementById("jor-data").value; if (!v) return render("Escolha a data."); return responder("data", v); }
+      responder(b.dataset.a);
+    }));
+    els.overlayBody.querySelectorAll("[data-x]").forEach((b) => (b.onclick = async () => {
+      const x = b.dataset.x;
+      if (x === "form") openForm(e.formId, false);
+      else if (x === "conferir" && window.__abrirConferenciaServico) window.__abrirConferenciaServico(e.servico);
+      else if (x === "defesa") escolherDefesa();
+      else if (x === "golpe" && window.__abrirGolpe) window.__abrirGolpe();
+      else if (x === "sair" || x === "nova") { await api("/sair", {}); atual = null; atualizarChip(); abrir(); }
+    }));
+  }
+  window.__abrirJornada = abrir;
+})();
+
 /* ═══════════════════ ANTIGOLPE ═══════════════════ */
 (function () {
   const escH = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -1160,6 +1284,11 @@ function abrirDefesa(texto, tipo) {
     setTimeout(() => window.print(), 60); setTimeout(cleanup, 4000);
   }
   window.__abrirConferencia = abrirServicos;
+  window.__abrirConferenciaServico = async (id) => {
+    els.overlay.classList.remove("hidden"); els.docsBack.classList.add("hidden");
+    await carregar();
+    if (SERVICOS.some((s) => s.id === id)) abrirServico(id); else abrirServicos();
+  };
 })();
 
 /* ═══════════════════ MEU DETRAN OFICIAL (login gov.br) ═══════════════════
@@ -1195,8 +1324,9 @@ function abrirDefesa(texto, tipo) {
 /* Atalhos por link (?acao=...), usados nos lembretes e respostas do WhatsApp. */
 (function () {
   try {
-    const acao = new URLSearchParams(location.search).get("acao");
-    const mapa = { conferir: window.__abrirConferencia, defesa: escolherDefesa, golpe: window.__abrirGolpe };
+    const q = new URLSearchParams(location.search);
+    const acao = q.get("acao"), servico = String(q.get("servico") || "").replace(/[^a-z0-9-]/g, "");
+    const mapa = { conferir: servico ? () => window.__abrirConferenciaServico(servico) : window.__abrirConferencia, defesa: escolherDefesa, golpe: window.__abrirGolpe, jornada: window.__abrirJornada };
     if (acao && typeof mapa[acao] === "function") setTimeout(() => mapa[acao](), 300);
   } catch (_) {}
 })();
@@ -1265,7 +1395,7 @@ function abrirDefesa(texto, tipo) {
       </div>`;
     const campos = (tipo) => {
       const c = document.getElementById("lb-campos");
-      if (tipo === "CNH") c.innerHTML = `<label class="lemb-lbl" for="lb-data">Data de validade da sua CNH</label><input id="lb-data" type="date" min="${hoje()}">`;
+      if (tipo === "CNH") c.innerHTML = `<label class="lemb-lbl" for="lb-data">Data de validade da sua CNH</label><input id="lb-data" type="date" min="${hoje()}" value="${pre.data && pre.data >= hoje() ? pre.data : ""}">`;
       else if (tipo === "DEFESA") c.innerHTML = `<label class="lemb-lbl" for="lb-data">Quando você recebeu a notificação?</label><input id="lb-data" type="date" max="${hoje()}" value="${pre.recebimento || ""}"><div class="calc-sub">O prazo é de 30 dias a partir do recebimento. Eu aviso 10, 3 e 1 dia antes.</div>`;
       else if (tipo === "LICENCIAMENTO") c.innerHTML = temCal
         ? `<label class="lemb-lbl" for="lb-final">Último número da placa</label><select id="lb-final"><option value="">Escolha</option>${d.finais.map((f) => `<option>${f}</option>`).join("")}</select>`
