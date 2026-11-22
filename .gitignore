@@ -11,3 +11,6 @@ data/
 migracao-*-lacunas.md
 
 .vercel
+
+# Resultados da avaliação (contêm respostas reais; ficam só no computador)
+tests/avaliacao/resultados/

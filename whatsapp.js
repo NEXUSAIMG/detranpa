@@ -15,9 +15,9 @@ import { kvSetNxEx, kvGetStr, kvSetEx, kvDel } from "./store.js";
 import { comTenant, integracoes, statusIntegracoes } from "./lib/tenants.js";
 import { exigir } from "./lib/auth.js";
 import { mesmoSegredo } from "./lib/cripto.js";
-import { perguntarAoBot, textoComBotoes } from "./lib/botayio.js";
+import { perguntarAoBot, textoComBotoes, mensagemIndisponivel } from "./lib/botayio.js";
 import { registrarTroca, registrarEvento, buscarConversa, registrarEntradaHumano, classificarTema } from "./lib/registro.js";
-import { analisarSuspeita, pareceVerificacao, textoParaChat } from "./lib/antigolpe.js";
+import { analisarSuspeita, pareceVerificacao, textoParaChat, perguntaCobrancaPorMensagem, respostaCobrancaPorMensagem } from "./lib/antigolpe.js";
 import { mascarar } from "./lib/tutoria-gestao.js";
 import { tratarAvaliacao, tratarConsultaProtocolo } from "./lib/gestao.js";
 import { configDe, dentroDoHorario } from "./lib/gestao-config.js";
@@ -30,7 +30,6 @@ import { registrarUso } from "./lib/uso-ia.js";
 import { promptCidadao } from "./lib/prompts.js";
 
 const SESSAO_HORAS = Number(process.env.WHATSAPP_SESSAO_HORAS || 12);
-const FALLBACK_ERRO = "Tivemos uma instabilidade momentânea no atendimento automático. Pode reenviar tua mensagem em instantes, por favor?";
 const AVISO_SO_TEXTO = "Por enquanto eu só consigo ler mensagens escritas. 🙂 Me conta por texto o que tu precisa resolver que eu te ajudo!";
 
 // ── Zapayio (envio) ─────────────────────────────────────────────────────────
@@ -195,7 +194,18 @@ async function processarMensagem(tenant, m) {
     }
   }
 
-  // Antigolpe: mensagem encaminhada com link/código de barras ou "isso é golpe?".
+  // Antigolpe (orientação): "o DETRAN manda cobrança por link/WhatsApp?" -> resposta fixa e segura.
+  if (perguntaCobrancaPorMensagem(texto)) {
+    const partes = adaptarParaWhatsApp(respostaCobrancaPorMensagem(tenant, { negrito: "*" }), tenant);
+    if (!conv && configDe(tenant).avisoWhatsApp) partes.unshift(textoAvisoWhatsApp(tenant));
+    for (const p of partes) await enviarTexto(z, phone, p).catch((e) => console.warn("[Zapayio]", e.message));
+    await Promise.all([
+      registrarTroca({ tenantId: tenant.id, canal: "WHATSAPP", contato: phone, nome: m.nome, pergunta: texto, respostas: partes, categoria: "golpe", status: conv?.status === "ENCERRADA" ? "BOT" : undefined }),
+      registrarEvento({ tenantId: tenant.id, tipo: "PERGUNTA", canal: "WHATSAPP", tema: "golpe", resolvido: true }),
+    ]);
+    return { status: "antigolpe", nivel: "orientacao" };
+  }
+  // Antigolpe: mensagem encaminhada com link/código de barras, "isso é golpe?" ou relato de golpe recebido.
   if (pareceVerificacao(texto)) {
     const r = analisarSuspeita(texto, tenant);
     const partes = adaptarParaWhatsApp(textoParaChat(r, { negrito: "*" }), tenant);
@@ -206,6 +216,12 @@ async function processarMensagem(tenant, m) {
       registrarEvento({ tenantId: tenant.id, tipo: "GOLPE", canal: "WHATSAPP", tema: r.nivel, resolvido: true }),
     ]);
     return { status: "antigolpe", nivel: r.nivel };
+  }
+
+  // Mensagem longa demais não vai para a IA (custo e abuso); golpe colado já foi analisado acima.
+  if (texto.length > (Number(process.env.MAX_PERGUNTA) || 2000)) {
+    await enviarTexto(z, phone, "Sua mensagem ficou muito longa para eu responder. Pode resumir a dúvida em poucas linhas? 🙂").catch((e) => console.warn("[Zapayio]", e.message));
+    return { status: "longa_demais" };
   }
 
   const sessionId = `detran-${tenant.slug}-${phone}`;
@@ -232,7 +248,7 @@ async function processarMensagem(tenant, m) {
     if (local) resp = { contents: [{ text: local }], handed_off: false, categoria: null, origem: "local" };
     else {
       digitando(z, phone, false);
-      await enviarTexto(z, phone, FALLBACK_ERRO).catch((e) => console.error(`[Zapayio:${tenant.slug}] falha no envio do aviso de erro:`, e.message));
+      await enviarTexto(z, phone, mensagemIndisponivel(tenant, { negrito: true })).catch((e) => console.error(`[Zapayio:${tenant.slug}] falha no envio do aviso de erro:`, e.message));
       registrarEvento({ tenantId: tenant.id, tipo: "PERGUNTA", canal: "WHATSAPP", tema: "erro", resolvido: false });
       return { status: "erro botayio", erro: err.message };
     }

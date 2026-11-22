@@ -29,7 +29,7 @@ import { registrarSeguranca, etapaPosSenha, auditar } from "../lib/seguranca.js"
 import { registrarImpacto } from "../lib/impacto.js";
 import { lerToken } from "../lib/cripto.js";
 import { chamarLLM, limparHistorico, textoDe, temImagem, llmConfigurado, SEM_CHAVE, PROVIDER_ID, MODEL, MAX_TOKENS } from "../lib/llm.js";
-import { perguntarRapido } from "../lib/botayio.js";
+import { perguntarRapido, mensagemIndisponivel } from "../lib/botayio.js";
 import { registrarUso } from "../lib/uso-ia.js";
 import { montarResposta, aquecerTenant } from "../lib/aquecer-cache.js";
 import { promptCidadao, promptOperador, promptDefesa, promptTermo, promptExtracao } from "../lib/prompts.js";
@@ -39,7 +39,7 @@ import { registrarAdmin } from "../lib/admin.js";
 import { registrarAtendimento } from "../lib/atendimento.js";
 import { registrarGestao } from "../lib/gestao.js";
 import { registrarTutoriaGestao, buscarNaBase, mascarar } from "../lib/tutoria-gestao.js";
-import { analisarSuspeita, pareceVerificacao, textoParaChat } from "../lib/antigolpe.js";
+import { analisarSuspeita, pareceVerificacao, textoParaChat, perguntaCobrancaPorMensagem, respostaCobrancaPorMensagem } from "../lib/antigolpe.js";
 import { registrarObservatorio } from "../lib/observatorio.js";
 import { registrarMeuDetran, contextoMeuDetran } from "../lib/meu-detran.js";
 import { registrarJornadas } from "../lib/jornadas-api.js";
@@ -104,6 +104,7 @@ app.use((req, res, next) => (/\.html?$/i.test(req.path) ? next() : estatico(req,
 // ── Limite de perguntas por IP ──────────────────────────────────────────────
 const hits = new Map();
 const LIMITE_CHAT_MIN = Number(process.env.LIMITE_CHAT_MIN) || 20;
+export const MAX_PERGUNTA = Number(process.env.MAX_PERGUNTA) || 2000;
 function rateLimited(chave, max = 20, janela = 60_000) {
   const agora = Date.now();
   const reg = hits.get(chave) || { count: 0, reset: agora + janela };
@@ -243,10 +244,20 @@ app.post(`${T}/chat`, comTenant, async (req, res) => {
     if (!transmitindo) return res.status(status).json(corpo);
     res.end(JSON.stringify(status >= 400 ? { erro: corpo.error || "Falha." } : { fim: corpo }) + "\n");
   };
-  if (rateLimited(`${t.slug}:${ip}`)) return res.status(429).json({ error: "Muitas perguntas em sequência. Aguarde um instante e tente de novo." });
+  // Modo avaliação (22/11/2026): o script de avaliação manda X-Avaliacao + login de
+  // Tutor/Gestor. Mesmo caminho do cidadão (antigolpe, BotAyio, montagem da resposta),
+  // mas NADA é gravado (conversa, estatística, custo, cache) e o BotAyio recebe
+  // `simulacao` (não entra no Inbox nem na Tutoria). Sem o limite por pessoa.
+  let avaliador = null;
+  if (req.get("x-avaliacao")) {
+    const h = String(req.headers.authorization || ""), d = h.startsWith("Bearer ") ? lerToken(h.slice(7)) : null;
+    avaliador = d && (d.perfil === "SUPERADMIN" || d.tid === t.id) && podeAcessar(d.perfil, "tutor") ? d : null;
+    if (!avaliador) return res.status(401).json({ error: "A avaliação exige login de Tutor ou Gestor deste DETRAN." });
+  }
+  if (!avaliador && rateLimited(`${t.slug}:${ip}`)) return res.status(429).json({ error: "Muitas perguntas em sequência. Aguarde um instante e tente de novo." });
   // Limite compartilhado entre as instâncias da Vercel (a memória é de cada uma).
   // Corre em paralelo com o resto e só é conferido antes de chamar a IA.
-  const limiteGlobal = contarNaJanela(`chat:${t.slug}:${ip}`, 60).catch(() => 0);
+  const limiteGlobal = avaliador ? Promise.resolve(0) : contarNaJanela(`chat:${t.slug}:${ip}`, 60).catch(() => 0);
 
   const hist = limparHistorico(req.body?.messages);
   if (!hist.length || hist[hist.length - 1].role !== "user") return res.status(400).json({ error: "A última mensagem deve ser do usuário." });
@@ -260,24 +271,39 @@ app.post(`${T}/chat`, comTenant, async (req, res) => {
   const simP = simPorCookie(req, t) ? String(req.body?.simCidadao || "").replace(/[^a-z]/g, "").slice(0, 20) : "";
   const simCtx = simP ? await contextoParaChat(t, String(req.body?.simSessao || "").replace(/[^\w-]/g, "").slice(0, 40) || "anon", simP).catch(() => "") : "";
   // "Meu DETRAN" oficial: dados da própria pessoa, só com login gov.br (cookie de sessão curta).
-  const realCtx = simCtx ? "" : await contextoMeuDetran(req, t).catch((e) => { console.warn(`[meu-detran:${t.slug}]`, e.message); return ""; });
+  const realCtx = simCtx || avaliador ? "" : await contextoMeuDetran(req, t).catch((e) => { console.warn(`[meu-detran:${t.slug}]`, e.message); return ""; });
+  const naoGravar = Boolean(simCtx) || Boolean(avaliador); // simulação e avaliação não entram nos números do DETRAN
 
-  // 0) Antigolpe: a pessoa colou um link, um código de barras ou perguntou se
-  // uma cobrança é golpe -> análise determinística na hora, sem passar pelo bot.
+  // 0) Antigolpe (orientação): "o DETRAN manda cobrança por link/WhatsApp/SMS?" -> resposta fixa e segura.
+  if (!temImagem(ultima) && perguntaCobrancaPorMensagem(pergunta)) {
+    const reply = respostaCobrancaPorMensagem(t);
+    if (!naoGravar) await Promise.all([
+      registrarTroca({ tenantId: t.id, canal: "WEB", contato: sid, pergunta, respostas: reply.split("\n[[BREAK]]\n"), categoria: "golpe" }),
+      registrarEvento({ tenantId: t.id, tipo: "PERGUNTA", canal: "WEB", tema: "golpe", resolvido: true }),
+    ]);
+    return res.json({ reply, origem: "antigolpe" });
+  }
+  // 0.1) Antigolpe: a pessoa colou um link, um código de barras, perguntou se uma
+  // cobrança é golpe ou contou que recebeu uma -> análise determinística, sem passar pelo bot.
   if (!temImagem(ultima) && pareceVerificacao(pergunta)) {
     const r = analisarSuspeita(pergunta, t);
     const reply = textoParaChat(r);
-    if (!simCtx) {
-      registrarTroca({ tenantId: t.id, canal: "WEB", contato: sid, pergunta, respostas: reply.split("\n[[BREAK]]\n"), categoria: "golpe" });
-      registrarEvento({ tenantId: t.id, tipo: "GOLPE", canal: "WEB", tema: r.nivel, resolvido: true });
-    }
+    // grava antes de responder (na Vercel a função "dorme" logo depois)
+    if (!naoGravar) await Promise.all([
+      registrarTroca({ tenantId: t.id, canal: "WEB", contato: sid, pergunta, respostas: reply.split("\n[[BREAK]]\n"), categoria: "golpe" }),
+      registrarEvento({ tenantId: t.id, tipo: "GOLPE", canal: "WEB", tema: r.nivel, resolvido: true }),
+    ]);
     return res.json({ reply, origem: "antigolpe", antigolpe: r });
   }
+
+  // 0.4) Pergunta longa demais não vai para a IA (custo e abuso). Mensagem colada para
+  // conferir golpe passa antes, pelo antigolpe, que não usa IA.
+  if (pergunta.length > MAX_PERGUNTA) return responder({ error: `Sua pergunta ficou muito longa (${pergunta.length.toLocaleString("pt-BR")} caracteres). Resuma em até ${MAX_PERGUNTA.toLocaleString("pt-BR")} caracteres, por favor.` }, 413);
 
   // 0.5) Cache das perguntas frequentes (só 1ª pergunta, sem dados pessoais).
   const t0 = Date.now();
   const primeira = !hist.some((m) => m.role === "assistant");
-  const podeCache = primeira && !simCtx && !realCtx && !temImagem(ultima);
+  const podeCache = primeira && !naoGravar && !realCtx && !temImagem(ultima);
   if (podeCache) {
     const c = await lerCache(t.slug, pergunta);
     if (c?.reply) {
@@ -297,14 +323,14 @@ app.post(`${T}/chat`, comTenant, async (req, res) => {
   if (!temImagem(ultima) && botayio.url && botayio.secret) {
     try {
       const restart = primeira;
-      const extra = simCtx ? { contexto: simCtx.trim().slice(0, 7900), simulacao: true } : realCtx ? { contexto: realCtx.trim().slice(0, 7900) } : {};
+      const extra = simCtx ? { contexto: simCtx.trim().slice(0, 7900), simulacao: true } : avaliador ? { simulacao: true } : realCtx ? { contexto: realCtx.trim().slice(0, 7900) } : {};
       const aoPedaco = req.body?.stream === true && !simCtx ? (d) => { abrirTransmissao(); res.write(JSON.stringify({ d }) + "\n"); } : null;
-      const resp = await perguntarRapido(botayio, `detran-${t.slug}-web-${simCtx ? "sim-" : ""}${sid}`, pergunta, restart, extra, aoPedaco);
+      const resp = await perguntarRapido(botayio, `detran-${t.slug}-web-${simCtx ? "sim-" : avaliador ? "aval-" : ""}${sid}`, pergunta, restart, extra, aoPedaco);
       if (simCtx && !resp.contexto_aplicado) throw new Error("BotAyio sem suporte a contexto (versão antiga)");
       // [[SEMBASE]] é registro interno: não vai para o cidadão; marca a lacuna.
       const { partes, reply, semBase, transbordo, final } = montarResposta(resp, pergunta);
       // simulação não entra nas conversas nem nas estatísticas do DETRAN
-      const gravacoes = simCtx ? [] : [
+      const gravacoes = naoGravar ? [] : [
         registrarTroca({ tenantId: t.id, canal: "WEB", contato: sid, pergunta, respostas: partes, categoria: resp.categoria, transbordo }),
         registrarEvento({ tenantId: t.id, tipo: "PERGUNTA", canal: "WEB", tema: resp.categoria || tema, resolvido: !semBase, transbordo }),
         semBase ? registrarEvento({ tenantId: t.id, tipo: "SEMBASE", canal: "WEB", tema: mascarar(pergunta).replace(/\s+/g, " ").trim().slice(0, 60) }) : null,
@@ -313,16 +339,17 @@ app.post(`${T}/chat`, comTenant, async (req, res) => {
       // Na Vercel a função "dorme" logo após responder: grava antes de responder.
       await Promise.all([
         ...gravacoes,
-        simCtx ? null : registrarTempo(t.slug, Date.now() - t0, "bot"),
-        simCtx ? null : registrarUso(t.slug, "WEB", resp.uso),
+        naoGravar ? null : registrarTempo(t.slug, Date.now() - t0, "bot"),
+        naoGravar ? null : registrarUso(t.slug, "WEB", resp.uso),
         podeCache && reply && !semBase && !transbordo ? guardarCache(t.slug, pergunta, { reply: final, categoria: resp.categoria || tema }) : null,
       ]);
-      return responder({ reply: final, origem: simCtx ? "botayio-sim" : "botayio" });
+      return responder({ reply: final, origem: simCtx ? "botayio-sim" : "botayio", ...(avaliador ? { avaliacao: true, uso: resp.uso || null } : {}) });
     } catch (err) {
       console.error(`[BotAyio:${t.slug}] chat web:`, err.message);
       if (!llmConfigurado()) {
-        registrarEvento({ tenantId: t.id, tipo: "PERGUNTA", canal: "WEB", tema: "erro", resolvido: false });
-        return responder({ error: "Não foi possível obter a resposta agora. Tente novamente em instantes." }, 502);
+        if (!naoGravar) await registrarEvento({ tenantId: t.id, tipo: "PERGUNTA", canal: "WEB", tema: "erro", resolvido: false });
+        // 22/11/2026: resposta honesta com os canais oficiais (nunca "vou te encaminhar" sem encaminhar).
+        return responder({ reply: mensagemIndisponivel(t), origem: "indisponivel" });
       }
       // segue para a IA local como plano B
     }
@@ -334,7 +361,7 @@ app.post(`${T}/chat`, comTenant, async (req, res) => {
     let texto = await chamarLLM({ system: promptCidadao(t, await formsDoTenant(t)) + simCtx + realCtx, messages: hist, maxTokens: MAX_TOKENS });
     let semBase = false;
     if (texto.includes("[[SEMBASE]]")) { semBase = true; texto = texto.replace(/\[\[SEMBASE\]\]/g, "").trim(); }
-    if (!simCtx) {
+    if (!naoGravar) {
       registrarTroca({ tenantId: t.id, canal: "WEB", contato: sid, pergunta, respostas: [texto] });
       registrarEvento({ tenantId: t.id, tipo: "PERGUNTA", canal: "WEB", tema, resolvido: !semBase });
       if (semBase && !temImagem(ultima)) registrarEvento({ tenantId: t.id, tipo: "SEMBASE", canal: "WEB", tema: mascarar(pergunta).replace(/\s+/g, " ").trim().slice(0, 60) });
@@ -343,7 +370,9 @@ app.post(`${T}/chat`, comTenant, async (req, res) => {
     responder({ reply: (texto || "Não consegui gerar uma resposta. Pode reformular a pergunta?") + (jor ? `\n[[JORNADA:${jor}]]` : ""), origem: "local" });
   } catch (err) {
     console.error("[chat]", err.message);
-    responder({ error: "Não foi possível obter a resposta agora. Tente novamente em instantes." }, 502);
+    // Foto: pede para tentar de novo. Texto: os canais oficiais, para não ficar sem saída.
+    if (temImagem(ultima)) return responder({ error: "Não foi possível obter a resposta agora. Tente novamente em instantes." }, 502);
+    responder({ reply: mensagemIndisponivel(t), origem: "indisponivel" });
   }
 });
 
@@ -603,6 +632,8 @@ app.get("/:slug/painel", (req, res) => pagina(req, res, "painel"));
 // Erro não tratado em qualquer rota: registra (sem dados pessoais) e responde
 // com mensagem amigável, em vez de derrubar a função ou sumir em silêncio.
 app.use((err, req, res, _next) => {
+  if (err?.type === "entity.parse.failed") return res.status(400).json({ error: "Pedido inválido (o conteúdo não está no formato esperado)." });
+  if (err?.type === "entity.too.large") return res.status(413).json({ error: "O conteúdo enviado é grande demais." });
   registrarFalha("rota", err, { rota: String(req.path || "").replace(/\/\d{6,}/g, "/•").slice(0, 80), slug: req.tenant?.slug });
   if (res.headersSent) return;
   res.status(500).json({ error: "Algo deu errado do nosso lado. Tente de novo em instantes." });

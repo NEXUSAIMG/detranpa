@@ -94,6 +94,16 @@ Guardar o arquivo em local cifrado (ele tem dados pessoais) por no máximo 180 d
 - **Cache de perguntas parecidas:** "Como renovo a CNH?" e "renovação da carteira de motorista" usam a mesma resposta. Ensinar algo na Tutoria limpa o cache na hora.
 - **Pré-aquecimento:** todo dia às 9h31 (Belém) a rotina /api/cron/aquecer responde de antemão as perguntas que mais abrem conversas (guardadas por 24 h). Para repetir a cada hora, cadastre o segredo CRON_SECRET em GitHub > Settings > Secrets and variables > Actions (o monitor passa a chamar sozinho).
 - **Arquivos do site:** levam a versão na URL e ficam no navegador por 1 ano; a cada publicação a versão muda e o navegador busca os novos.
+## 6.2 Avaliação do assistente (nota de 0 a 10)
+
+Roda as 111 perguntas oficiais pelo mesmo caminho do cidadão, sem gravar nada (nem conversa, nem estatística, nem custo; o BotAyio recebe como simulação). Precisa de um login com perfil Tutor ou Gestor; quem tem verificação em 2 etapas digita o código quando o script pedir.
+
+```
+$env:AVALIACAO_LOGIN="seu.login"; $env:AVALIACAO_SENHA="sua senha"
+node scripts/avaliar-respostas.mjs --slug pa
+```
+
+O relatório sai em tests/avaliacao/resultados/ (fica só no computador; não vai para o GitHub). Os erros listados ali são o que ensinar pela Tutoria. Para avaliar só o bot pela Tutoria: --via tutoria.
 ## 7. Contatos
 
 | Papel | Quem | Como |
