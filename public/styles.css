@@ -592,3 +592,9 @@ input[type="time"]:focus, input[type="date"]:focus, input[type="datetime-local"]
   .docs-cta.ladrilho { flex-direction: row; align-items: center; min-height: 52px; padding: 10px 12px; gap: 10px; }
   .docs-cta.ladrilho small { display: none; }
 }
+
+/* Sem 'pulo' na tela inicial: os atalhos de contato aparecem quando as ferramentas já estão no lugar (com rede de segurança de 3 s). */
+@keyframes aparecer-ja { to { visibility: visible; } }
+#empty .channels { visibility: hidden; animation: aparecer-ja 0s 3s forwards; }
+#empty.pronto .channels { visibility: visible; animation: none; }
+

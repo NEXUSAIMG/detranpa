@@ -372,7 +372,7 @@ function renderForm(form, fromChat) {
           <button class="btn btn-primary" id="btn-print">🖨️ Imprimir / Salvar PDF</button>
           <button class="btn btn-soft" id="btn-copy">📋 Copiar texto</button>
         </div>
-        <div id="doc-paper"></div>
+        <div id="doc-paper" tabindex="0" role="region" aria-label="Prévia do documento"></div>
       </div>
     </div>`;
 
@@ -751,8 +751,9 @@ fetch(API("/forms")).then((r) => r.json()).then((d) => { formsCache = d.forms ||
   bHc.setAttribute("aria-label", "Alto contraste"); bHc.textContent = "◐";
   bHc.onclick = () => { hc = !hc; salvar(); aplicar(); };
 
-  actions.insertBefore(bFont, actions.firstChild);
-  actions.insertBefore(bHc, actions.firstChild);
+  // Depois dos botões que já estão na página: assim nada é empurrado para o lado.
+  actions.insertBefore(bHc, actions.querySelector("#reset"));
+  actions.insertBefore(bFont, actions.querySelector("#reset"));
   aplicar();
 })();
 
@@ -1543,39 +1544,43 @@ function simAtual() {
 
 /* ═══════════════ TELA INICIAL: FERRAMENTAS EM 3 GRUPOS (22/11/2026) ═══════════════
    As ferramentas eram 9 cartões grandes empilhados (rolagem longa antes de achar o que
-   queria). Aqui elas são agrupadas em 3 blocos com título, em ladrilhos compactos.
-   Só move os botões que já existem; o comportamento de cada um não muda. */
+   queria). Aqui elas ficam em 3 blocos com título, em ladrilhos compactos. Cada cartão
+   vai para o seu grupo no instante em que é criado (antes de a tela ser desenhada),
+   então nada "pula" na tela. O comportamento de cada botão não muda. */
 (function () {
+  const empty = document.getElementById("empty");
+  if (!empty) return;
   const GRUPOS = [
     { titulo: "Resolver um serviço", itens: ["jor-cta", "guia-cta", "conf-cta"] },
     { titulo: "Documentos e multas", itens: ["docs-cta:base", "defesa-cta", "calc-cta"] },
     { titulo: "Proteção e lembretes", itens: ["golpe-cta", "lemb-cta", "mv-cta"] },
   ];
   const ESPECIAIS = ["jor-cta", "guia-cta", "conf-cta", "defesa-cta", "calc-cta", "golpe-cta", "lemb-cta", "mv-cta", "sim-cta", "govbr-cta"];
-  function achar(empty, item) {
-    const ctas = [...empty.querySelectorAll(".docs-cta")];
-    if (item === "docs-cta:base") return ctas.find((b) => !ESPECIAIS.some((c) => b.classList.contains(c)));
-    return ctas.find((b) => b.classList.contains(item));
+  const caixa = document.createElement("div");
+  caixa.className = "ferramentas";
+  const grades = GRUPOS.map((g, gi) => {
+    const sec = document.createElement("section");
+    sec.className = "ferr-grupo"; sec.hidden = true; sec.setAttribute("aria-labelledby", "ferr-g" + gi);
+    sec.innerHTML = `<h3 id="ferr-g${gi}" class="ferr-titulo">${g.titulo}</h3><div class="ferr-grade"></div>`;
+    caixa.appendChild(sec);
+    return sec;
+  });
+  empty.insertBefore(caixa, empty.querySelector(".channels"));
+  const grupoDe = (b) => GRUPOS.findIndex((g) => g.itens.some((i) => (i === "docs-cta:base" ? !ESPECIAIS.some((c) => b.classList.contains(c)) : b.classList.contains(i))));
+  function colocar() {
+    for (const b of empty.querySelectorAll(".docs-cta:not(.ladrilho)")) {
+      if (b.closest(".ferramentas")) continue;
+      const gi = grupoDe(b); if (gi < 0) continue;
+      const sec = grades[gi], grade = sec.querySelector(".ferr-grade");
+      b.classList.add("ladrilho");
+      // mantém a ordem definida em GRUPOS dentro do grupo
+      const ordem = (x) => GRUPOS[gi].itens.findIndex((i) => (i === "docs-cta:base" ? !ESPECIAIS.some((c) => x.classList.contains(c)) : x.classList.contains(i)));
+      const depois = [...grade.children].find((x) => ordem(x) > ordem(b));
+      grade.insertBefore(b, depois || null);
+      sec.hidden = false;
+    }
   }
-  function organizar() {
-    const empty = document.getElementById("empty");
-    if (!empty || empty.querySelector(".ferramentas")) return;
-    const caixa = document.createElement("div");
-    caixa.className = "ferramentas";
-    let movidos = 0;
-    GRUPOS.forEach((g, gi) => {
-      const achados = g.itens.map((i) => achar(empty, i)).filter(Boolean);
-      if (!achados.length) return;
-      const sec = document.createElement("section");
-      sec.className = "ferr-grupo"; sec.setAttribute("aria-labelledby", "ferr-g" + gi);
-      sec.innerHTML = `<h3 id="ferr-g${gi}" class="ferr-titulo">${g.titulo}</h3><div class="ferr-grade"></div>`;
-      achados.forEach((b) => { b.classList.add("ladrilho"); sec.querySelector(".ferr-grade").appendChild(b); movidos++; });
-      caixa.appendChild(sec);
-    });
-    if (movidos < 4) return; // DETRAN com poucas ferramentas: deixa como está
-    const ref = empty.querySelector(".channels");
-    empty.insertBefore(caixa, ref || null);
-  }
-  const rodar = () => { organizar(); setTimeout(organizar, 900); };
-  if (document.readyState === "complete") rodar(); else window.addEventListener("load", rodar);
+  colocar();
+  new MutationObserver(colocar).observe(empty, { childList: true });
+  empty.classList.add("pronto");
 })();
