@@ -238,7 +238,7 @@ app.post(`${T}/chat`, comTenant, async (req, res) => {
     if (c?.reply) {
       registrarTroca({ tenantId: t.id, canal: "WEB", contato: sid, pergunta, respostas: c.reply.replace(/\n\[\[JORNADA:\w+\]\]$/, "").split("\n[[BREAK]]\n"), categoria: c.categoria });
       registrarEvento({ tenantId: t.id, tipo: "PERGUNTA", canal: "WEB", tema: c.categoria || tema, resolvido: true });
-      registrarTempo(t.slug, Date.now() - t0, "cache");
+      await registrarTempo(t.slug, Date.now() - t0, "cache");
       return res.json({ reply: c.reply, origem: "cache" });
     }
   }
@@ -274,8 +274,11 @@ app.post(`${T}/chat`, comTenant, async (req, res) => {
       // Despachante Parente: pergunta de uma jornada -> o site mostra "me acompanhe passo a passo".
       const jor = detectarJornada(pergunta);
       const final = (reply || "Não consegui gerar uma resposta. Pode reformular a pergunta?") + (jor && !transbordo ? `\n[[JORNADA:${jor}]]` : "");
-      if (!simCtx) registrarTempo(t.slug, Date.now() - t0, "bot");
-      if (podeCache && reply && !semBase && !transbordo) guardarCache(t.slug, pergunta, { reply: final, categoria: resp.categoria || tema });
+      // Na Vercel a função "dorme" logo após responder: grava antes de responder.
+      await Promise.all([
+        simCtx ? null : registrarTempo(t.slug, Date.now() - t0, "bot"),
+        podeCache && reply && !semBase && !transbordo ? guardarCache(t.slug, pergunta, { reply: final, categoria: resp.categoria || tema }) : null,
+      ]);
       return res.json({ reply: final, origem: simCtx ? "botayio-sim" : "botayio" });
     } catch (err) {
       console.error(`[BotAyio:${t.slug}] chat web:`, err.message);
