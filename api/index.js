@@ -25,6 +25,7 @@ import { login, exigir, exigirSuper, podeAcessar } from "../lib/auth.js";
 import { registrarSaude, registrarFalha } from "../lib/saude.js";
 import { lerCache, guardarCache, registrarTempo } from "../lib/cache-respostas.js";
 import { registrarSeguranca, etapaPosSenha, auditar } from "../lib/seguranca.js";
+import { registrarImpacto } from "../lib/impacto.js";
 import { lerToken } from "../lib/cripto.js";
 import { chamarLLM, limparHistorico, textoDe, temImagem, llmConfigurado, SEM_CHAVE, PROVIDER_ID, MODEL, MAX_TOKENS } from "../lib/llm.js";
 import { perguntarAoBot, textoComBotoes } from "../lib/botayio.js";
@@ -449,6 +450,9 @@ registrarSaude(app, { exigirSuper, comTenant, exigir });
 
 // Verificação em duas etapas e trilha de auditoria
 registrarSeguranca(app, { comTenant, exigir, exigirSuper, limitar: (chave, max) => rateLimited(chave, max) });
+
+// Medição de impacto: pesquisa de 1 pergunta, marcos, origem (QR), cartaz e linha de base
+registrarImpacto(app, { limitar: (chave, max) => rateLimited(chave, max) });
 
 // ═════════════════════════ PÁGINAS ═════════════════════════
 const PAGINAS = { chat: "index.html", tutor: "tutor.html", balcao: "balcao.html", painel: "painel-custos.html", admin: "admin.html", atendimento: "atendimento.html", gestao: "gestao.html", privacidade: "privacidade.html", servicos: "servicos.html" };

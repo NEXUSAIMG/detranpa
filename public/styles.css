@@ -526,3 +526,9 @@ a.docs-cta.sim-cta small { color: #FFE9A8; }
 .jor-acoes { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
 .jor-rodape { display: flex; justify-content: space-between; margin-top: 14px; }
 .linklike { border: 0; background: none; color: #5A6A62; text-decoration: underline; cursor: pointer; font: inherit; font-size: 12.5px; padding: 0; }
+
+/* ── Pesquisa de impacto (1 pergunta) ── */
+.impacto-q { margin: 10px 0; padding: 12px 14px; border-radius: 12px; background: #F1F5F9; border: 1px solid #DCE3EC; font-size: 14px; }
+.impacto-q b { display: block; margin-bottom: 8px; color: #1B2236; }
+.impacto-bts { display: flex; flex-wrap: wrap; gap: 8px; }
+.impacto-q.feito { background: #E9F7EF; border-color: #9ED3B3; color: #14532D; font-weight: 600; }

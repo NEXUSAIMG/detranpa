@@ -14,6 +14,33 @@ const SESSION_ID = (() => {
     return v;
   } catch (_) { return Date.now().toString(36); }
 })();
+// ── Impacto: pesquisa de 1 pergunta e origem do acesso (só contagens, sem dado pessoal) ──
+const lerLS = (k) => { try { return localStorage.getItem(k); } catch (_) { return null; } };
+const gravarLS = (k, v) => { try { localStorage.setItem(k, v); } catch (_) {} };
+const postarImpacto = (p, corpo) => fetch(API(p), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...corpo, sessao: SESSION_ID }) }).catch(() => {});
+// Cartão "Isso evitou uma ida ao DETRAN?" (uma resposta por assunto neste navegador).
+window.__pesquisaImpacto = function (contexto) {
+  const k = "detran_impacto_" + contexto;
+  if (lerLS(k)) return '<div class="impacto-q feito" role="status">Obrigado pela resposta! 💚</div>';
+  return `<div class="impacto-q" data-ctx="${contexto}"><b>Isso evitou uma ida (ou uma volta) ao DETRAN?</b>
+    <div class="impacto-bts"><button class="btn btn-soft" data-r="sim">👍 Sim</button><button class="btn btn-soft" data-r="nao">Não</button><button class="btn btn-soft" data-r="talvez">Ainda não sei</button></div></div>`;
+};
+document.addEventListener("click", (ev) => {
+  const b = ev.target.closest(".impacto-q [data-r]"); if (!b) return;
+  const box = b.closest(".impacto-q"), ctx = box.dataset.ctx;
+  postarImpacto("/impacto", { contexto: ctx, resposta: b.dataset.r });
+  gravarLS("detran_impacto_" + ctx, b.dataset.r);
+  box.classList.add("feito"); box.setAttribute("role", "status"); box.innerHTML = "Obrigado pela resposta! 💚";
+});
+// Origem do acesso (?origem=balcao-sede no QR do cartaz): registra uma vez por sessão.
+(() => {
+  try {
+    const o = new URLSearchParams(location.search).get("origem");
+    if (!o || !/^[a-z0-9][a-z0-9-]{0,39}$/i.test(o) || sessionStorage.getItem("detran_origem")) return;
+    sessionStorage.setItem("detran_origem", o);
+    postarImpacto("/origem", { origem: o.toLowerCase() });
+  } catch (_) {}
+})();
 const SUGESTOES = CONTEUDO.sugestoes || [];
 
 // Marca do DETRAN para os documentos. O PA tem o emblema recriado em vetor
@@ -928,6 +955,7 @@ function abrirDefesa(texto, tipo) {
           ${prazos}
           ${erro ? `<div class="golpe-res atencao">${escJ(erro)}</div>` : ""}
           <div class="jor-acoes">${acoes}</div>
+          ${c.concluida ? window.__pesquisaImpacto("jornada:" + c.jornada.id) : ""}
           <div id="jor-aviso"></div>
           <div class="jor-rodape">${c.progresso.atual > 1 && !c.concluida ? '<button class="linklike" data-a="voltar">← Etapa anterior</button>' : ""}<button class="linklike" data-x="sair">${c.concluida ? "Fechar esta jornada" : "Parar o acompanhamento"}</button></div>
         </div></div>`;
@@ -1224,11 +1252,13 @@ function abrirDefesa(texto, tipo) {
         <div class="conf-resumo ${tudo ? "pronto" : ""}"><div class="conf-pct"><span style="width:${pct}%"></span></div>
           <b>${tudo ? "✅ Tudo certo para dar entrada!" : `${prontos.length} de ${obrig.length} documentos prontos`}</b>
           <span>${tudo ? "Leve os originais. Confira o horário e o endereço no portal oficial." : [problemas.length ? `${problemas.length} com problema` : "", faltam.length ? `${faltam.length} ainda não conferido(s)` : ""].filter(Boolean).join(" · ")}</span></div>
+        ${tudo ? window.__pesquisaImpacto("conferencia:" + id) : ""}
         ${alertaNomes}
         <p class="doc-intro">${escapeHtml(s.resumo || "")} ${IA ? "As fotos servem só para a conferência e não ficam guardadas." : ""}</p>
         <div class="guia-steps">${itens}</div>
         <div class="preview-actions"><button class="btn btn-primary" id="conf-print">🖨️ Imprimir checklist</button>${TENANT.portalUrl ? `<a class="btn btn-soft" href="${escapeHtml(TENANT.portalUrl)}" target="_blank" rel="noopener">↗ Portal oficial</a>` : ""}</div>
         <p class="doc-intro" style="font-size:12px">A lista é uma orientação com base nas regras gerais. O ${escapeHtml(TENANT.sigla || "DETRAN")} pode pedir algo a mais no seu caso.</p>`;
+      if (tudo && !lerLS("detran_marco_" + id)) { gravarLS("detran_marco_" + id, "1"); postarImpacto("/impacto/marco", { servico: id }); }
       els.overlayBody.querySelector(".guia-back").onclick = abrirServicos;
       els.overlayBody.querySelectorAll("[data-form]").forEach((b) => (b.onclick = () => openForm(b.getAttribute("data-form"), false)));
       els.overlayBody.querySelectorAll(".conf-item").forEach((el) => {

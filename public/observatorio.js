@@ -24,6 +24,7 @@
       const r = await Sessao.api(`/gestao/observatorio?dias=${dias}`);
       if (!r.ok) { $("ob-msg").innerHTML = `<div class="msg err">${esc(r.data?.error || "Não foi possível carregar.")}</div>`; return; }
       render(r.data);
+      if (window.Impacto) { window.Impacto.render(r.data, dias); window.Impacto.carregarMedicoes(); }
     } finally { carregando = false; }
   }
 
