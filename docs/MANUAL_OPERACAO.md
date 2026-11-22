@@ -87,6 +87,13 @@ powershell -File scripts/backup-banco.ps1 -Restaurar C:\Backups\detran\detran-AA
 
 Guardar o arquivo em local cifrado (ele tem dados pessoais) por no máximo 180 dias, como as conversas.
 
+## 6.1 Eficiência e custo da IA (22/11/2026)
+
+- **Custo real:** cada resposta do BotAyio informa os tokens gastos. A Central mostra o custo do mês no Observatório (cartão Impacto) e o Admin mostra por DETRAN em Saúde. Os preços vêm de uma tabela de referência; para o modelo em uso, confira o preço oficial e, se preciso, ajuste PRECOS_IA e COTACAO_USD na Vercel.
+- **Primeira pergunta mais rápida:** o site pede ao BotAyio para responder direto, sem gerar a saudação com IA antes (uma chamada em vez de duas). O texto aparece aos poucos, enquanto é gerado.
+- **Cache de perguntas parecidas:** "Como renovo a CNH?" e "renovação da carteira de motorista" usam a mesma resposta. Ensinar algo na Tutoria limpa o cache na hora.
+- **Pré-aquecimento:** todo dia às 9h31 (Belém) a rotina /api/cron/aquecer responde de antemão as perguntas que mais abrem conversas (guardadas por 24 h). Para repetir a cada hora, cadastre o segredo CRON_SECRET em GitHub > Settings > Secrets and variables > Actions (o monitor passa a chamar sozinho).
+- **Arquivos do site:** levam a versão na URL e ficam no navegador por 1 ano; a cada publicação a versão muda e o navegador busca os novos.
 ## 7. Contatos
 
 | Papel | Quem | Como |

@@ -183,11 +183,13 @@ function splitReply(text) {
 const MENOS_MOVIMENTO = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 function delayFor(part) { return MENOS_MOVIMENTO ? 0 : Math.min(700, 250 + part.length * 4); }
 
-async function revealParts(parts, formId, wantsDefesa) {
+async function revealParts(parts, formId, wantsDefesa, semPausa = false) {
   for (let i = 0; i < parts.length; i++) {
-    showTyping();
-    await sleep(i === 0 ? (MENOS_MOVIMENTO ? 0 : 120) : delayFor(parts[i]));
-    hideTyping();
+    if (!semPausa) {
+      showTyping();
+      await sleep(i === 0 ? (MENOS_MOVIMENTO ? 0 : 120) : delayFor(parts[i]));
+      hideTyping();
+    }
     const _bb = addBubble("assistant", parts[i], i === parts.length - 1 ? formId : null);
     if (i === parts.length - 1) {
       if (wantsDefesa && window.__defesaButton) window.__defesaButton(_bb);
@@ -195,6 +197,33 @@ async function revealParts(parts, formId, wantsDefesa) {
       if (window.__feedback) window.__feedback(_bb);
     }
   }
+}
+
+// Transmissão: a resposta vai aparecendo enquanto é gerada (prévia, oculta do leitor
+// de tela). No fim, a prévia é trocada pela resposta formatada de sempre.
+const limparPrevia = (t) => t.replace(/\[\[[^\]]*\]\]/g, "").replace(/\[\[[^\]]*$/, "").replace(/\n{3,}/g, "\n\n").trim();
+async function lerTransmissao(resp) {
+  const leitor = resp.body.getReader(), dec = new TextDecoder();
+  let resto = "", texto = "", previa = null, fim = null;
+  for (;;) {
+    const { value, done } = await leitor.read();
+    if (done) break;
+    resto += dec.decode(value, { stream: true });
+    let i;
+    while ((i = resto.indexOf("\n")) >= 0) {
+      const linha = resto.slice(0, i).trim(); resto = resto.slice(i + 1);
+      if (!linha) continue;
+      let ev; try { ev = JSON.parse(linha); } catch { continue; }
+      if (ev.d) {
+        texto += ev.d;
+        if (!previa) { hideTyping(); previa = addBubble("assistant", ""); previa.parentElement.setAttribute("aria-hidden", "true"); previa.classList.add("previa"); }
+        previa.innerHTML = renderRich(limparPrevia(texto)); scrollDown();
+      } else if (ev.fim) fim = ev.fim;
+      else if (ev.erro) fim = { error: ev.erro };
+    }
+  }
+  if (previa) previa.parentElement.remove();
+  return { dados: fim || { error: "A resposta foi interrompida. Tente novamente." }, transmitiu: Boolean(previa) };
 }
 
 async function enviar(texto) {
@@ -223,11 +252,13 @@ async function enviar(texto) {
   try {
     const resp = await fetch(API("/chat"), {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages: conversa, sessionId: SESSION_ID, ...simAtual() }),
+      body: JSON.stringify({ messages: conversa, sessionId: SESSION_ID, stream: true, ...simAtual() }),
     });
-    const data = await resp.json().catch(() => ({}));
+    let data, transmitiu = false;
+    if (resp.ok && resp.body && /ndjson/.test(resp.headers.get("content-type") || "")) ({ dados: data, transmitiu } = await lerTransmissao(resp));
+    else data = await resp.json().catch(() => ({}));
     hideTyping();
-    if (!resp.ok) {
+    if (!resp.ok || data.error) {
       showError(data.error || "Não foi possível obter a resposta. Tente novamente.");
       conversa.pop(); els.input.value = pergunta;
     } else {
@@ -245,7 +276,7 @@ async function enviar(texto) {
       const limpo = reply.replace(/\[\[BREAK\]\]/g, "\n\n").replace(/\n{3,}/g, "\n\n").trim();
       conversa.push({ role: "assistant", content: limpo });
       const parts = splitReply(reply);
-      await revealParts(parts, formId, wantsDefesa);
+      await revealParts(parts, formId, wantsDefesa, transmitiu);
     }
   } catch (e) {
     hideTyping();
@@ -313,6 +344,14 @@ async function openForm(id, fromChat) {
   }
 }
 
+// Campos digitados nos formulários ficam só nesta aba (sessionStorage) para
+// preencher o próximo formulário; nada vai para o servidor.
+const CHAVES_CPF_DONO = new Set(["vend_doc", "vend_cpf", "cpf", "doc", "out_doc", "prop_cpf", "arr_doc"]);
+function lerLembrados() { try { return JSON.parse(sessionStorage.getItem(LS("form_valores")) || "{}"); } catch (_) { return {}; } }
+function lembrar(k, v) { try { const o = lerLembrados(); if (v) o[k] = String(v).slice(0, 300); else delete o[k]; sessionStorage.setItem(LS("form_valores"), JSON.stringify(o)); } catch (_) {} }
+function esquecerLembrados() { try { sessionStorage.removeItem(LS("form_valores")); } catch (_) {} }
+function meuVeiculoSalvo() { try { return JSON.parse(localStorage.getItem(LS("veiculo")) || "{}"); } catch (_) { return {}; } }
+
 function renderForm(form, fromChat) {
   els.overlayTitle.textContent = form.title;
   const values = {};
@@ -344,12 +383,13 @@ function renderForm(form, fromChat) {
         chip.onclick = () => {
           const v = chip.getAttribute("data-val");
           values[key] = values[key] === v ? "" : v;
-          el.querySelectorAll(".radio-chip").forEach((c) => c.classList.toggle("on", c.getAttribute("data-val") === values[key]));
+          el.querySelectorAll(".radio-chip").forEach((c) => { const on = c.getAttribute("data-val") === values[key]; c.classList.toggle("on", on); c.setAttribute("aria-pressed", String(on)); });
+          lembrar(key, values[key]);
           paint();
         };
       });
     } else {
-      el.addEventListener("input", () => { values[key] = el.value; paint(); });
+      el.addEventListener("input", () => { values[key] = el.value; lembrar(key, el.value); paint(); });
     }
   });
 
@@ -370,7 +410,7 @@ function renderForm(form, fromChat) {
       if (!el) return;
       if (el.classList.contains("radio-row")) {
         values[key] = val;
-        el.querySelectorAll(".radio-chip").forEach((c) => c.classList.toggle("on", c.getAttribute("data-val") === val));
+        el.querySelectorAll(".radio-chip").forEach((c) => { const on = c.getAttribute("data-val") === val; c.classList.toggle("on", on); c.setAttribute("aria-pressed", String(on)); });
       } else { el.value = val; values[key] = val; }
     });
     paint();
@@ -390,6 +430,29 @@ function renderForm(form, fromChat) {
     } catch (_) { bFill.innerHTML = "Não deu pra preencher agora"; }
     finally { setTimeout(() => { bFill.disabled = false; bFill.innerHTML = old; }, 2400); }
   }
+  // ✨ Pré-preenchimento: o que a pessoa já digitou em outro formulário nesta aba
+  // (some ao fechar a aba) e placa/RENAVAM/CPF guardados em "Meu veículo".
+  const chavesDoForm = new Set(form.sections.flatMap((sec) => sec.fields.map((f) => f.key)));
+  const pre = {}, lemb = lerLembrados(), mv = meuVeiculoSalvo();
+  for (const k of chavesDoForm) {
+    if (lemb[k]) pre[k] = lemb[k];
+    else if (k === "placa" && mv.placa) pre[k] = mv.placa;
+    else if (k === "renavam" && mv.renavam) pre[k] = mv.renavam;
+    else if (CHAVES_CPF_DONO.has(k) && mv.cpf) pre[k] = mv.cpf;
+  }
+  if (Object.keys(pre).length) {
+    aplicarValores(pre);
+    const aviso = document.createElement("div");
+    aviso.className = "help pre-aviso"; aviso.setAttribute("role", "status");
+    aviso.innerHTML = `✅ Já preenchemos ${Object.keys(pre).length} campo(s) com dados que você digitou neste aparelho. Confira antes de imprimir. <button type="button" class="link-btn" id="pre-limpar">Apagar esses dados</button>`;
+    els.overlayBody.querySelector(".doc-form").insertBefore(aviso, els.overlayBody.querySelector(".doc-form fieldset"));
+    aviso.querySelector("#pre-limpar").onclick = () => {
+      esquecerLembrados();
+      const vazios = Object.fromEntries(Object.keys(pre).map((k) => [k, ""])); aplicarValores(vazios);
+      aviso.textContent = "Campos limpos. Os dados dos formulários foram apagados desta aba (placa, RENAVAM e CPF de Meu veículo ficam lá até você apagar).";
+    };
+  }
+
   const _actions = els.overlayBody.querySelector(".preview-actions");
   if (_actions && conversa.length) {
     const bFill = document.createElement("button");
@@ -402,16 +465,16 @@ function renderForm(form, fromChat) {
 }
 
 function fieldControl(f) {
-  const key = f.key;
+  const key = f.key, id = "fc-" + String(key).replace(/[^\w-]/g, "");
   if (f.type === "radio") {
-    const chips = f.options.map((o) => `<button type="button" class="radio-chip" data-val="${escapeHtml(o)}">${escapeHtml(o)}</button>`).join("");
-    return `<div class="field"><label>${escapeHtml(f.label)}</label><div class="radio-row" data-field="${key}">${chips}</div></div>`;
+    const chips = f.options.map((o) => `<button type="button" class="radio-chip" data-val="${escapeHtml(o)}" aria-pressed="false">${escapeHtml(o)}</button>`).join("");
+    return `<div class="field"><span class="rotulo-campo" id="${id}-r">${escapeHtml(f.label)}</span><div class="radio-row" data-field="${key}" role="group" aria-labelledby="${id}-r">${chips}</div></div>`;
   }
   if (f.type === "textarea") {
-    return `<div class="field"><label>${escapeHtml(f.label)}</label><textarea data-field="${key}" placeholder="${escapeHtml(f.label)}"></textarea></div>`;
+    return `<div class="field"><label for="${id}">${escapeHtml(f.label)}</label><textarea id="${id}" data-field="${key}" placeholder="${escapeHtml(f.label)}"></textarea></div>`;
   }
   const inputType = f.type === "date" ? "date" : "text";
-  return `<div class="field"><label>${escapeHtml(f.label)}</label><input type="${inputType}" data-field="${key}" placeholder="${escapeHtml(f.label)}" /></div>`;
+  return `<div class="field"><label for="${id}">${escapeHtml(f.label)}</label><input id="${id}" type="${inputType}" data-field="${key}" placeholder="${escapeHtml(f.label)}" /></div>`;
 }
 
 function flashCopy() {
@@ -1477,3 +1540,42 @@ function simAtual() {
     return s.cidadao ? { simCidadao: s.cidadao, simSessao: s.sessao } : {};
   } catch (_) { return {}; }
 }
+
+/* ═══════════════ TELA INICIAL: FERRAMENTAS EM 3 GRUPOS (22/11/2026) ═══════════════
+   As ferramentas eram 9 cartões grandes empilhados (rolagem longa antes de achar o que
+   queria). Aqui elas são agrupadas em 3 blocos com título, em ladrilhos compactos.
+   Só move os botões que já existem; o comportamento de cada um não muda. */
+(function () {
+  const GRUPOS = [
+    { titulo: "Resolver um serviço", itens: ["jor-cta", "guia-cta", "conf-cta"] },
+    { titulo: "Documentos e multas", itens: ["docs-cta:base", "defesa-cta", "calc-cta"] },
+    { titulo: "Proteção e lembretes", itens: ["golpe-cta", "lemb-cta", "mv-cta"] },
+  ];
+  const ESPECIAIS = ["jor-cta", "guia-cta", "conf-cta", "defesa-cta", "calc-cta", "golpe-cta", "lemb-cta", "mv-cta", "sim-cta", "govbr-cta"];
+  function achar(empty, item) {
+    const ctas = [...empty.querySelectorAll(".docs-cta")];
+    if (item === "docs-cta:base") return ctas.find((b) => !ESPECIAIS.some((c) => b.classList.contains(c)));
+    return ctas.find((b) => b.classList.contains(item));
+  }
+  function organizar() {
+    const empty = document.getElementById("empty");
+    if (!empty || empty.querySelector(".ferramentas")) return;
+    const caixa = document.createElement("div");
+    caixa.className = "ferramentas";
+    let movidos = 0;
+    GRUPOS.forEach((g, gi) => {
+      const achados = g.itens.map((i) => achar(empty, i)).filter(Boolean);
+      if (!achados.length) return;
+      const sec = document.createElement("section");
+      sec.className = "ferr-grupo"; sec.setAttribute("aria-labelledby", "ferr-g" + gi);
+      sec.innerHTML = `<h3 id="ferr-g${gi}" class="ferr-titulo">${g.titulo}</h3><div class="ferr-grade"></div>`;
+      achados.forEach((b) => { b.classList.add("ladrilho"); sec.querySelector(".ferr-grade").appendChild(b); movidos++; });
+      caixa.appendChild(sec);
+    });
+    if (movidos < 4) return; // DETRAN com poucas ferramentas: deixa como está
+    const ref = empty.querySelector(".channels");
+    empty.insertBefore(caixa, ref || null);
+  }
+  const rodar = () => { organizar(); setTimeout(organizar, 900); };
+  if (document.readyState === "complete") rodar(); else window.addEventListener("load", rodar);
+})();

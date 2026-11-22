@@ -116,6 +116,44 @@ export async function lerLinhas(prefixo, limite = 200) {
     .map((k) => { try { return JSON.parse(memGet(k)); } catch { return null; } }).filter(Boolean);
 }
 
+// Contador compartilhado entre instâncias (limite de perguntas por pessoa): soma 1
+// na janela atual e devolve o total. Sem banco, conta na memória do processo.
+export async function contarNaJanela(chave, janelaSeg = 60) {
+  const k = `rl:${chave}`;
+  if (process.env.DATABASE_URL) {
+    const p = await sql();
+    await p.$executeRawUnsafe("INSERT INTO kv_estado (k, v, exp) VALUES (?, '1', DATE_ADD(NOW(3), INTERVAL ? SECOND)) ON DUPLICATE KEY UPDATE v = IF(exp <= NOW(3), '1', CAST(v AS UNSIGNED) + 1), exp = IF(exp <= NOW(3), DATE_ADD(NOW(3), INTERVAL ? SECOND), exp)", k, Number(janelaSeg), Number(janelaSeg));
+    const r = await p.$queryRawUnsafe("SELECT v FROM kv_estado WHERE k = ?", k);
+    if (Math.random() < 0.01) p.$executeRawUnsafe("DELETE FROM kv_estado WHERE k LIKE 'rl:%' AND exp < NOW(3) LIMIT 1000").catch(() => {});
+    return Number(r[0]?.v) || 1;
+  }
+  const atual = Number(memGet(k)) || 0;
+  mem.set(k, { v: String(atual + 1), exp: Date.now() + janelaSeg * 1000 });
+  return atual + 1;
+}
+
+// Soma campos numéricos de todas as linhas de um prefixo (sem limite de 1000), agrupando por um campo texto.
+export async function somarLinhas(prefixo, campos, grupo = null) {
+  const ok = (c) => /^[a-z_]{1,30}$/i.test(c);
+  if (!campos.every(ok) || (grupo && !ok(grupo))) throw new Error("campo inválido");
+  if (process.env.DATABASE_URL) {
+    const p = await sql();
+    const g = grupo ? `JSON_UNQUOTE(JSON_EXTRACT(v, '$.${grupo}'))` : "''";
+    const r = await p.$queryRawUnsafe(`SELECT ${g} AS g, COUNT(*) AS n, ${campos.map((c) => `COALESCE(SUM(JSON_EXTRACT(v, '$.${c}')),0) AS ${c}`).join(", ")} FROM kv_estado WHERE k LIKE ? AND (exp IS NULL OR exp > NOW(3)) GROUP BY g`, `${prefixo.replace(/[%_\\]/g, "\\$&")}:%`);
+    return r.map((x) => ({ grupo: x.g || "", n: Number(x.n), ...Object.fromEntries(campos.map((c) => [c, Number(x[c]) || 0])) }));
+  }
+  const acc = {};
+  for (const k of mem.keys()) {
+    if (!k.startsWith(prefixo + ":")) continue;
+    let o; try { o = JSON.parse(memGet(k)); } catch { continue; }
+    if (!o) continue;
+    const gk = grupo ? String(o[grupo] ?? "") : "";
+    const a = (acc[gk] ||= { grupo: gk, n: 0, ...Object.fromEntries(campos.map((c) => [c, 0])) });
+    a.n++; for (const c of campos) a[c] += Number(o[c]) || 0;
+  }
+  return Object.values(acc);
+}
+
 // Grava só se a chave ainda não existir. Devolve true se gravou.
 export async function kvSetNxEx(key, value, ttlSec) {
   return executar(async () => (await kvCmd(["SET", key, value, "NX", "EX", String(ttlSec)])) === "OK", "setNx", key, value, ttlSec);

@@ -570,3 +570,25 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 input[type="time"]:focus, input[type="date"]:focus, input[type="datetime-local"]:focus, input[type="time"]:focus-within, input[type="date"]:focus-within, input[type="datetime-local"]:focus-within { outline: 2px solid var(--ayio-navy) !important; outline-offset: 2px !important; }
 
+
+/* Prévia da resposta enquanto é gerada */
+.bubble.previa { opacity: .92; }
+
+.pre-aviso { background: #E8F5EC; border-color: #B7E0C2; } .link-btn { background: none; border: 0; padding: 4px 2px; min-height: 24px; color: var(--ayio-navy); text-decoration: underline; cursor: pointer; font: inherit; } .rotulo-campo { display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 4px; }
+
+
+/* Tela inicial: ferramentas em 3 grupos de ladrilhos */
+.ferramentas { width: 100%; margin-top: 18px; display: grid; gap: 14px; text-align: left; }
+.ferr-titulo { margin: 0 0 8px; font-size: 13px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ayio-navy); }
+.ferr-grade { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.docs-cta.ladrilho { margin-top: 0; flex-direction: column; align-items: flex-start; gap: 6px; padding: 12px; min-height: 96px; border-radius: 12px; }
+.docs-cta.ladrilho > span:nth-child(2) { display: block; min-width: 0; }
+.docs-cta.ladrilho strong { font-size: 14px; line-height: 1.25; }
+.docs-cta.ladrilho small { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.docs-cta.ladrilho .docs-cta-arrow { display: none; }
+.docs-cta.ladrilho .docs-cta-icon { font-size: 20px; }
+@media (max-width: 560px) {
+  .ferr-grade { grid-template-columns: 1fr; gap: 8px; }
+  .docs-cta.ladrilho { flex-direction: row; align-items: center; min-height: 52px; padding: 10px 12px; gap: 10px; }
+  .docs-cta.ladrilho small { display: none; }
+}

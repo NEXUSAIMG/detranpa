@@ -26,6 +26,7 @@ import { tratarComandoLembrete, resolverAtalhoLembrete, criarLembrete } from "./
 import { tratarJornadaWhatsApp, ofertaJornadaWhatsApp } from "./lib/jornadas-api.js";
 import { sttConfigurado, transcreverUrl } from "./lib/transcricao.js";
 import { chamarLLM, llmConfigurado } from "./lib/llm.js";
+import { registrarUso } from "./lib/uso-ia.js";
 import { promptCidadao } from "./lib/prompts.js";
 
 const SESSAO_HORAS = Number(process.env.WHATSAPP_SESSAO_HORAS || 12);
@@ -218,6 +219,7 @@ async function processarMensagem(tenant, m) {
   let resp;
   try {
     resp = await perguntarAoBot(b, sessionId, texto, restart);
+    await registrarUso(tenant.slug, "WHATSAPP", resp.uso);
   } catch (err) {
     console.error(`[BotAyio:${tenant.slug}]`, err.message);
     // Plano B: a IA local responde com as mesmas regras do DETRAN (como no site),

@@ -31,3 +31,19 @@ jobs:
           done
           echo "::error title=Assistente DETRAN fora do ar::$(head -c 500 resp.json 2>/dev/null)"
           exit 1
+
+  # Pré-aquecimento do cache (1x por hora, opcional): responde de antemão as
+  # perguntas mais frequentes. Só roda se o segredo CRON_SECRET estiver em
+  # Settings > Secrets and variables > Actions. Nunca derruba o monitor.
+  aquecer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Aquecer cache das perguntas frequentes
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          BASE: ${{ vars.APP_URL || 'https://detranpa.vercel.app' }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then echo "Sem CRON_SECRET nos segredos do repositório: pulando."; exit 0; fi
+          if [ "$(date -u +%M | sed 's/^0//')" -ge 10 ]; then echo "Só na primeira rodada de cada hora."; exit 0; fi
+          curl -s --max-time 60 -H "Authorization: Bearer $CRON_SECRET" "$BASE/api/cron/aquecer" || true

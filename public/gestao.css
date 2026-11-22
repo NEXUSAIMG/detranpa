@@ -369,3 +369,5 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 input[type="time"]:focus, input[type="date"]:focus, input[type="datetime-local"]:focus, input[type="time"]:focus-within, input[type="date"]:focus-within, input[type="datetime-local"]:focus-within { outline: 2px solid var(--ayio-navy) !important; outline-offset: 2px !important; }
 
+.ob-custo { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: var(--t-claro, #EEF1F6); font-size: 14px; } .ob-custo small { color: var(--tinta-2); }
+

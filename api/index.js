@@ -14,6 +14,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import "dotenv/config";
+import { contarNaJanela } from "../store.js";
 import express from "express";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -28,7 +29,9 @@ import { registrarSeguranca, etapaPosSenha, auditar } from "../lib/seguranca.js"
 import { registrarImpacto } from "../lib/impacto.js";
 import { lerToken } from "../lib/cripto.js";
 import { chamarLLM, limparHistorico, textoDe, temImagem, llmConfigurado, SEM_CHAVE, PROVIDER_ID, MODEL, MAX_TOKENS } from "../lib/llm.js";
-import { perguntarAoBot, textoComBotoes } from "../lib/botayio.js";
+import { perguntarRapido } from "../lib/botayio.js";
+import { registrarUso } from "../lib/uso-ia.js";
+import { montarResposta, aquecerTenant } from "../lib/aquecer-cache.js";
 import { promptCidadao, promptOperador, promptDefesa, promptTermo, promptExtracao } from "../lib/prompts.js";
 import { registrarTroca, registrarEvento, estatisticas, classificarTema } from "../lib/registro.js";
 import { registrarWhatsApp } from "../whatsapp.js";
@@ -88,11 +91,19 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: "10mb" }));
 // Arquivos estáticos (css, js, imagens). As páginas HTML são servidas pelas
 // rotas abaixo, com os dados do DETRAN injetados.
-const estatico = express.static(join(ROOT, "public"), { index: false });
+// Arquivos com versão na URL (?v=) podem ficar no navegador por 1 ano: a cada
+// publicação a versão muda e o navegador busca o novo. Sem versão: revalida.
+const estatico = express.static(join(ROOT, "public"), {
+  index: false,
+  setHeaders: (res, _caminho) => { if (res.req?.query?.v) res.set("Cache-Control", "public, max-age=31536000, immutable"); },
+});
+export const VERSAO_ARQUIVOS = String(process.env.VERCEL_GIT_COMMIT_SHA || process.env.VERCEL_DEPLOYMENT_ID || Date.now().toString(36)).replace(/[^\w-]/g, "").slice(0, 12);
+const versionar = (html) => html.replace(/(src|href)="\/([\w.-]+\.(?:js|css))"/g, `$1="/$2?v=${VERSAO_ARQUIVOS}"`);
 app.use((req, res, next) => (/\.html?$/i.test(req.path) ? next() : estatico(req, res, next)));
 
 // ── Limite de perguntas por IP ──────────────────────────────────────────────
 const hits = new Map();
+const LIMITE_CHAT_MIN = Number(process.env.LIMITE_CHAT_MIN) || 20;
 function rateLimited(chave, max = 20, janela = 60_000) {
   const agora = Date.now();
   const reg = hits.get(chave) || { count: 0, reset: agora + janela };
@@ -197,12 +208,45 @@ app.post(`${T}/extract`, comTenant, async (req, res) => {
   } catch (e) { console.error("[extract]", e); res.status(502).json({ error: "Falha ao extrair." }); }
 });
 
+// ── Pré-aquecimento do cache (cron; Bearer CRON_SECRET) ──
+// Responde de antemão as perguntas que mais abrem conversas. Incremental e com
+// orçamento de tempo: pode ser chamado várias vezes (cron diário, monitor).
+app.get("/api/cron/aquecer", async (req, res) => {
+  const { mesmoSegredo } = await import("../lib/cripto.js");
+  const seg = process.env.CRON_SECRET || "";
+  if (!seg || !mesmoSegredo(String(req.headers.authorization || ""), `Bearer ${seg}`)) return res.status(401).json({ error: "Não autorizado." });
+  const orcamentoMs = Math.min(50000, Math.max(2000, Number(process.env.AQUECER_MS) || 8000));
+  const fim = Date.now() + orcamentoMs, out = {};
+  for (const t of await prisma.tenant.findMany({ where: { ativo: true }, include: { integracao: true } })) {
+    const resta = fim - Date.now(); if (resta < 1500) { out[t.slug] = { adiado: true }; continue; }
+    out[t.slug] = await aquecerTenant(t, { orcamentoMs: resta }).catch((e) => ({ erro: e.message }));
+  }
+  res.json({ ok: true, resultado: out });
+});
+
 // ── Chat do cidadão ─────────────────────────────────────────────────────────
 // Texto -> bot do DETRAN no BotAyio. Foto (ou DETRAN sem bot) -> IA local.
 app.post(`${T}/chat`, comTenant, async (req, res) => {
   const t = req.tenant;
   const ip = ipDe(req);
+  // Transmissão (22/11/2026): o site pede `stream: true`; a resposta vira linhas JSON
+  // {"d": pedaço} ... {"fim": {reply, origem}}. Sem pedaços (cache, antigolpe,
+  // IA local), sai o JSON de sempre.
+  let transmitindo = false;
+  const abrirTransmissao = () => {
+    if (transmitindo) return;
+    transmitindo = true;
+    res.status(200).set({ "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store", "X-Accel-Buffering": "no" });
+    res.flushHeaders?.();
+  };
+  const responder = (corpo, status = 200) => {
+    if (!transmitindo) return res.status(status).json(corpo);
+    res.end(JSON.stringify(status >= 400 ? { erro: corpo.error || "Falha." } : { fim: corpo }) + "\n");
+  };
   if (rateLimited(`${t.slug}:${ip}`)) return res.status(429).json({ error: "Muitas perguntas em sequência. Aguarde um instante e tente de novo." });
+  // Limite compartilhado entre as instâncias da Vercel (a memória é de cada uma).
+  // Corre em paralelo com o resto e só é conferido antes de chamar a IA.
+  const limiteGlobal = contarNaJanela(`chat:${t.slug}:${ip}`, 60).catch(() => 0);
 
   const hist = limparHistorico(req.body?.messages);
   if (!hist.length || hist[hist.length - 1].role !== "user") return res.status(400).json({ error: "A última mensagem deve ser do usuário." });
@@ -237,9 +281,11 @@ app.post(`${T}/chat`, comTenant, async (req, res) => {
   if (podeCache) {
     const c = await lerCache(t.slug, pergunta);
     if (c?.reply) {
-      registrarTroca({ tenantId: t.id, canal: "WEB", contato: sid, pergunta, respostas: c.reply.replace(/\n\[\[JORNADA:\w+\]\]$/, "").split("\n[[BREAK]]\n"), categoria: c.categoria });
-      registrarEvento({ tenantId: t.id, tipo: "PERGUNTA", canal: "WEB", tema: c.categoria || tema, resolvido: true });
-      await registrarTempo(t.slug, Date.now() - t0, "cache");
+      await Promise.all([
+        registrarTroca({ tenantId: t.id, canal: "WEB", contato: sid, pergunta, respostas: c.reply.replace(/\n\[\[JORNADA:\w+\]\]$/, "").split("\n[[BREAK]]\n"), categoria: c.categoria }),
+        registrarEvento({ tenantId: t.id, tipo: "PERGUNTA", canal: "WEB", tema: c.categoria || tema, resolvido: true }),
+        registrarTempo(t.slug, Date.now() - t0, "cache"),
+      ]);
       return res.json({ reply: c.reply, origem: "cache" });
     }
   }
@@ -247,52 +293,43 @@ app.post(`${T}/chat`, comTenant, async (req, res) => {
   // 1) BotAyio (texto). Na simulação vai com o contexto do cidadão fictício e a
   // marca `simulacao` (BotAyio não grava). Se o BotAyio não confirmar que aplicou
   // o contexto (versão antiga), a resposta é descartada e segue a IA local.
+  if ((await limiteGlobal) > LIMITE_CHAT_MIN) return responder({ error: "Muitas perguntas em sequência. Aguarde um instante e tente de novo." }, 429);
   if (!temImagem(ultima) && botayio.url && botayio.secret) {
     try {
       const restart = primeira;
       const extra = simCtx ? { contexto: simCtx.trim().slice(0, 7900), simulacao: true } : realCtx ? { contexto: realCtx.trim().slice(0, 7900) } : {};
-      const resp = await perguntarAoBot(botayio, `detran-${t.slug}-web-${simCtx ? "sim-" : ""}${sid}`, pergunta, restart, extra);
+      const aoPedaco = req.body?.stream === true && !simCtx ? (d) => { abrirTransmissao(); res.write(JSON.stringify({ d }) + "\n"); } : null;
+      const resp = await perguntarRapido(botayio, `detran-${t.slug}-web-${simCtx ? "sim-" : ""}${sid}`, pergunta, restart, extra, aoPedaco);
       if (simCtx && !resp.contexto_aplicado) throw new Error("BotAyio sem suporte a contexto (versão antiga)");
-      const partes = [];
-      for (const item of resp.contents || []) {
-        const txt = textoComBotoes(item);
-        if (txt) partes.push(txt);
-        if (item.arquivo?.url) partes.push(`📎 ${item.arquivo.nome || "Arquivo"}: ${item.arquivo.url}`);
-      }
       // [[SEMBASE]] é registro interno: não vai para o cidadão; marca a lacuna.
-      const semBase = partes.some((p) => p.includes("[[SEMBASE]]"));
-      for (let i = partes.length - 1; i >= 0; i--) {
-        partes[i] = partes[i].replace(/\s*\[\[SEMBASE\]\]\s*/g, "\n").trim();
-        if (!partes[i]) partes.splice(i, 1);
-      }
-      const reply = partes.join("\n[[BREAK]]\n");
-      const transbordo = Boolean(resp.handed_off);
-      if (!simCtx) { // simulação não entra nas conversas nem nas estatísticas do DETRAN
-        registrarTroca({ tenantId: t.id, canal: "WEB", contato: sid, pergunta, respostas: partes, categoria: resp.categoria, transbordo });
-        registrarEvento({ tenantId: t.id, tipo: "PERGUNTA", canal: "WEB", tema: resp.categoria || tema, resolvido: !semBase, transbordo });
-        if (semBase) registrarEvento({ tenantId: t.id, tipo: "SEMBASE", canal: "WEB", tema: mascarar(pergunta).replace(/\s+/g, " ").trim().slice(0, 60) });
-      }
-      // Despachante Parente: pergunta de uma jornada -> o site mostra "me acompanhe passo a passo".
-      const jor = detectarJornada(pergunta);
-      const final = (reply || "Não consegui gerar uma resposta. Pode reformular a pergunta?") + (jor && !transbordo ? `\n[[JORNADA:${jor}]]` : "");
+      const { partes, reply, semBase, transbordo, final } = montarResposta(resp, pergunta);
+      // simulação não entra nas conversas nem nas estatísticas do DETRAN
+      const gravacoes = simCtx ? [] : [
+        registrarTroca({ tenantId: t.id, canal: "WEB", contato: sid, pergunta, respostas: partes, categoria: resp.categoria, transbordo }),
+        registrarEvento({ tenantId: t.id, tipo: "PERGUNTA", canal: "WEB", tema: resp.categoria || tema, resolvido: !semBase, transbordo }),
+        semBase ? registrarEvento({ tenantId: t.id, tipo: "SEMBASE", canal: "WEB", tema: mascarar(pergunta).replace(/\s+/g, " ").trim().slice(0, 60) }) : null,
+      ];
+      // Despachante Parente: a pergunta de uma jornada leva [[JORNADA:x]] (o site oferece o passo a passo).
       // Na Vercel a função "dorme" logo após responder: grava antes de responder.
       await Promise.all([
+        ...gravacoes,
         simCtx ? null : registrarTempo(t.slug, Date.now() - t0, "bot"),
+        simCtx ? null : registrarUso(t.slug, "WEB", resp.uso),
         podeCache && reply && !semBase && !transbordo ? guardarCache(t.slug, pergunta, { reply: final, categoria: resp.categoria || tema }) : null,
       ]);
-      return res.json({ reply: final, origem: simCtx ? "botayio-sim" : "botayio" });
+      return responder({ reply: final, origem: simCtx ? "botayio-sim" : "botayio" });
     } catch (err) {
       console.error(`[BotAyio:${t.slug}] chat web:`, err.message);
       if (!llmConfigurado()) {
         registrarEvento({ tenantId: t.id, tipo: "PERGUNTA", canal: "WEB", tema: "erro", resolvido: false });
-        return res.status(502).json({ error: "Não foi possível obter a resposta agora. Tente novamente em instantes." });
+        return responder({ error: "Não foi possível obter a resposta agora. Tente novamente em instantes." }, 502);
       }
       // segue para a IA local como plano B
     }
   }
 
   // 2) IA local (fotos, ou plano B)
-  if (!llmConfigurado()) return res.status(500).json({ error: SEM_CHAVE });
+  if (!llmConfigurado()) return responder({ error: SEM_CHAVE }, 500);
   try {
     let texto = await chamarLLM({ system: promptCidadao(t, await formsDoTenant(t)) + simCtx + realCtx, messages: hist, maxTokens: MAX_TOKENS });
     let semBase = false;
@@ -303,10 +340,10 @@ app.post(`${T}/chat`, comTenant, async (req, res) => {
       if (semBase && !temImagem(ultima)) registrarEvento({ tenantId: t.id, tipo: "SEMBASE", canal: "WEB", tema: mascarar(pergunta).replace(/\s+/g, " ").trim().slice(0, 60) });
     }
     const jor = temImagem(ultima) ? null : detectarJornada(pergunta);
-    res.json({ reply: (texto || "Não consegui gerar uma resposta. Pode reformular a pergunta?") + (jor ? `\n[[JORNADA:${jor}]]` : ""), origem: "local" });
+    responder({ reply: (texto || "Não consegui gerar uma resposta. Pode reformular a pergunta?") + (jor ? `\n[[JORNADA:${jor}]]` : ""), origem: "local" });
   } catch (err) {
     console.error("[chat]", err.message);
-    res.status(502).json({ error: "Não foi possível obter a resposta agora. Tente novamente em instantes." });
+    responder({ error: "Não foi possível obter a resposta agora. Tente novamente em instantes." }, 502);
   }
 });
 
@@ -458,7 +495,7 @@ registrarImpacto(app, { limitar: (chave, max) => rateLimited(chave, max) });
 const PAGINAS = { chat: "index.html", tutor: "tutor.html", balcao: "balcao.html", painel: "painel-custos.html", admin: "admin.html", atendimento: "atendimento.html", gestao: "gestao.html", privacidade: "privacidade.html", servicos: "servicos.html" };
 const htmlCache = new Map();
 const lerHtml = (arq) => {
-  if (!htmlCache.has(arq) || process.env.NODE_ENV === "development") htmlCache.set(arq, readFileSync(join(ROOT, "public", arq), "utf8"));
+  if (!htmlCache.has(arq) || process.env.NODE_ENV === "development") htmlCache.set(arq, versionar(readFileSync(join(ROOT, "public", arq), "utf8")));
   return htmlCache.get(arq);
 };
 const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");

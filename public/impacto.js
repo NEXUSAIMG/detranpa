@@ -25,9 +25,19 @@
       kpi("Horas economizadas", `${n(I.horasCidadao)} h`, `cidadão · ${n(I.horasServidor)} h de servidor (estimativa)`, "neutro"),
     ].join("")}</div>
     ${I.porContexto.length ? `<table class="ob-tab"><thead><tr><th>Onde o cidadão respondeu</th><th>Evitou</th><th>Não evitou</th><th>Ainda não sabe</th></tr></thead><tbody>${I.porContexto.map((x) => `<tr><td>${esc(nomeCtx(x.contexto))}</td><td>${n(x.sim)}</td><td>${n(x.nao)}</td><td>${n(x.talvez)}</td></tr>`).join("")}</tbody></table>` : '<div class="vazio-p">Ainda não há respostas à pergunta “isso evitou uma ida ao DETRAN?”. Ela aparece ao fim de cada conferência de documentos e de cada jornada.</div>'}
-    <p class="ob-dica">Estimativa: ${I.estimativa.minutosViagem} min do cidadão (deslocamento e espera) e ${I.estimativa.minutosServidor} min de servidor por viagem evitada.</p>`;
+    <p class="ob-dica">Estimativa: ${I.estimativa.minutosViagem} min do cidadão (deslocamento e espera) e ${I.estimativa.minutosServidor} min de servidor por viagem evitada.</p>
+    ${blocoCusto(d.custoIA)}`;
     renderOrigens(I.origens || []);
     renderMedicoes(I.medicoes);
+  }
+
+  // ── Custo REAL da IA no mês (tokens devolvidos pelo BotAyio × preço do modelo) ──
+  const reais = (v, casas = 2) => "R$ " + Number(v).toLocaleString("pt-BR", { minimumFractionDigits: casas, maximumFractionDigits: casas });
+  function blocoCusto(c) {
+    if (!c || !c.respostas) return '<p class="ob-dica">Custo da IA: ainda sem respostas medidas neste mês.</p>';
+    const mil = (n) => (n / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + " mil";
+    return `<div class="ob-custo"><b>Custo da IA neste mês (medido):</b> ${reais(c.custoReais)} em ${n(c.respostas)} respostas${c.custoPorResposta != null ? ` · <b>${reais(c.custoPorResposta, 4)}</b> por resposta` : ""}
+      <br><small>Tokens: ${mil(c.tokens.entrada)} de entrada, ${mil(c.tokens.cacheLido)} reaproveitados do cache e ${mil(c.tokens.saida)} de saída · cotação US$ 1 = R$ ${String(c.cotacao).replace(".", ",")}${c.semPreco.length ? ` · sem preço configurado para ${esc(c.semPreco.join(", "))}` : ""}</small></div>`;
   }
 
   // ── Antes e depois (linha de base e medições do DETRAN) ──
@@ -111,7 +121,8 @@
         ${linha("Sem resposta na base", R.taxaSemBase + "%")}
         ${linha("Encaminhadas a atendente", R.taxaTransbordo + "%")}
         ${linha("Satisfação", R.satisfacao == null ? "—" : R.satisfacao + "%")}
-        ${linha("Lacunas corrigidas pela Tutoria", n(I.lacunasCorrigidas))}</table>
+        ${linha("Lacunas corrigidas pela Tutoria", n(I.lacunasCorrigidas))}
+        ${d.custoIA?.respostas ? linha("Custo da IA no mês (medido)", reais(d.custoIA.custoReais) + (d.custoIA.custoPorResposta != null ? " · " + reais(d.custoIA.custoPorResposta, 4) + " por resposta" : "")) : ""}</table>
       ${comp ? `<h2>Antes e depois (dados do ${esc(T.sigla)})</h2><table><tr><th>Indicador</th><th>Linha de base (${esc(br(comp.base))})</th><th>Última (${esc(br(comp.ultima))})</th><th>Variação</th></tr>${comp.campos.map((c) => `<tr><td>${esc(c.rotulo)}</td><td>${n(c.base)}</td><td>${comp.mesma ? "—" : n(c.atual)}</td><td>${comp.mesma || c.variacao == null ? "—" : (c.variacao > 0 ? "+" : "") + c.variacao + "%"}</td></tr>`).join("")}</table>` : ""}
       ${(I.origens || []).length ? `<h2>De onde vieram os acessos</h2><table>${I.origens.map((o) => linha(o.origem.replace(/-/g, " "), n(o.n))).join("")}</table>` : ""}
       <p><small>Metodologia: “viagens evitadas” vêm da pergunta feita ao cidadão ao fim da conferência de documentos e de cada jornada. Horas são estimativas (${I.estimativa.minutosViagem} min do cidadão e ${I.estimativa.minutosServidor} min de servidor por viagem evitada). Nenhum dado pessoal é usado nestes números.</small></p>
