@@ -58,7 +58,7 @@
     const fmtVar = (c) => c.variacao == null ? "—" : `<span class="ob-var ${c.bom === true ? "desce" : c.bom === false ? "sobe" : ""}">${c.variacao > 0 ? "▲" : "▼"} ${Math.abs(c.variacao)}%</span>`;
     el.innerHTML = `<table class="ob-tab"><thead><tr><th>Indicador</th><th>Linha de base (${esc(br(comp.base))})</th><th>Última (${esc(br(comp.ultima))})</th><th>Variação</th></tr></thead><tbody>
       ${comp.campos.map((c) => `<tr><td>${esc(c.rotulo)}</td><td>${n(c.base)}</td><td>${comp.mesma ? "—" : n(c.atual)}</td><td>${comp.mesma ? "—" : fmtVar(c)}</td></tr>`).join("")}</tbody></table>
-      ${lista ? `<p class="ob-dica">${lista.length} medição(ões) registradas.</p>` : ""}`;
+      ${lista ? `<details class="ob-med-lista"><summary>${lista.length} medição(ões) registradas</summary><ul>${lista.slice().reverse().map((m) => `<li>${esc(br(m.data))}${m.fonte ? ` · ${esc(m.fonte)}` : ""} <button class="btn ghost mini" type="button" data-med-del="${esc(m.data)}" aria-label="Remover a medição de ${esc(br(m.data))}">Remover</button></li>`).join("")}</ul></details>` : ""}`;
   }
   const br = (iso) => String(iso || "").split("-").reverse().join("/");
 
@@ -119,6 +119,11 @@
     w.document.close();
   }
 
-  document.addEventListener("click", (e) => { if (e.target.closest("#ob-relatorio")) relatorio(); });
+  document.addEventListener("click", async (e) => {
+    if (e.target.closest("#ob-relatorio")) return relatorio();
+    const del = e.target.closest("[data-med-del]"); if (!del) return;
+    const r = await Sessao.api("/gestao/impacto/medicoes/" + encodeURIComponent(del.dataset.medDel), { method: "DELETE" });
+    if (r.ok) renderMedicoes(r.data.comparacao, r.data.medicoes);
+  });
   window.Impacto = { render, carregarMedicoes };
 })();

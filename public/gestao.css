@@ -351,3 +351,4 @@ textarea.in { resize: vertical; }
 .ob-qr-linha { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
 .ob-qr { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-top: 10px; padding: 10px; border: 1px solid var(--borda); border-radius: 12px; }
 .ob-qr img { background: #fff; border-radius: 8px; } .ob-qr code { font-size: 12px; word-break: break-all; }
+.ob-med-lista { margin-top: 8px; font-size: 13px; } .ob-med-lista summary { cursor: pointer; color: var(--tinta-2, #4E5870); } .ob-med-lista ul { list-style: none; padding: 0; margin: 6px 0 0; } .ob-med-lista li { display: flex; gap: 8px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--borda); }
