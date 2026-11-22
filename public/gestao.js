@@ -189,7 +189,7 @@
     const dias = []; for (let i = S.dias === 1 ? 0 : S.dias - 1; i >= 0; i--) { const d = new Date(Date.now() - i * 86400000); dias.push(d.toLocaleDateString("en-CA")); }
     const vals = dias.map((d) => porDia[d] || 0); const max = Math.max(1, ...vals); const W = 600, H = 150, n = vals.length, bw = W / n;
     const barras = vals.map((v, i) => `<rect x="${i * bw + bw * 0.15}" y="${H - (v / max) * (H - 18)}" width="${bw * 0.7}" height="${(v / max) * (H - 18)}" rx="3" fill="var(--ayio-teal)"><title>${dias[i].split("-").reverse().join("/")}: ${v}</title></rect>`).join("");
-    const rot = n <= 14 ? vals.map((v, i) => `<text x="${i * bw + bw / 2}" y="${H + 14}" font-size="10" text-anchor="middle" fill="#8A93A8">${dias[i].slice(8)}/${dias[i].slice(5, 7)}</text>`).join("") : "";
+    const rot = n <= 14 ? vals.map((v, i) => `<text x="${i * bw + bw / 2}" y="${H + 14}" font-size="12" text-anchor="middle" fill="#667085">${dias[i].slice(8)}/${dias[i].slice(5, 7)}</text>`).join("") : "";
     $("graf-dias").innerHTML = vals.some(Boolean) ? `<svg viewBox="0 0 ${W} ${H + 18}" preserveAspectRatio="none">${barras}${rot}</svg>` : '<div class="vazio-p">Sem movimento no período.</div>';
   }
   function grafTemas(temas) {

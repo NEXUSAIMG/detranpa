@@ -27,10 +27,10 @@
     .msg.err { background: var(--warn-bg); color: var(--warn-ink); }
     .msg.ok { background: var(--t-claro, #E3F6F2); color: var(--moss-deep); }
     table.lst { width: 100%; border-collapse: collapse; font-size: 13.5px; }
-    table.lst th { text-align: left; font-size: 11.5px; color: var(--ink-soft); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--paper-edge); }
+    table.lst th { text-align: left; font-size: 12px; color: var(--ink-soft); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--paper-edge); }
     table.lst td { padding: 9px 8px; border-bottom: 1px solid var(--paper-edge); vertical-align: middle; }
     table.lst tr.click { cursor: pointer; } table.lst tr.click:hover { background: #F6F4EE; }
-    .pill { display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; background: #EEE; color: #555; margin-right: 4px; }
+    .pill { display: inline-block; font-size: 12px; font-weight: 700; padding: 3px 8px; border-radius: 999px; background: #EEE; color: #555; margin-right: 4px; }
     .pill.ok { background: var(--t-claro, #E3F6F2); color: var(--moss-deep); } .pill.no { background: #F6E9E2; color: #9A4B1B; }
     .img-prev { height: 76px; border: 1px dashed #CBD2DC; border-radius: 10px; display: flex; align-items: center; justify-content: center; margin: 4px 0 8px; background: #FAFBFC; overflow: hidden; }
     .img-prev img { max-height: 64px; max-width: 90%; object-fit: contain; }
@@ -40,13 +40,13 @@
     .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
     .tab { cursor: pointer; border: 1px solid var(--paper-edge); background: #fff; border-radius: 999px; padding: 7px 14px; font-size: 13px; font-weight: 600; color: #24304F; }
     .tab.on { background: var(--moss); color: #fff; border-color: var(--moss); }
-    .hint { font-size: 11.5px; color: #6B7690; margin-top: 4px; }
+    .hint { font-size: 12px; color: #6B7690; margin-top: 4px; }
     .login-box { max-width: 380px; margin: 14vh auto 0; }
     .hidden { display: none !important; }
     .bot-out { white-space: pre-wrap; background: #F1F5F9; border: 1px solid #DCE3EC; border-radius: 10px; padding: 12px; font-size: 13px; margin-top: 10px; }
     .rede-resumo { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin: 10px 0 14px; }
     .rede-resumo div { background: #F1F5F9; border: 1px solid #DCE3EC; border-radius: 10px; padding: 10px 12px; }
-    .rede-resumo small { display: block; font-size: 11.5px; color: #5B6577; font-weight: 600; }
+    .rede-resumo small { display: block; font-size: 12px; color: #5B6577; font-weight: 600; }
     .rede-resumo b { font-size: 20px; color: #192662; }
     #rede-tab td.rede-alerta { color: #B3261E; font-weight: 700; }
   </style>
@@ -89,33 +89,33 @@
           <table class="lst"><thead><tr><th>Endereço</th><th>DETRAN</th><th>Integrações</th><th>Usuários</th><th>Formulários</th><th>Conversas</th></tr></thead><tbody id="lista-corpo"></tbody></table>
         </div>
         <div class="card">
-          <h3>🌐 Rede de DETRANs <select id="rede-dias" class="in" style="width:auto;display:inline-block;margin-left:8px;padding:4px 8px"><option value="7">7 dias</option><option value="30" selected>30 dias</option><option value="90">90 dias</option></select></h3>
+          <h3>🌐 Rede de DETRANs <select id="rede-dias" class="in" aria-label="Período da rede" style="width:auto;display:inline-block;margin-left:8px;padding:4px 8px"><option value="7">7 dias</option><option value="30" selected>30 dias</option><option value="90">90 dias</option></select></h3>
           <p class="sub">Os mesmos indicadores para todos os estados. Só a equipe Ayio vê os nomes; cada DETRAN vê apenas a média da rede, no Observatório.</p>
           <div id="rede-resumo" class="rede-resumo"></div>
-          <div style="overflow-x:auto"><table class="lst" id="rede-tab"></table></div>
+          <div style="overflow-x:auto" tabindex="0" role="region" aria-label="Tabela rede tab"><table class="lst" id="rede-tab"></table></div>
         </div>
         <div class="card">
           <h3>🩺 Saúde do sistema <button id="saude-atualizar" class="btn" style="margin-left:8px;padding:4px 10px;font-size:12px">Atualizar</button></h3>
           <p class="sub">Banco, armazenamento, assistente (BotAyio) e WhatsApp de cada DETRAN, checados agora. O monitor externo confere a cada 10 minutos e avisa por e-mail se algo cair.</p>
           <div id="saude-resumo" class="rede-resumo"></div>
-          <div style="overflow-x:auto"><table class="lst" id="saude-tab"></table></div>
+          <div style="overflow-x:auto" tabindex="0" role="region" aria-label="Tabela saude tab"><table class="lst" id="saude-tab"></table></div>
           <h4 style="margin:14px 0 6px;font-size:14px">Falhas recentes</h4>
-          <div style="overflow-x:auto;max-height:280px;overflow-y:auto"><table class="lst" id="saude-falhas"></table></div>
+          <div style="overflow-x:auto;max-height:280px;overflow-y:auto" tabindex="0" role="region" aria-label="Tabela saude falhas"><table class="lst" id="saude-falhas"></table></div>
         </div>
         <div class="card">
           <h3>➕ Novo DETRAN</h3>
           <p class="sub">Depois de criar, cadastre as integrações (bot no BotAyio e WhatsApp) e os usuários.</p>
           <div class="grid2">
-            <div><label class="f">Endereço (vai na URL: /am)</label><input id="n-slug" class="in" placeholder="am" /></div>
-            <div><label class="f">UF</label><input id="n-uf" class="in" maxlength="2" placeholder="AM" /></div>
-            <div><label class="f">Sigla</label><input id="n-sigla" class="in" placeholder="DETRAN-AM" /></div>
-            <div><label class="f">Nome do assistente</label><input id="n-assistente" class="in" placeholder="Assistente DETRAN-AM" /></div>
-            <div><label class="f">Nome do órgão</label><input id="n-nome" class="in" placeholder="Departamento Estadual de Trânsito do Amazonas" /></div>
-            <div><label class="f">Governo</label><input id="n-governo" class="in" placeholder="Governo do Estado do Amazonas" /></div>
-            <div><label class="f">Cidade sede</label><input id="n-cidade" class="in" placeholder="Manaus" /></div>
-            <div><label class="f">Telefone de atendimento</label><input id="n-telefone" class="in" /></div>
-            <div><label class="f">Portal oficial</label><input id="n-portal" class="in" placeholder="https://..." /></div>
-            <div><label class="f">Copiar formulários de</label><select id="n-copiar-forms" class="sel"><option value="">— nenhum —</option></select></div>
+            <div><label class="f" for="n-slug">Endereço (vai na URL: /am)</label><input id="n-slug" class="in" placeholder="am" /></div>
+            <div><label class="f" for="n-uf">UF</label><input id="n-uf" class="in" maxlength="2" placeholder="AM" /></div>
+            <div><label class="f" for="n-sigla">Sigla</label><input id="n-sigla" class="in" placeholder="DETRAN-AM" /></div>
+            <div><label class="f" for="n-assistente">Nome do assistente</label><input id="n-assistente" class="in" placeholder="Assistente DETRAN-AM" /></div>
+            <div><label class="f" for="n-nome">Nome do órgão</label><input id="n-nome" class="in" placeholder="Departamento Estadual de Trânsito do Amazonas" /></div>
+            <div><label class="f" for="n-governo">Governo</label><input id="n-governo" class="in" placeholder="Governo do Estado do Amazonas" /></div>
+            <div><label class="f" for="n-cidade">Cidade sede</label><input id="n-cidade" class="in" placeholder="Manaus" /></div>
+            <div><label class="f" for="n-telefone">Telefone de atendimento</label><input id="n-telefone" class="in" /></div>
+            <div><label class="f" for="n-portal">Portal oficial</label><input id="n-portal" class="in" placeholder="https://..." /></div>
+            <div><label class="f" for="n-copiar-forms">Copiar formulários de</label><select id="n-copiar-forms" class="sel"><option value="">— nenhum —</option></select></div>
           </div>
           <div id="n-msg"></div>
           <div class="row"><button id="n-ok" class="btn pri">Criar DETRAN</button></div>
@@ -136,35 +136,35 @@
 
           <section id="aba-dados">
             <div class="grid2">
-              <div><label class="f">Sigla</label><input id="t-sigla" class="in" /></div>
-              <div><label class="f">UF</label><input id="t-uf" class="in" maxlength="2" /></div>
-              <div><label class="f">Nome do assistente</label><input id="t-assistente" class="in" /></div>
-              <div><label class="f">Telefone de atendimento</label><input id="t-telefone" class="in" /></div>
-              <div><label class="f">Nome do órgão</label><input id="t-nome" class="in" /></div>
-              <div><label class="f">Governo</label><input id="t-governo" class="in" /></div>
-              <div><label class="f">Cidade sede</label><input id="t-cidadeSede" class="in" /></div>
-              <div><label class="f">Portal oficial</label><input id="t-portalUrl" class="in" /></div>
-              <div><label class="f">Logo (endereço da imagem)</label><input id="t-logoUrl" class="in" placeholder="/img/... ou https://..." /></div>
-              <div><label class="f">Marca pequena (endereço da imagem)</label><input id="t-marcaUrl" class="in" /></div>
+              <div><label class="f" for="t-sigla">Sigla</label><input id="t-sigla" class="in" /></div>
+              <div><label class="f" for="t-uf">UF</label><input id="t-uf" class="in" maxlength="2" /></div>
+              <div><label class="f" for="t-assistente">Nome do assistente</label><input id="t-assistente" class="in" /></div>
+              <div><label class="f" for="t-telefone">Telefone de atendimento</label><input id="t-telefone" class="in" /></div>
+              <div><label class="f" for="t-nome">Nome do órgão</label><input id="t-nome" class="in" /></div>
+              <div><label class="f" for="t-governo">Governo</label><input id="t-governo" class="in" /></div>
+              <div><label class="f" for="t-cidadeSede">Cidade sede</label><input id="t-cidadeSede" class="in" /></div>
+              <div><label class="f" for="t-portalUrl">Portal oficial</label><input id="t-portalUrl" class="in" /></div>
+              <div><label class="f" for="t-logoUrl">Logo (endereço da imagem)</label><input id="t-logoUrl" class="in" placeholder="/img/... ou https://..." /></div>
+              <div><label class="f" for="t-marcaUrl">Marca pequena (endereço da imagem)</label><input id="t-marcaUrl" class="in" /></div>
           </div>
           <h4 style="margin:18px 0 6px">Identidade visual</h4>
           <p class="hint" style="margin:0 0 10px">As cores e a marca deste DETRAN aparecem no site, no WhatsApp e nas áreas internas. Envie imagens PNG, JPG ou WEBP de até 600 KB; ao enviar, o endereço fixo acima é ignorado.</p>
           <div class="grid2">
-            <div><label class="f">Cor principal</label><div class="row" style="gap:8px"><input id="t-corPrimaria-pick" type="color" style="width:46px;height:38px;border:0;background:none;padding:0" /><input id="t-corPrimaria" class="in" placeholder="#192662" maxlength="7" style="flex:1" /></div></div>
-            <div><label class="f">Cor de destaque</label><div class="row" style="gap:8px"><input id="t-corDestaque-pick" type="color" style="width:46px;height:38px;border:0;background:none;padding:0" /><input id="t-corDestaque" class="in" placeholder="#14AD92" maxlength="7" style="flex:1" /></div></div>
+            <div><label class="f" for="t-corPrimaria">Cor principal</label><div class="row" style="gap:8px"><input id="t-corPrimaria-pick" type="color" aria-label="Escolher a cor principal" style="width:46px;height:38px;border:0;background:none;padding:0" /><input id="t-corPrimaria" class="in" placeholder="#192662" maxlength="7" style="flex:1" /></div></div>
+            <div><label class="f" for="t-corDestaque">Cor de destaque</label><div class="row" style="gap:8px"><input id="t-corDestaque-pick" type="color" aria-label="Escolher a cor de destaque" style="width:46px;height:38px;border:0;background:none;padding:0" /><input id="t-corDestaque" class="in" placeholder="#14AD92" maxlength="7" style="flex:1" /></div></div>
             <div><label class="f">Logo (cabeçalho)</label>
               <div class="img-prev"><img id="img-logo" alt="" /></div>
-              <div class="row" style="gap:8px"><input type="file" id="up-logo" accept="image/png,image/jpeg,image/webp" class="hidden" /><button type="button" class="btn soft" data-up="logo">Enviar logo</button><button type="button" class="btn soft" data-del="logo">Remover</button></div></div>
+              <div class="row" style="gap:8px"><input type="file" id="up-logo" aria-label="Arquivo do logo" accept="image/png,image/jpeg,image/webp" class="hidden" /><button type="button" class="btn soft" data-up="logo">Enviar logo</button><button type="button" class="btn soft" data-del="logo">Remover</button></div></div>
             <div><label class="f">Marca pequena (ícone)</label>
               <div class="img-prev"><img id="img-marca" alt="" /></div>
-              <div class="row" style="gap:8px"><input type="file" id="up-marca" accept="image/png,image/jpeg,image/webp" class="hidden" /><button type="button" class="btn soft" data-up="marca">Enviar marca</button><button type="button" class="btn soft" data-del="marca">Remover</button></div></div>
+              <div class="row" style="gap:8px"><input type="file" id="up-marca" aria-label="Arquivo da marca" accept="image/png,image/jpeg,image/webp" class="hidden" /><button type="button" class="btn soft" data-up="marca">Enviar marca</button><button type="button" class="btn soft" data-del="marca">Remover</button></div></div>
           </div>
           <div id="img-msg"></div>
-            <label class="f">Tom de voz com o cidadão (usado pela IA local: fotos, defesa, plano B)</label>
+            <label class="f" for="t-personaTom">Tom de voz com o cidadão (usado pela IA local: fotos, defesa, plano B)</label>
             <textarea id="t-personaTom" class="ta"></textarea>
-            <label class="f">Orientações do estado (órgão do IPVA, multas por órgão, portais, normas)</label>
+            <label class="f" for="t-orientacoes">Orientações do estado (órgão do IPVA, multas por órgão, portais, normas)</label>
             <textarea id="t-orientacoes" class="ta"></textarea>
-            <label class="f">Conteúdo da tela (JSON: boasVindasTitulo, boasVindasTexto, canais, sugestoes, guias, atalhos)</label>
+            <label class="f" for="t-conteudo">Conteúdo da tela (JSON: boasVindasTitulo, boasVindasTexto, canais, sugestoes, guias, atalhos)</label>
             <textarea id="t-conteudo" class="ta mono" spellcheck="false"></textarea>
             <div class="hint">O tom e a base do bot do WhatsApp e do site ficam no BotAyio; estes textos valem para a tela e para a IA local.</div>
             <label class="f hidden" id="t-demo-wrap"><input type="checkbox" id="t-demonstracao" /> Demonstração (site fechado: só abre pelo link privado, com faixa de aviso e fora do Google). Desmarque quando o DETRAN virar cliente.</label>
@@ -184,19 +184,19 @@
           <section id="aba-integ" class="hidden">
             <div id="integ-status"></div>
             <h3 style="margin-top:14px">🧠 BotAyio (cérebro do site e do WhatsApp)</h3>
-            <label class="f">URL do webhook do bot</label><input id="i-botayioUrl" class="in" placeholder="https://.../webhooks/seucartorio/<id do bot>" />
+            <label class="f" for="i-botayioUrl">URL do webhook do bot</label><input id="i-botayioUrl" class="in" placeholder="https://.../webhooks/seucartorio/<id do bot>" />
             <div class="grid2">
-              <div><label class="f">Segredo do webhook</label><input id="i-botayioSecret" class="in" type="password" autocomplete="off" /></div>
-              <div><label class="f">Link de tutoria (com token)</label><input id="i-botayioTutorUrl" class="in" type="password" autocomplete="off" /></div>
+              <div><label class="f" for="i-botayioSecret">Segredo do webhook</label><input id="i-botayioSecret" class="in" type="password" autocomplete="off" /></div>
+              <div><label class="f" for="i-botayioTutorUrl">Link de tutoria (com token)</label><input id="i-botayioTutorUrl" class="in" type="password" autocomplete="off" /></div>
             </div>
             <h3 style="margin-top:16px">💬 Zapayio (WhatsApp)</h3>
             <div class="grid2">
-              <div><label class="f">URL base</label><input id="i-zapayioBaseUrl" class="in" placeholder="https://zap.ondot.com.br" /></div>
-              <div><label class="f">ID da instância</label><input id="i-zapayioInstanceId" class="in" /></div>
-              <div><label class="f">Token</label><input id="i-zapayioToken" class="in" type="password" autocomplete="off" /></div>
-              <div><label class="f">Client-token (opcional)</label><input id="i-zapayioClientToken" class="in" type="password" autocomplete="off" /></div>
+              <div><label class="f" for="i-zapayioBaseUrl">URL base</label><input id="i-zapayioBaseUrl" class="in" placeholder="https://zap.ondot.com.br" /></div>
+              <div><label class="f" for="i-zapayioInstanceId">ID da instância</label><input id="i-zapayioInstanceId" class="in" /></div>
+              <div><label class="f" for="i-zapayioToken">Token</label><input id="i-zapayioToken" class="in" type="password" autocomplete="off" /></div>
+              <div><label class="f" for="i-zapayioClientToken">Client-token (opcional)</label><input id="i-zapayioClientToken" class="in" type="password" autocomplete="off" /></div>
             </div>
-            <label class="f">Segredo do webhook (mín. 24 caracteres)</label>
+            <label class="f" for="i-zapayioWebhookSecret">Segredo do webhook (mín. 24 caracteres)</label>
             <div class="row" style="margin-top:4px"><input id="i-zapayioWebhookSecret" class="in" type="password" autocomplete="off" style="flex:1" /><button id="gerar-segredo" class="btn soft" type="button">Gerar</button></div>
             <div class="hint">Campos de segredo em branco mantêm o valor já cadastrado. Os segredos nunca são mostrados de volta.</div>
             <div id="integ-msg"></div>
@@ -212,12 +212,12 @@
             <h3 style="margin-top:22px">🪪 Meu DETRAN com dados oficiais <span id="md-pill"></span></h3>
             <p class="sub">Quando o DETRAN liberar a API e o credenciamento no gov.br, o cidadão entra com o gov.br e o assistente responde sobre a situação DELE (débitos, CNH, pontos, veículos). Desligado, nada muda. Contrato da API: <code>docs/CONECTOR_MEU_DETRAN.md</code>.</p>
             <div class="grid2">
-              <div><label class="f">Situação</label><select id="md-modo" class="in"><option value="desligado">Desligado</option><option value="api">Ligado (API oficial + gov.br)</option></select></div>
-              <div><label class="f">URL da API do DETRAN (https://…)</label><input id="md-api" class="in" placeholder="https://api.detran.uf.gov.br/meu-detran/v1" /></div>
-              <div><label class="f">Token da API</label><input id="md-token" class="in" type="password" autocomplete="new-password" placeholder="cadastrado — deixe em branco para manter" /></div>
-              <div><label class="f">Ambiente gov.br</label><select id="md-amb" class="in"><option value="homologacao">Homologação (staging)</option><option value="producao">Produção</option></select></div>
-              <div><label class="f">gov.br client_id</label><input id="md-cid" class="in" /></div>
-              <div><label class="f">gov.br client_secret</label><input id="md-csec" class="in" type="password" autocomplete="new-password" placeholder="cadastrado — deixe em branco para manter" /></div>
+              <div><label class="f" for="md-modo">Situação</label><select id="md-modo" class="in"><option value="desligado">Desligado</option><option value="api">Ligado (API oficial + gov.br)</option></select></div>
+              <div><label class="f" for="md-api">URL da API do DETRAN (https://…)</label><input id="md-api" class="in" placeholder="https://api.detran.uf.gov.br/meu-detran/v1" /></div>
+              <div><label class="f" for="md-token">Token da API</label><input id="md-token" class="in" type="password" autocomplete="new-password" placeholder="cadastrado — deixe em branco para manter" /></div>
+              <div><label class="f" for="md-amb">Ambiente gov.br</label><select id="md-amb" class="in"><option value="homologacao">Homologação (staging)</option><option value="producao">Produção</option></select></div>
+              <div><label class="f" for="md-cid">gov.br client_id</label><input id="md-cid" class="in" /></div>
+              <div><label class="f" for="md-csec">gov.br client_secret</label><input id="md-csec" class="in" type="password" autocomplete="new-password" placeholder="cadastrado — deixe em branco para manter" /></div>
             </div>
             <div class="hint" id="md-retorno"></div>
             <div id="md-msg"></div>
@@ -228,10 +228,10 @@
             <table class="lst"><thead><tr><th>Nome</th><th>Usuário</th><th>Perfil</th><th>Situação</th><th>Último acesso</th><th></th></tr></thead><tbody id="u-corpo"></tbody></table>
             <h3 style="margin-top:16px">➕ Novo usuário</h3>
             <div class="grid2">
-              <div><label class="f">Nome</label><input id="u-nome" class="in" /></div>
-              <div><label class="f">Usuário (login)</label><input id="u-login" class="in" /></div>
-              <div><label class="f">Perfil</label><select id="u-perfil" class="sel"><option value="BALCAO">Balcão</option><option value="TUTOR">Tutor</option><option value="GESTOR">Gestor</option><option value="ADMIN">Administrador</option></select></div>
-              <div><label class="f">Senha inicial (mín. 8)</label><input id="u-senha" class="in" type="password" autocomplete="new-password" /></div>
+              <div><label class="f" for="u-nome">Nome</label><input id="u-nome" class="in" /></div>
+              <div><label class="f" for="u-login">Usuário (login)</label><input id="u-login" class="in" /></div>
+              <div><label class="f" for="u-perfil">Perfil</label><select id="u-perfil" class="sel"><option value="BALCAO">Balcão</option><option value="TUTOR">Tutor</option><option value="GESTOR">Gestor</option><option value="ADMIN">Administrador</option></select></div>
+              <div><label class="f" for="u-senha">Senha inicial (mín. 8)</label><input id="u-senha" class="in" type="password" autocomplete="new-password" /></div>
             </div>
             <div id="u-msg"></div>
             <div class="row"><button id="u-ok" class="btn pri">Criar usuário</button></div>
@@ -240,7 +240,7 @@
 
           <section id="aba-forms" class="hidden">
             <table class="lst"><thead><tr><th>Ordem</th><th>Formulário</th><th>Situação</th><th></th></tr></thead><tbody id="f-corpo"></tbody></table>
-            <div id="f-copiar" class="row hidden"><select id="f-de" class="sel" style="width:auto"></select><button id="f-copiar-ok" class="btn soft">Copiar os que faltam</button></div>
+            <div id="f-copiar" class="row hidden"><select id="f-de" class="sel" aria-label="Copiar formulários de qual DETRAN" style="width:auto"></select><button id="f-copiar-ok" class="btn soft">Copiar os que faltam</button></div>
             <div id="f-msg"></div>
           </section>
         </div>

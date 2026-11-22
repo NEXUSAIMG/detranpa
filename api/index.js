@@ -463,6 +463,8 @@ const lerHtml = (arq) => {
 };
 const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
+// Página "não encontrada" acessível (idioma, título e título de nível 1).
+const naoEncontrada = (res) => res.status(404).type("html").send('<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>Página não encontrada</title><style>body{font:16px/1.5 system-ui,sans-serif;color:#1B2236;max-width:560px;margin:15vh auto;padding:0 16px}h1{font-size:22px;color:#192662}</style></head><body><main><h1>Página não encontrada</h1><p>Confira o endereço. Se você chegou aqui por um link, ele pode ter expirado.</p></main></body></html>');
 const urlSegura = (u) => (/^https?:\/\//i.test(String(u || "")) ? String(u) : "#");
 
 function renderPagina(arq, t, sim = false) {
@@ -501,7 +503,7 @@ function renderPagina(arq, t, sim = false) {
 
 async function pagina(req, res, qual) {
   const slug = String(req.params.slug || "").toLowerCase();
-  if (!SLUG_RE.test(slug)) return res.status(404).send("Página não encontrada.");
+  if (!SLUG_RE.test(slug)) return naoEncontrada(res);
   try {
     const t = await buscarTenant(slug);
     if (!t) return res.status(404).send("DETRAN não encontrado.");
@@ -544,7 +546,7 @@ app.get("/:slug/privacidade", (req, res) => pagina(req, res, "privacidade"));
 app.get("/:slug/servicos", async (req, res) => {
   // Demonstração: abre com o link da demo. DETRAN cliente: só com o link privado da simulação (?sim=CHAVE -> cookie).
   const t = SLUG_RE.test(String(req.params.slug || "").toLowerCase()) ? await buscarTenant(String(req.params.slug).toLowerCase()).catch(() => null) : null;
-  if (!t) return res.status(404).send("Página não encontrada.");
+  if (!t) return naoEncontrada(res);
   if (!t.demonstracao) {
     res.set("X-Robots-Tag", "noindex, nofollow"); res.set("Cache-Control", "private, no-store");
     if (chaveSimNaUrl(req, t)) {
@@ -553,7 +555,7 @@ app.get("/:slug/servicos", async (req, res) => {
       const q = resto.toString();
       return res.redirect(302, req.path + (q ? `?${q}` : ""));
     }
-    if (!simPorCookie(req, t)) return res.status(404).send("Página não encontrada.");
+    if (!simPorCookie(req, t)) return naoEncontrada(res);
   }
   pagina(req, res, "servicos");
 });

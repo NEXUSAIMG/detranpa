@@ -292,7 +292,7 @@ async function carregarUsuarios() {
   if (!r.ok) return msg("u-msg", r.data.error || "Erro ao listar.");
   $("u-corpo").innerHTML = (r.data.usuarios || []).map((u) => `<tr data-id="${esc(u.id)}">
     <td>${esc(u.nome)}</td><td>${esc(u.login)}</td>
-    <td><select class="sel u-perfil" style="width:auto">${Object.entries(NOMES_PERFIL).map(([k, v]) => `<option value="${k}" ${k === u.perfil ? "selected" : ""}>${v}</option>`).join("")}</select></td>
+    <td><select class="sel u-perfil" style="width:auto" aria-label="Perfil do usuário">${Object.entries(NOMES_PERFIL).map(([k, v]) => `<option value="${k}" ${k === u.perfil ? "selected" : ""}>${v}</option>`).join("")}</select></td>
     <td>${u.ativo ? '<span class="pill ok">ativo</span>' : '<span class="pill no">inativo</span>'}</td><td>${dt(u.ultimoAcesso)}</td>
     <td><button class="btn soft u-ativo">${u.ativo ? "Desativar" : "Reativar"}</button>
         <input class="in u-novasenha" type="password" placeholder="nova senha" style="width:130px;display:inline-block" autocomplete="new-password" />

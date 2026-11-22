@@ -674,8 +674,8 @@ fetch(API("/forms")).then((r) => r.json()).then((d) => { formsCache = d.forms ||
   function aplicar() {
     document.documentElement.style.zoom = ZOOMS[zi];
     document.body.classList.toggle("hc", hc);
-    bHc.classList.toggle("on", hc);
-    bFont.classList.toggle("on", zi > 0);
+    bHc.classList.toggle("on", hc); bHc.setAttribute("aria-pressed", String(hc));
+    bFont.classList.toggle("on", zi > 0); bFont.setAttribute("aria-label", zi > 0 ? `Tamanho da letra: ${Math.round(ZOOMS[zi] * 100)}%. Toque para mudar` : "Aumentar a letra");
   }
 
   const bFont = document.createElement("button");
