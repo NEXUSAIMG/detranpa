@@ -41,6 +41,7 @@
     if (!r.ok) return msgBox("l-msg", r.data.error || "Não foi possível entrar.");
     iniciar();
   }
+  if ($("duas-etapas")) $("duas-etapas").onclick = () => Sessao.duasEtapas();
   $("sair").onclick = async () => { await api("/eu/status", put({ status: "OFFLINE" })).catch(() => {}); Sessao.sair(); location.reload(); };
 
   async function iniciar() {
@@ -147,8 +148,25 @@
 
   // ═════════ VISÃO GERAL ═════════
   document.querySelectorAll("#periodo button").forEach((b) => (b.onclick = () => { S.dias = Number(b.dataset.d); document.querySelectorAll("#periodo button").forEach((x) => x.classList.toggle("on", x === b)); carregarVisao(); }));
+  // Texto legível sobre a cor da etiqueta (contraste WCAG AA): branco ou escuro.
+  function corTexto(hex) {
+    const m = String(hex || '').replace('#', '').match(/^([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i); if (!m) return '#1B2236';
+    const [r, g, b] = m.slice(1).map((x) => { const v = parseInt(x, 16) / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; });
+    const L = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    return (1.05) / (L + 0.05) >= 4.5 ? '#fff' : '#1B2236';
+  }
   const kpi = (rot, val, sub = "", cls = "") => `<div class="kpi ${cls}"><small>${esc(rot)}</small><b>${esc(val)}</b><span>${esc(sub)}</span></div>`;
+  // Faixa de saúde: só aparece se alguma integração deste DETRAN estiver fora
+  // (o Balcão não tem acesso a esta checagem; a faixa simplesmente não aparece).
+  async function faixaSaude() {
+    const el = $("saude-faixa"); if (!el) return;
+    const r = await api("/saude").catch(() => null);
+    const fora = r && r.ok ? r.data.itens.filter((i) => i.ok === false && i.configurado !== false) : [];
+    el.classList.toggle("hidden", !fora.length);
+    el.innerHTML = fora.map((i) => `⚠️ <b>${esc(i.nome)}</b> fora do ar${i.detalhe ? `: ${esc(i.detalhe)}` : ""}. Avise a equipe técnica.`).join("<br>");
+  }
   async function carregarVisao() {
+    faixaSaude();
     const r = await api(`/visao?dias=${S.dias}`); if (!r.ok) return;
     const v = r.data; S.visao = v; const a = v.agora, p = v.periodo;
     $("kpi-agora").innerHTML =
@@ -218,7 +236,7 @@
     const cs = r.data.conversas;
     $("lista-conv").innerHTML = cs.map((c) => {
       const esp = c.esperaDesde ? minDesde(c.esperaDesde) : null;
-      const etqs = (c.etiquetas || []).map(etq).filter(Boolean).map((e) => `<span class="chip tinto" style="background:${esc(e.cor)}">${esc(e.nome)}</span>`).join("");
+      const etqs = (c.etiquetas || []).map(etq).filter(Boolean).map((e) => `<span class="chip tinto" style="background:${esc(e.cor)};color:${corTexto(e.cor)}">${esc(e.nome)}</span>`).join("");
       const ultima = c.ultima ? `${c.ultima.autor === "CIDADAO" ? "" : c.ultima.autor === "BOT" ? "🤖 " : "Você/equipe: "}${c.ultima.texto}` : "";
       return `<div class="it ${c.id === S.convId ? "sel" : ""}" data-id="${esc(c.id)}">
         <div class="l1"><span>${c.canal === "WHATSAPP" ? "🟢" : "🌐"} ${esc(c.nome || c.contato)}</span>${esp != null ? `<span class="espera ${classeEspera(esp)}">⏱ ${durTxt(esp)}</span>` : `<span class="hora">${quando(c.ultimaEm)}</span>`}</div>
@@ -463,7 +481,7 @@
     if (kan) {
       const cols = ["ABERTO", "EM_ANDAMENTO", "AGUARDANDO_CIDADAO", "RESOLVIDO", "CANCELADO"];
       const recentes = (c) => !["RESOLVIDO", "CANCELADO"].includes(c.status) || Date.now() - new Date(c.resolvidoEm || c.atualizadoEm) < 7 * 86400000;
-      $("kanban").innerHTML = cols.map((s) => { const cs = S.chamados.filter((c) => c.status === s && recentes(c)); return `<div class="col" data-st="${s}"><h5><span>${esc(S.statusTexto[s])}</span><span>${cs.length}</span></h5>${cs.map(cartao).join("")}</div>`; }).join("");
+      $("kanban").innerHTML = cols.map((s) => { const cs = S.chamados.filter((c) => c.status === s && recentes(c)); return `<div class="col" data-st="${s}"><h5 role="heading" aria-level="3"><span>${esc(S.statusTexto[s])}</span><span>${cs.length}</span></h5>${cs.map(cartao).join("")}</div>`; }).join("");
       arrastar();
     } else {
       $("lista-ch").innerHTML = S.chamados.length ? `<div class="cartao"><table class="tabela"><thead><tr><th>Protocolo</th><th>Assunto</th><th>Cidadão</th><th>Situação</th><th>Prioridade</th><th>Responsável</th><th>Prazo</th></tr></thead><tbody>${S.chamados.map((c) => `<tr class="click" data-id="${esc(c.id)}"><td><b>${esc(c.protocolo)}</b></td><td>${esc(c.assunto)}</td><td>${esc(c.nome || (c.contato ? formatarFone(c.contato) : "—"))}</td><td><span class="pill st-${esc(c.status)}">${esc(S.statusTexto[c.status])}</span></td><td>${esc(c.prioridade)}</td><td>${esc(c.responsavelNome || "—")}</td><td class="${c.vencido ? "pill venc" : ""}">${fmtData(c.prazoEm)}</td></tr>`).join("")}</tbody></table></div>` : '<div class="vazio"><div class="vazio-ic">📋</div><b>Nenhum chamado</b><span>Abra a partir de uma conversa ou pelo botão “Novo chamado”.</span></div>';
@@ -542,7 +560,7 @@
   async function carregarCidadaos() {
     const r = await api("/contatos?busca=" + encodeURIComponent($("busca-cid").value.trim())); if (!r.ok) return;
     const cs = r.data.contatos;
-    $("lista-cid").innerHTML = cs.length ? `<div class="cartao"><table class="tabela"><thead><tr><th>Cidadão</th><th>WhatsApp</th><th>Etiquetas</th><th>Última conversa</th><th>Chamados</th><th>Nota</th></tr></thead><tbody>${cs.map((c) => `<tr class="click" data-id="${esc(c.conversaId)}"><td><b>${esc(c.nome || "—")}</b>${c.notas ? `<br><small class="vazio-p">${esc(c.notas.slice(0, 60))}</small>` : ""}</td><td>${esc(formatarFone(c.contato))}</td><td>${c.etiquetas.map(etq).filter(Boolean).map((e) => `<span class="chip tinto" style="background:${esc(e.cor)}">${esc(e.nome)}</span>`).join(" ")}</td><td>${fmtDH(c.ultimaEm)}</td><td>${c.chamados || "—"}</td><td>${c.avaliacao ? c.avaliacao + " ★" : "—"}</td></tr>`).join("")}</tbody></table></div>` : '<div class="vazio"><div class="vazio-ic">👤</div><b>Nenhum cidadão encontrado</b><span>Aparecem aqui as pessoas que falaram com o DETRAN pelo WhatsApp.</span></div>';
+    $("lista-cid").innerHTML = cs.length ? `<div class="cartao"><table class="tabela"><thead><tr><th>Cidadão</th><th>WhatsApp</th><th>Etiquetas</th><th>Última conversa</th><th>Chamados</th><th>Nota</th></tr></thead><tbody>${cs.map((c) => `<tr class="click" data-id="${esc(c.conversaId)}"><td><b>${esc(c.nome || "—")}</b>${c.notas ? `<br><small class="vazio-p">${esc(c.notas.slice(0, 60))}</small>` : ""}</td><td>${esc(formatarFone(c.contato))}</td><td>${c.etiquetas.map(etq).filter(Boolean).map((e) => `<span class="chip tinto" style="background:${esc(e.cor)};color:${corTexto(e.cor)}">${esc(e.nome)}</span>`).join(" ")}</td><td>${fmtDH(c.ultimaEm)}</td><td>${c.chamados || "—"}</td><td>${c.avaliacao ? c.avaliacao + " ★" : "—"}</td></tr>`).join("")}</tbody></table></div>` : '<div class="vazio"><div class="vazio-ic">👤</div><b>Nenhum cidadão encontrado</b><span>Aparecem aqui as pessoas que falaram com o DETRAN pelo WhatsApp.</span></div>';
     document.querySelectorAll("#lista-cid tr.click").forEach((tr) => (tr.onclick = () => { irPara("atendimento"); abrirConversa(tr.dataset.id); }));
   }
 
@@ -563,7 +581,7 @@
     const c = S.config;
     $("cf-pesquisa").checked = c.pesquisaSatisfacao; $("cf-msgPesquisa").value = c.mensagemPesquisa; $("cf-agradece").value = c.agradecimentoPesquisa;
     $("cf-avisar").checked = c.avisarChamado; $("cf-cats").value = c.categorias.join("\n");
-    $("cf-sla").innerHTML = S.prioridades.map((p) => `<div><label>${p}</label><input class="in" type="number" min="1" data-p="${p}" value="${c.slaHoras[p]}" /></div>`).join("");
+    $("cf-sla").innerHTML = S.prioridades.map((p) => `<div><label for="sla-${p}">${p}</label><input id="sla-${p}" class="in" type="number" min="1" data-p="${p}" value="${c.slaHoras[p]}" /></div>`).join("");
     $("cf-hativo").checked = c.horario.ativo;
     $("cf-dias").innerHTML = DIAS.map((d, i) => `<label><input type="checkbox" value="${i}" ${c.horario.dias.includes(i) ? "checked" : ""} />${d}</label>`).join("");
     $("cf-ini").value = c.horario.inicio; $("cf-fim").value = c.horario.fim; $("cf-fora").value = c.horario.mensagemFora;
@@ -576,7 +594,16 @@
     previaLgpd();
     listaRespostas(); listaEtiquetas();
   }
+  async function historicoLgpd() {
+    const el = $("lgpd-hist-corpo"); if (!el) return;
+    const r = await api("/lgpd/historico?limite=60"); if (!r.ok) return (el.textContent = r.data.error || "Sem acesso ao histórico.");
+    const d = r.data, n = (v) => Number(v || 0).toLocaleString("pt-BR");
+    const nome = { retencao: "Retenção automática", "pedido-do-cidadao": "Pedido do cidadão", "pedido-do-cidadao-site": "Cidadão apagou no site" };
+    el.innerHTML = `<p style="margin:0 0 6px">No total registrado: <b>${n(d.totais.conversas)}</b> conversa(s), <b>${n(d.totais.contatos)}</b> ficha(s), <b>${n(d.totais.balcao)}</b> registro(s) do balcão e <b>${n(d.totais.lembretes)}</b> lembrete(s) apagados; <b>${n(d.totais.chamados)}</b> chamado(s) anonimizados.</p>`
+      + (d.itens.length ? `<table class="tab"><thead><tr><th>Quando</th><th>Motivo</th><th>Conversas</th><th>Fichas</th><th>Chamados anonimizados</th></tr></thead><tbody>${d.itens.map((i) => `<tr><td>${esc(new Date(i.em).toLocaleString("pt-BR"))}</td><td>${esc(nome[i.tipo] || i.tipo)}</td><td>${n(i.conversas)}</td><td>${n(i.contatos)}</td><td>${n(i.chamados)}</td></tr>`).join("")}</tbody></table>` : "<p>Nenhuma eliminação registrada ainda.</p>");
+  }
   async function previaLgpd() {
+    historicoLgpd();
     $("lgpd-previa").textContent = "Calculando…";
     const r = await api("/lgpd/previa"); if (!r.ok) return ($("lgpd-previa").textContent = "");
     const d = r.data;
@@ -624,7 +651,7 @@
     msgBox("rr-msg", ""); $("rr-limpar").onclick(); listaRespostas(); toast("Resposta rápida salva.");
   };
   function listaEtiquetas() {
-    $("lista-etq").innerHTML = S.etiquetas.map((e) => `<div class="rr-item"><div><span class="chip tinto" style="background:${esc(e.cor)}">${esc(e.nome)}</span></div><button class="btn ghost mini" data-ed="${esc(e.id)}">Editar</button><button class="btn perigo mini" data-rm="${esc(e.id)}">✕</button></div>`).join("") || '<div class="vazio-p">Nenhuma etiqueta.</div>';
+    $("lista-etq").innerHTML = S.etiquetas.map((e) => `<div class="rr-item"><div><span class="chip tinto" style="background:${esc(e.cor)};color:${corTexto(e.cor)}">${esc(e.nome)}</span></div><button class="btn ghost mini" data-ed="${esc(e.id)}">Editar</button><button class="btn perigo mini" data-rm="${esc(e.id)}">✕</button></div>`).join("") || '<div class="vazio-p">Nenhuma etiqueta.</div>';
     $("lista-etq").querySelectorAll("[data-ed]").forEach((b) => (b.onclick = () => { const e = S.etiquetas.find((x) => x.id === b.dataset.ed); $("et-id").value = e.id; $("et-nome").value = e.nome; $("et-cor").value = e.cor; }));
     $("lista-etq").querySelectorAll("[data-rm]").forEach((b) => (b.onclick = async () => { if (!confirmar("Apagar esta etiqueta?")) return; await api("/etiquetas/" + b.dataset.rm, { method: "DELETE" }); S.etiquetas = S.etiquetas.filter((x) => x.id !== b.dataset.rm); listaEtiquetas(); montarFiltros(); }));
   }

@@ -1,0 +1,33 @@
+# Monitor externo do Assistente DETRAN.
+# A cada 10 minutos chama /api/saude. Se algo estiver fora do ar (banco,
+# armazenamento, BotAyio ou WhatsApp de um DETRAN cliente) a execução falha
+# e o GitHub manda e-mail para quem configurou o agendamento (Settings >
+# Notifications > Actions: "Send notifications for failed workflows only").
+name: Monitor de saúde
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  saude:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Checar /api/saude (2 tentativas)
+        env:
+          URL: ${{ vars.MONITOR_URL || 'https://detranpa.vercel.app/api/saude' }}
+        run: |
+          for i in 1 2; do
+            code=$(curl -s -o resp.json -w '%{http_code}' --max-time 45 "$URL" || echo 000)
+            echo "Tentativa $i: HTTP $code"
+            cat resp.json 2>/dev/null; echo
+            if [ "$code" = "200" ]; then exit 0; fi
+            sleep 30
+          done
+          echo "::error title=Assistente DETRAN fora do ar::$(head -c 500 resp.json 2>/dev/null)"
+          exit 1

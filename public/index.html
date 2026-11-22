@@ -33,7 +33,7 @@
     <section id="scroll" class="scroll" aria-live="polite">
       <div id="empty" class="empty">
         <img class="welcome-logo" src="{{LOGO}}" alt="{{SIGLA}}" />
-        <h2>{{BVTITULO}}</h2>
+        <h1 class="bv-titulo">{{BVTITULO}}</h1>
         <p>{{BVTEXTO}}</p>
         <div id="suggestions" class="suggestions"></div>
         <button id="empty-docs" class="docs-cta">
@@ -69,7 +69,7 @@
     <div class="overlay-card">
       <header class="overlay-head">
         <button id="docs-back" class="icon-btn hidden" title="Voltar">←</button>
-        <h3 id="docs-title">Documentos e formulários</h3>
+        <h3 id="docs-title" role="heading" aria-level="2">Documentos e formulários</h3>
         <button id="docs-close" class="icon-btn" title="Fechar">✕</button>
       </header>
       <div id="docs-body" class="overlay-body"><!-- preenchido via JS --></div>
@@ -78,12 +78,12 @@
 
   <script src="/app.js"></script>
   <!-- Acessibilidade em Libras (VLibras — gov.br) -->
-  <div vw class="enabled">
+  <aside aria-label="Tradução para Libras (VLibras)"><div vw class="enabled">
     <div vw-access-button class="active"></div>
     <div vw-plugin-wrapper>
       <div class="vw-plugin-top-wrapper"></div>
     </div>
-  </div>
+  </div></aside>
   <script src="https://vlibras.gov.br/app/vlibras-plugin.js"></script>
   <script>new window.VLibras.Widget('https://vlibras.gov.br/app');</script>
 </body>

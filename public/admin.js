@@ -36,16 +36,21 @@ async function entrar() {
   if (!login || !senha) return msg("l-msg", "Informe usuário e senha.");
   $("l-ok").disabled = true;
   let r;
-  if (GERAL) { r = await api("/api/admin/login", corpo({ login, senha })); if (r.ok) tokSet(r.data.token); }
+  if (GERAL) {
+    r = await api("/api/admin/login", corpo({ login, senha }));
+    if (r.ok && (r.data.precisa2fa || r.data.precisaCadastrar2fa)) r = await window.DoisFatores.concluirLogin(r, "/api/admin/auth");
+    if (r.ok && r.data.token) tokSet(r.data.token);
+  }
   else r = await Sessao.entrar(login, senha, "admin");
   $("l-ok").disabled = false;
   if (!r.ok) return msg("l-msg", r.data.error || "Não foi possível entrar.");
   iniciar();
 }
 $("sair").onclick = () => { if (GERAL) tokSet(""); else Sessao.sair(); location.reload(); };
+if ($("duas-etapas")) $("duas-etapas").onclick = () => (GERAL ? window.DoisFatores.configurar("/api/admin/auth", tokGet()) : Sessao.duasEtapas());
 
 async function iniciar() {
-  $("login").classList.add("hidden"); $("sair").classList.remove("hidden");
+  $("login").classList.add("hidden"); $("sair").classList.remove("hidden"); if ($("duas-etapas")) $("duas-etapas").classList.remove("hidden");
   if (GERAL) { souSuper = true; await mostrarLista(); }
   else await abrirTenant(slugAtual);
 }
@@ -64,6 +69,7 @@ async function mostrarLista() {
   document.querySelectorAll("#lista-corpo tr.click").forEach((tr) => (tr.onclick = () => abrirTenant(tr.dataset.slug)));
   $("n-copiar-forms").innerHTML = '<option value="">— nenhum —</option>' + tenantsCache.map((t) => `<option value="${esc(t.slug)}">${esc(t.sigla)}</option>`).join("");
   carregarRede();
+  carregarSaude();
 }
 
 // ── Rede de DETRANs (equipe Ayio) ──
@@ -84,6 +90,28 @@ async function carregarRede() {
       <td>${f(d.notaAtendimento)}</td><td${ruim(d.esperaMediana, 30)}>${f(d.esperaMediana, " min")}</td><td>${f(d.whatsapp, "%")}</td><td>${d.golpes}${d.golpesProvaveis ? ` <small>(${d.golpesProvaveis} golpe)</small>` : ""}</td></tr>`).join("") + "</tbody>";
 }
 if ($("rede-dias")) $("rede-dias").onchange = carregarRede;
+
+// ── Saúde do sistema (equipe Ayio) ──
+async function carregarSaude() {
+  if (!$("saude-tab")) return;
+  $("saude-resumo").innerHTML = `<div><small>Checando…</small><b>…</b></div>`;
+  const r = await api("/api/admin/saude");
+  if (!r.ok) { $("saude-resumo").innerHTML = `<div class="msg err">${esc(r.data.error || "Não foi possível checar agora.")}</div>`; return; }
+  const S = r.data, sinal = (ok) => (ok === null ? "—" : ok ? "🟢 ok" : "🔴 fora");
+  const caixa = (rot, v) => `<div><small>${rot}</small><b>${v}</b></div>`;
+  const comp = Object.fromEntries(S.componentes.map((c) => [c.nome, c]));
+  $("saude-resumo").innerHTML = caixa("Situação geral", S.ok ? "🟢 Tudo no ar" : "🔴 Atenção")
+    + caixa("Banco de dados", `${sinal(comp["Banco de dados"]?.ok)} <small>${comp["Banco de dados"]?.ms ?? "-"} ms</small>`)
+    + caixa("Armazenamento", `${sinal(comp["Estado curto"]?.ok)} <small>${esc(comp["Estado curto"]?.detalhe || "")}</small>`)
+    + caixa("Falhas em 24 h", S.falhas.filter((f) => Date.now() - Date.parse(f.em) < 864e5).length);
+  const cel = (i) => i ? `<td title="${esc(i.detalhe || "")}">${sinal(i.ok)}${i.ms != null ? ` <small>${i.ms} ms</small>` : ""}${i.detalhe && i.ok === false ? `<br><small>${esc(i.detalhe)}</small>` : ""}</td>` : "<td>—</td>";
+  $("saude-tab").innerHTML = `<thead><tr><th>DETRAN</th><th>Assistente (BotAyio)</th><th>WhatsApp</th><th>Tempo de resposta (7 dias)</th></tr></thead><tbody>`
+    + S.detrans.map((d) => `<tr><td><b>${esc(d.sigla)}</b>${d.demonstracao ? ' <span class="pill">demo</span>' : ""}</td>${cel(d.itens[0])}${cel(d.itens[1])}<td>${d.tempos?.n ? `mediana ${(d.tempos.medianaMs / 1000).toFixed(1)} s · 95% até ${(d.tempos.p95Ms / 1000).toFixed(1)} s<br><small>${d.tempos.abaixo8s}% abaixo de 8 s · ${d.tempos.doCache} do cache · ${d.tempos.n} respostas</small>` : "—"}</td></tr>`).join("") + "</tbody>";
+  $("saude-falhas").innerHTML = S.falhas.length
+    ? `<thead><tr><th>Quando</th><th>Onde</th><th>DETRAN</th><th>O que houve</th></tr></thead><tbody>` + S.falhas.map((f) => `<tr><td>${new Date(f.em).toLocaleString("pt-BR")}</td><td>${esc(f.componente)}</td><td>${esc(f.slug || "-")}</td><td>${esc(f.msg)}</td></tr>`).join("") + "</tbody>"
+    : `<tbody><tr><td>Nenhuma falha registrada. 🎉</td></tr></tbody>`;
+}
+if ($("saude-atualizar")) $("saude-atualizar").onclick = carregarSaude;
 $("voltar").onclick = mostrarLista;
 
 $("n-ok").onclick = async () => {

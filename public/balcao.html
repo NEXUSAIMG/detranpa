@@ -62,14 +62,14 @@
   <header class="topbar">
     <div class="brand">
       <div class="logo"><img class="brand-mark" src="{{MARCA}}" alt="{{SIGLA}}"></div>
-      <div class="brand-text"><span class="eyebrow">{{SIGLA}} · Uso interno</span><span class="title">Copiloto do Balcão</span></div>
+      <div class="brand-text"><span class="eyebrow">{{SIGLA}} · Uso interno</span><h1 class="title" style="margin:0;font:inherit">Copiloto do Balcão</h1></div>
     </div>
     <div class="topbar-actions"><button id="painel" class="ghost-btn hidden">Painel</button><a href="/{{SLUG}}/atendimento" class="ghost-btn" title="Conversas do WhatsApp que pediram atendente">💬 Atendimento</a><a href="/{{SLUG}}" class="ghost-btn" title="Ir ao chat do cidadão">← Chat do cidadão</a><button id="logout" class="ghost-btn hidden">Sair</button></div>
   </header>
   <main class="bx-main">
     <div id="login" class="login-box">
       <div class="lb-card">
-        <h3>Entrar no Copiloto do Balcão</h3>
+        <h3 role="heading" aria-level="2">Entrar no Copiloto do Balcão</h3>
         <p class="sub">Ferramenta de apoio ao atendente do {{SIGLA}}. Entre com seu usuário.</p>
         <input id="user" type="text" autocomplete="username" placeholder="Usuário" style="margin-bottom:8px">
         <input id="pwd" type="password" autocomplete="current-password" placeholder="Senha">

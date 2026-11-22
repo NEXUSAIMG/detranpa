@@ -1,7 +1,7 @@
 {
   "name": "detranpa-chat",
   "version": "1.0.0",
-  "description": "Assistente virtual do DETRAN-PA — chat que responde dúvidas dos cidadãos com base na documentação oficial dos serviços.",
+  "description": "Assistente virtual do DETRAN-PA â€” chat que responde dÃºvidas dos cidadÃ£os com base na documentaÃ§Ã£o oficial dos serviÃ§os.",
   "type": "module",
   "main": "server.js",
   "scripts": {
@@ -10,7 +10,8 @@
     "postinstall": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "tenant": "node scripts/tenant-cli.js",
-    "migrar": "node scripts/migrar-legado.js"
+    "migrar": "node scripts/migrar-legado.js",
+    "test": "node --import ./tests/unit/ambiente.mjs --test tests/unit/*.test.mjs"
   },
   "engines": {
     "node": ">=18.17"

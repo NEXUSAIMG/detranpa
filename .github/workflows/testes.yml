@@ -1,0 +1,32 @@
+# Testes automáticos a cada envio de código (push) e pedido de mudança (PR).
+# Para TRAVAR a publicação quando falhar: GitHub > Settings > Branches >
+# regra para "main" com "Require status checks to pass" marcando "Testes".
+# (A Vercel só publica o que entra na main.)
+name: Testes
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  testes:
+    name: Testes
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+      - name: Instalar dependências
+        run: npm ci
+      - name: Testes unitários (sem banco, sem rede)
+        run: npm test
+      - name: Cobertura (informativa)
+        run: node --import ./tests/unit/ambiente.mjs --test --experimental-test-coverage --test-coverage-include='lib/**' --test-coverage-include='store.js' tests/unit/*.test.mjs | tail -n 40

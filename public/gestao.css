@@ -1,8 +1,8 @@
 /* Central de Gestão — usa as cores do DETRAN (injetadas em :root por lib/tema.js). */
 :root {
   --ayio-navy: #192662; --ayio-teal: #14AD92; --ayio-teal-deep: #167D70; --ayio-navy-deep: #0A1549; --t-claro: #E3F6F2;
-  --fundo: #F4F6FA; --cartao: #FFFFFF; --borda: #E3E8F0; --tinta: #1B2236; --tinta-2: #5B6680; --tinta-3: #8A93A8;
-  --ok: #16A34A; --amarelo: #D97706; --verm: #DC2626; --sombra: 0 1px 2px rgba(16,24,40,.06), 0 4px 16px rgba(16,24,40,.05);
+  --fundo: #F4F6FA; --cartao: #FFFFFF; --borda: #E3E8F0; --tinta: #1B2236; --tinta-2: #5B6680; --tinta-3: #667085;
+  --ok: #15803D; --amarelo: #B45309; --verm: #DC2626; --sombra: 0 1px 2px rgba(16,24,40,.06), 0 4px 16px rgba(16,24,40,.05);
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
@@ -58,7 +58,8 @@ textarea.in { resize: vertical; }
 .pulso { display: flex; gap: 8px; flex-wrap: wrap; }
 .pulso .p { font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px; background: #EEF1F6; color: var(--tinta-2); }
 .pulso .p.alerta { background: #FEF3C7; color: #92400E; } .pulso .p.critico { background: #FDECEC; color: #A61B1B; animation: piscar 1.6s infinite; }
-@keyframes piscar { 50% { opacity: .55; } }
+@keyframes piscar { 50% { opacity: .8; } }
+@media (prefers-reduced-motion: reduce) { .pulso .p.critico { animation: none; } }
 .eu { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 .eu-nome { font-weight: 600; font-size: 13px; }
 .status-sel { border: 1px solid var(--borda); border-radius: 999px; padding: 6px 10px; font: 600 12.5px system-ui, sans-serif; background: #fff; cursor: pointer; }
@@ -335,3 +336,10 @@ textarea.in { resize: vertical; }
 .ob-funil { margin-bottom: 16px; }
 .ob-funil .barras-h .b { grid-template-columns: 200px 1fr 44px; }
 @media (max-width: 720px) { .ob-funil .barras-h .b { grid-template-columns: 120px 1fr 36px; } }
+
+/* Faixa de saúde das integrações (Visão geral) */
+.saude-faixa { margin: 0 0 14px; padding: 10px 14px; border-radius: 10px; background: #FDECEA; border: 1px solid #F5C2BD; color: #8A1C12; font-size: 13.5px; line-height: 1.5; }
+.saude-faixa.hidden { display: none; }
+
+/* Texto só para leitor de tela */
+.so-leitor { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }

@@ -151,12 +151,15 @@ function splitReply(text) {
   return parts.map((s) => s.trim()).filter(Boolean);
 }
 
-function delayFor(part) { return Math.min(1500, 400 + part.length * 12); }
+// Pausa curta entre os balões (ritmo de conversa sem fazer o cidadão esperar):
+// no máximo 0,7 s por balão; quem pediu menos movimento não espera nada.
+const MENOS_MOVIMENTO = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+function delayFor(part) { return MENOS_MOVIMENTO ? 0 : Math.min(700, 250 + part.length * 4); }
 
 async function revealParts(parts, formId, wantsDefesa) {
   for (let i = 0; i < parts.length; i++) {
     showTyping();
-    await sleep(i === 0 ? 300 : delayFor(parts[i]));
+    await sleep(i === 0 ? (MENOS_MOVIMENTO ? 0 : 120) : delayFor(parts[i]));
     hideTyping();
     const _bb = addBubble("assistant", parts[i], i === parts.length - 1 ? formId : null);
     if (i === parts.length - 1) {
@@ -257,7 +260,7 @@ async function openDocs() {
 function renderDocList() {
   const cards = formsCache.map((f) => `
     <button class="doc-card" data-id="${f.id}">
-      <h4>${escapeHtml(f.title)}</h4>
+      <h4 role="heading" aria-level="3">${escapeHtml(f.title)}</h4>
       <p>${escapeHtml(f.desc)}</p>
       ${f.subtitle ? `<div class="doc-sub">${escapeHtml(f.subtitle)}</div>` : ""}
     </button>`).join("");
@@ -702,7 +705,7 @@ function escolherDefesa() {
     ["cetran", "3️⃣", "A JARI negou o meu recurso", `Gera o <b>Recurso ao ${CONSELHO}</b> (2ª instância). Prazo: 30 dias da notificação da decisão da JARI.`],
     ["auto", "🤔", "Não sei em que fase estou", "Eu descubro pelo que você me contou na conversa."],
   ];
-  els.overlayBody.innerHTML = `<p class="doc-intro">Em que fase está a sua multa? A peça muda conforme a fase.</p><div class="doc-grid">${op.map(([id, ic, t, d]) => `<button class="doc-card" data-tipo="${id}"><h4>${ic} ${t}</h4><p>${d}</p></button>`).join("")}</div><div id="def-status" class="doc-intro"></div>`;
+  els.overlayBody.innerHTML = `<p class="doc-intro">Em que fase está a sua multa? A peça muda conforme a fase.</p><div class="doc-grid">${op.map(([id, ic, t, d]) => `<button class="doc-card" data-tipo="${id}"><h4 role="heading" aria-level="3">${ic} ${t}</h4><p>${d}</p></button>`).join("")}</div><div id="def-status" class="doc-intro"></div>`;
   els.overlayBody.querySelectorAll("[data-tipo]").forEach((b) => (b.onclick = () => gerarDefesa(b.getAttribute("data-tipo"))));
 }
 async function gerarDefesa(tipo) {
@@ -771,7 +774,7 @@ function abrirDefesa(texto, tipo) {
     const cards = GUIAS.map((g) => {
       const d = done(g.id).length, tot = g.steps.length;
       const prog = d ? `<div class="doc-sub">${d}/${tot} etapas concluídas</div>` : "";
-      return `<button class="doc-card" data-g="${g.id}"><h4>${g.icon} ${g.title}</h4><p>${g.desc}</p>${prog}</button>`;
+      return `<button class="doc-card" data-g="${g.id}"><h4 role="heading" aria-level="3">${g.icon} ${g.title}</h4><p>${g.desc}</p>${prog}</button>`;
     }).join("");
     els.overlayBody.innerHTML = `<p class="doc-intro">Escolha uma jornada. Eu te levo etapa por etapa, com os links certos, os documentos e o prazo.</p><div class="doc-grid">${cards}</div>`;
     els.overlayBody.querySelectorAll("[data-g]").forEach((b) => { b.onclick = () => abrirGuia(b.getAttribute("data-g")); });
@@ -875,7 +878,7 @@ function abrirDefesa(texto, tipo) {
     if (atual) return render();
     if (!catalogo.length) { const c = await fetch(API("/jornadas")).then((x) => x.json()).catch(() => ({})); catalogo = c.jornadas || []; }
     els.overlayBody.innerHTML = '<p class="doc-intro">Escolha o que você precisa resolver. Eu te guio etapa por etapa, guardo onde você parou, conto os prazos e te lembro. Nada é pago nem assinado por mim: eu preparo e te levo ao canal oficial de cada passo.</p>'
-      + `<div class="doc-grid">${catalogo.map((j) => `<button class="doc-card" data-j="${escJ(j.id)}"><h4>${j.icone} ${escJ(j.titulo)}</h4><p>${escJ(j.resumo)}</p><div class="doc-sub">${j.etapas} etapas</div></button>`).join("")}</div>`;
+      + `<div class="doc-grid">${catalogo.map((j) => `<button class="doc-card" data-j="${escJ(j.id)}"><h4 role="heading" aria-level="3">${j.icone} ${escJ(j.titulo)}</h4><p>${escJ(j.resumo)}</p><div class="doc-sub">${j.etapas} etapas</div></button>`).join("")}</div>`;
     els.overlayBody.querySelectorAll("[data-j]").forEach((b) => (b.onclick = () => comecar(b.dataset.j)));
   }
   async function comecar(id) {
@@ -920,7 +923,7 @@ function abrirDefesa(texto, tipo) {
       <div class="jor-grade"><ol class="jor-passos">${passos}</ol>
         <div class="jor-etapa ${c.concluida ? "fim" : ""}">
           <small>Etapa ${c.progresso.atual} de ${c.progresso.total}</small>
-          <h4>${escJ(e.titulo)}</h4>
+          <h4 role="heading" aria-level="3">${escJ(e.titulo)}</h4>
           <p>${escJ(e.texto)}</p>
           ${prazos}
           ${erro ? `<div class="golpe-res atencao">${escJ(erro)}</div>` : ""}
@@ -976,7 +979,7 @@ function abrirDefesa(texto, tipo) {
         const d = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(d.error || "Não deu para conferir agora.");
         const icone = { golpe: "🚨", atencao: "⚠️", sem_sinais: "✅", sem_dados: "🔎" }[d.nivel];
-        out.innerHTML = `<div class="golpe-res ${d.nivel}"><h4>${icone} ${escH(d.titulo)}</h4>`
+        out.innerHTML = `<div class="golpe-res ${d.nivel}"><h4 role="heading" aria-level="3">${icone} ${escH(d.titulo)}</h4>`
           + (d.sinais.length ? `<p><b>O que encontrei:</b></p><ul>${d.sinais.map((s) => `<li>${escH(s)}</li>`).join("")}</ul>` : "")
           + (d.boletos.length ? `<ul>${d.boletos.map((b) => `<li>${escH(b.tipo)}${b.valor ? ` — valor ${escH(b.valor)}` : ""}${b.valido ? "" : " — código com erro"}</li>`).join("")}</ul>` : "")
           + `<p><b>O que fazer:</b></p><ul>${d.oQueFazer.map((s) => `<li>${escH(s)}</li>`).join("")}</ul>`
@@ -1007,16 +1010,16 @@ function abrirDefesa(texto, tipo) {
     els.docsBack.classList.add("hidden");
     els.overlayBody.innerHTML = ''
       + '<p class="doc-intro">Ferramentas rápidas — nada é enviado pela internet, tudo é calculado aqui no navegador.</p>'
-      + '<div class="calc-card"><h4>🚦 Pontos na CNH</h4><p class="calc-sub">Informe quantas infrações você tem em 12 meses, por gravidade.</p>'
+      + '<div class="calc-card"><h4 role="heading" aria-level="3">🚦 Pontos na CNH</h4><p class="calc-sub">Informe quantas infrações você tem em 12 meses, por gravidade.</p>'
       + '<div class="calc-grid">'
       + '<label>Leve (3 pts)<input type="number" min="0" value="0" id="c-leve"></label>'
       + '<label>Média (4 pts)<input type="number" min="0" value="0" id="c-media"></label>'
       + '<label>Grave (5 pts)<input type="number" min="0" value="0" id="c-grave"></label>'
       + '<label>Gravíssima (7 pts)<input type="number" min="0" value="0" id="c-gravi"></label>'
       + '</div><div id="c-pts-out" class="calc-out"></div></div>'
-      + '<div class="calc-card"><h4>⏰ Prazo da defesa</h4><p class="calc-sub">Data em que você recebeu a notificação. O prazo é de 30 dias.</p>'
+      + '<div class="calc-card"><h4 role="heading" aria-level="3">⏰ Prazo da defesa</h4><p class="calc-sub">Data em que você recebeu a notificação. O prazo é de 30 dias.</p>'
       + '<label class="calc-inline">Recebi em: <input type="date" id="c-data"></label><div id="c-prazo-out" class="calc-out"></div></div>'
-      + '<div class="calc-card"><h4>💰 Custo de um serviço (referência)</h4><p class="calc-sub">Marque as taxas. Valores são referência — o final é o do boleto/DAE.</p>'
+      + '<div class="calc-card"><h4 role="heading" aria-level="3">💰 Custo de um serviço (referência)</h4><p class="calc-sub">Marque as taxas. Valores são referência — o final é o do boleto/DAE.</p>'
       + '<div id="c-taxas"></div><div id="c-custo-out" class="calc-out"></div></div>';
 
     const calcPts = () => {
@@ -1177,7 +1180,7 @@ function abrirDefesa(texto, tipo) {
     els.overlayBody.innerHTML = '<p class="doc-intro">Carregando…</p>';
     const lista = await carregar();
     els.overlayBody.innerHTML = `<p class="doc-intro">Escolha o serviço. Eu mostro tudo o que você precisa levar${IA ? " e confiro as fotos dos seus documentos" : ""}, para você não perder a viagem.</p>`
-      + `<div class="doc-grid">${lista.map((s) => { const v = salvo(s.id); const n = s.itens.filter((i) => v[i.id] && ["OK", "TENHO"].includes(v[i.id].status)).length; return `<button class="doc-card" data-s="${escapeHtml(s.id)}"><h4>${s.icone || "📄"} ${escapeHtml(s.titulo)}</h4><p>${escapeHtml(s.resumo || "")}</p>${n ? `<div class="doc-sub">${n}/${s.itens.length} documentos conferidos</div>` : ""}</button>`; }).join("")}</div>`;
+      + `<div class="doc-grid">${lista.map((s) => { const v = salvo(s.id); const n = s.itens.filter((i) => v[i.id] && ["OK", "TENHO"].includes(v[i.id].status)).length; return `<button class="doc-card" data-s="${escapeHtml(s.id)}"><h4 role="heading" aria-level="3">${s.icone || "📄"} ${escapeHtml(s.titulo)}</h4><p>${escapeHtml(s.resumo || "")}</p>${n ? `<div class="doc-sub">${n}/${s.itens.length} documentos conferidos</div>` : ""}</button>`; }).join("")}</div>`;
     els.overlayBody.querySelectorAll("[data-s]").forEach((b) => (b.onclick = () => abrirServico(b.getAttribute("data-s"))));
   }
 

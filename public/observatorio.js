@@ -38,7 +38,7 @@
     ].join("");
 
     const max = Math.max(1, ...d.temas.map((t) => Math.max(t.atual, t.anterior)));
-    $("ob-temas").innerHTML = d.temas.length ? `<table class="ob-tab"><thead><tr><th>Assunto</th><th></th><th>Agora</th><th>Antes</th><th>Variação</th><th>Sem base</th><th>Atendente</th></tr></thead><tbody>${d.temas.map((t) => `
+    $("ob-temas").innerHTML = d.temas.length ? `<table class="ob-tab"><thead><tr><th>Assunto</th><th><span class="so-leitor">Barra</span></th><th>Agora</th><th>Antes</th><th>Variação</th><th>Sem base</th><th>Atendente</th></tr></thead><tbody>${d.temas.map((t) => `
       <tr><td><b>${esc(NOMES[t.tema] || t.tema)}</b></td>
       <td class="ob-barra"><div class="trilho"><div class="enche" style="width:${(t.atual / max) * 100}%"></div></div><div class="trilho antes"><div class="enche" style="width:${(t.anterior / max) * 100}%"></div></div></td>
       <td>${t.atual}</td><td class="mudo">${t.anterior}</td><td>${seta(t.variacao)}</td>
@@ -103,7 +103,7 @@
       ["Perguntas pelo WhatsApp", "whatsapp", "%", null],
     ];
     const f = (v, s) => (v == null ? "—" : `${v}${s}`);
-    el.innerHTML = `<table class="ob-tab"><thead><tr><th>Indicador</th><th>Seu DETRAN</th><th>Média da rede</th><th></th></tr></thead><tbody>${linhas.map(([rot, k, s, bom]) => {
+    el.innerHTML = `<table class="ob-tab"><thead><tr><th>Indicador</th><th>Seu DETRAN</th><th>Média da rede</th><th><span class="so-leitor">Situação</span></th></tr></thead><tbody>${linhas.map(([rot, k, s, bom]) => {
       const v = V[k], m = M[k];
       let sel = "";
       if (bom && v != null && m != null && v !== m) { const melhor = bom === "menor" ? v < m : v > m; sel = melhor ? '<span class="ob-var desce">melhor que a média</span>' : '<span class="ob-var sobe">abaixo da média</span>'; }

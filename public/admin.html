@@ -58,19 +58,19 @@
         <div class="logo" aria-hidden="true">⚙️</div>
         <div class="brand-text">
           <span class="eyebrow" id="eyebrow">{{SIGLA}}</span>
-          <span class="title">Administração</span>
+          <h1 class="title" style="margin:0;font:inherit">Administração</h1>
         </div>
       </div>
       <div class="topbar-actions">
         <button id="voltar" class="ghost-btn hidden">← Todos os DETRANs</button>
-        <button id="sair" class="ghost-btn hidden">Sair</button>
+        <button id="duas-etapas" class="ghost-btn hidden" title="Verificação em duas etapas">🔐 Duas etapas</button><button id="sair" class="ghost-btn hidden">Sair</button>
       </div>
     </header>
 
     <main class="ad-main">
       <div id="login" class="login-box">
         <div class="card">
-          <h3 id="login-titulo">Entrar na administração</h3>
+          <h3 id="login-titulo" role="heading" aria-level="2">Entrar na administração</h3>
           <p class="sub" id="login-sub">Acesso restrito.</p>
           <label class="f" for="l-user">Usuário</label>
           <input id="l-user" class="in" autocomplete="username" />
@@ -93,6 +93,14 @@
           <p class="sub">Os mesmos indicadores para todos os estados. Só a equipe Ayio vê os nomes; cada DETRAN vê apenas a média da rede, no Observatório.</p>
           <div id="rede-resumo" class="rede-resumo"></div>
           <div style="overflow-x:auto"><table class="lst" id="rede-tab"></table></div>
+        </div>
+        <div class="card">
+          <h3>🩺 Saúde do sistema <button id="saude-atualizar" class="btn" style="margin-left:8px;padding:4px 10px;font-size:12px">Atualizar</button></h3>
+          <p class="sub">Banco, armazenamento, assistente (BotAyio) e WhatsApp de cada DETRAN, checados agora. O monitor externo confere a cada 10 minutos e avisa por e-mail se algo cair.</p>
+          <div id="saude-resumo" class="rede-resumo"></div>
+          <div style="overflow-x:auto"><table class="lst" id="saude-tab"></table></div>
+          <h4 style="margin:14px 0 6px;font-size:14px">Falhas recentes</h4>
+          <div style="overflow-x:auto;max-height:280px;overflow-y:auto"><table class="lst" id="saude-falhas"></table></div>
         </div>
         <div class="card">
           <h3>➕ Novo DETRAN</h3>
@@ -240,6 +248,7 @@
     </main>
   </div>
   <script src="/sessao.js"></script>
+<script src="/dois-fatores.js"></script>
   <script src="/admin.js"></script>
 </body>
 </html>

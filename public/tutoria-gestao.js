@@ -25,7 +25,7 @@
     }
     if (!ligada) {
       $("tu-abas").classList.add("hidden");
-      $("tu-corpo").innerHTML = `<div class="cartao"><h4>A tutoria deste DETRAN ainda não foi ligada</h4><p class="vazio-p">Falta cadastrar o link de tutoria do bot (BotAyio) em <b>/admin → Integrações</b>. Peça ao administrador.</p></div>`;
+      $("tu-corpo").innerHTML = `<div class="cartao"><h4 role="heading" aria-level="2">A tutoria deste DETRAN ainda não foi ligada</h4><p class="vazio-p">Falta cadastrar o link de tutoria do bot (BotAyio) em <b>/admin → Integrações</b>. Peça ao administrador.</p></div>`;
       return;
     }
     $("tu-abas").classList.remove("hidden");
@@ -58,7 +58,7 @@
   function telaEnsinar() {
     $("tu-corpo").innerHTML = `<div class="tu-grade">
       <div class="cartao">
-        <h4>Ensinar algo novo ao bot</h4>
+        <h4 role="heading" aria-level="2">Ensinar algo novo ao bot</h4>
         <label class="f" for="tu-perg">Como o cidadão pergunta</label>
         <textarea id="tu-perg" class="in" rows="3" placeholder="Ex.: Posso transferir o carro com IPVA atrasado?&#10;(uma forma por linha — quanto mais jeitos de perguntar, melhor o bot encontra)"></textarea>
         <label class="f" for="tu-resp">Resposta certa</label>
@@ -71,7 +71,7 @@
         <div id="tu-res1"></div>
       </div>
       <div class="cartao">
-        <h4>Perguntar ao bot</h4>
+        <h4 role="heading" aria-level="2">Perguntar ao bot</h4>
         <p class="vazio-p">Veja como o bot responde hoje, sem virar conversa real.</p>
         <textarea id="tu-tp" class="in" rows="3" placeholder="Digite uma pergunta como o cidadão faria"></textarea>
         <div class="tu-acoes"><button class="btn soft" id="tu-tpb">Perguntar</button></div>
@@ -206,7 +206,7 @@
 
   async function telaAvisos() {
     $("tu-corpo").innerHTML = `<div class="cartao">
-      <h4>Novo aviso com prazo</h4>
+      <h4 role="heading" aria-level="2">Novo aviso com prazo</h4>
       <p class="vazio-p">Para situações passageiras: unidade fechada, sistema fora do ar, prazo prorrogado, mutirão. O aviso <b>sai do ar sozinho</b> depois da data final.</p>
       <label class="f" for="av-assunto">Sobre o que o cidadão vai perguntar</label>
       <input id="av-assunto" class="in" placeholder="Ex.: atendimento na Ciretran de Marabá / vistoria em Marabá" />
@@ -237,13 +237,13 @@
   const ROT_DEC = { incluida: "✅ Incluída na base", ja_tem: "✔ Já estava na base", ignorada: "Ignorada" };
   async function cartaoNormas(acao) {
     const alvo = $("tu-normas"); if (!alvo) return;
-    alvo.innerHTML = `<div class="cartao"><h4>Normas novas do CONTRAN</h4><p class="vazio-p">${acao ? "Verificando no gov.br…" : "Carregando…"}</p></div>`;
+    alvo.innerHTML = `<div class="cartao"><h4 role="heading" aria-level="2">Normas novas do CONTRAN</h4><p class="vazio-p">${acao ? "Verificando no gov.br…" : "Carregando…"}</p></div>`;
     const r = acao ? await api("/normas/verificar", post({})) : await api("/normas");
-    if (!r.ok) { alvo.innerHTML = `<div class="cartao"><h4>Normas novas do CONTRAN</h4><div class="msg err">${esc(r.data?.error || "Não foi possível verificar.")}</div></div>`; return; }
+    if (!r.ok) { alvo.innerHTML = `<div class="cartao"><h4 role="heading" aria-level="2">Normas novas do CONTRAN</h4><div class="msg err">${esc(r.data?.error || "Não foi possível verificar.")}</div></div>`; return; }
     const itens = r.data.itens || [];
     const pend = itens.filter((x) => !x.decisao);
     alvo.innerHTML = `<div class="cartao tu-normas">
-      <h4>Normas novas do CONTRAN ${pend.length ? `<b class="tu-badge">${pend.length} para revisar</b>` : ""}</h4>
+      <h4 role="heading" aria-level="2">Normas novas do CONTRAN ${pend.length ? `<b class="tu-badge">${pend.length} para revisar</b>` : ""}</h4>
       <p class="vazio-p">Todo dia o sistema confere se o CONTRAN publicou resolução nova no gov.br. Abra, leia e decida: incluir na base do bot (entra na hora), marcar que já está na base ou ignorar.</p>
       ${itens.length ? `<ul class="tu-normas-lista">${itens.map((x) => `<li class="${x.decisao ? "feita" : ""}">
         <div><b>${esc(x.titulo)}</b><small>Detectada em ${new Date(x.detectadaEm).toLocaleDateString("pt-BR")}${x.decisao ? ` · ${ROT_DEC[x.decisao.decisao] || x.decisao.decisao}${x.decisao.autor ? ` por ${esc(x.decisao.autor)}` : ""}` : ""}</small></div>
@@ -264,7 +264,7 @@
 
   async function telaDocumentos() {
     $("tu-corpo").innerHTML = `<div id="tu-normas"></div><div class="cartao">
-      <h4>Enviar norma ou documento</h4>
+      <h4 role="heading" aria-level="2">Enviar norma ou documento</h4>
       <p class="vazio-p">Portaria, instrução normativa, resolução, manual. O texto inteiro entra na base do bot. PDF, DOCX ou TXT de até 4 MB.</p>
       <div class="tu-linha"><div><label class="f" for="doc-arq">Arquivo</label><input id="doc-arq" class="in" type="file" accept=".pdf,.docx,.txt,.md" /></div>
         <div><label class="f" for="doc-base">Base legal (opcional — vai junto de cada trecho)</label><input id="doc-base" class="in" placeholder="Ex.: Portaria DETRAN-PA nº 1.234/2026" /></div></div>
@@ -275,7 +275,7 @@
     const r = await api("/documentos");
     if (!r.ok) { $("tu-lista").innerHTML = ""; return falhou(r); }
     const docs = r.data.itens;
-    $("tu-lista").innerHTML = docs.length ? `<div class="cartao"><h4>Documentos na base do bot</h4><div style="overflow-x:auto"><table class="tabela"><thead><tr><th>Documento</th><th>Trechos</th><th>Enviado em</th><th></th></tr></thead><tbody>
+    $("tu-lista").innerHTML = docs.length ? `<div class="cartao"><h4 role="heading" aria-level="2">Documentos na base do bot</h4><div style="overflow-x:auto"><table class="tabela"><thead><tr><th>Documento</th><th>Trechos</th><th>Enviado em</th><th></th></tr></thead><tbody>
       ${docs.map((d, k) => `<tr><td>${esc(d.nome)}</td><td>${d.trechos}${d.trechos < d.total ? ` de ${d.total}` : ""}</td><td>${fmtD(d.criado_em)}</td><td><button class="btn perigo mini" data-rm="${k}">Remover</button></td></tr>`).join("")}</tbody></table></div></div>`
       : `<p class="vazio-p">Nenhum documento na base.</p>`;
     $("tu-lista").querySelectorAll("[data-rm]").forEach((b) => (b.onclick = async () => {

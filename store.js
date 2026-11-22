@@ -92,6 +92,30 @@ async function executar(viaKv, op, ...args) {
   return (process.env.DATABASE_URL ? sqlOps : memOps)[op](...args);
 }
 
+// ── Dados que NÃO podem sumir se o KV voltar ou cair (segundo fator, trilha
+// de auditoria): sempre no MySQL; sem banco, memória (testes).
+export const persistente = {
+  async get(k) { return process.env.DATABASE_URL ? sqlGet(k) : memOps.get(k); },
+  async set(k, v, ttlSec = 10 * 365 * 86400) { return process.env.DATABASE_URL ? sqlSet(k, v, ttlSec) : memOps.set(k, v, ttlSec); },
+  async del(k) { return process.env.DATABASE_URL ? sqlDel(k) : memOps.del(k); },
+};
+// Linhas de registro (ex.: auditoria) com chave ordenável pelo tempo.
+export async function anotarLinha(prefixo, obj, ttlSec = 365 * 86400) {
+  const k = `${prefixo}:${Date.now().toString(36).padStart(9, "0")}:${Math.random().toString(36).slice(2, 7)}`;
+  await persistente.set(k, JSON.stringify(obj), ttlSec);
+  return k;
+}
+export async function lerLinhas(prefixo, limite = 200) {
+  const lim = Math.max(1, Math.min(1000, Number(limite) || 200));
+  if (process.env.DATABASE_URL) {
+    const p = await sql();
+    const r = await p.$queryRawUnsafe(`SELECT v FROM kv_estado WHERE k LIKE ? AND (exp IS NULL OR exp > NOW(3)) ORDER BY k DESC LIMIT ${lim}`, `${prefixo.replace(/[%_\\]/g, "\\$&")}:%`);
+    return r.map((x) => { try { return JSON.parse(x.v); } catch { return null; } }).filter(Boolean);
+  }
+  return [...mem.keys()].filter((k) => k.startsWith(prefixo + ":")).sort().reverse().slice(0, lim)
+    .map((k) => { try { return JSON.parse(memGet(k)); } catch { return null; } }).filter(Boolean);
+}
+
 // Grava só se a chave ainda não existir. Devolve true se gravou.
 export async function kvSetNxEx(key, value, ttlSec) {
   return executar(async () => (await kvCmd(["SET", key, value, "NX", "EX", String(ttlSec)])) === "OK", "setNx", key, value, ttlSec);

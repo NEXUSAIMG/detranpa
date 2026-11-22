@@ -25,6 +25,8 @@ import { apagarCidadao, textoAvisoWhatsApp } from "./lib/privacidade.js";
 import { tratarComandoLembrete, resolverAtalhoLembrete, criarLembrete } from "./lib/lembretes.js";
 import { tratarJornadaWhatsApp, ofertaJornadaWhatsApp } from "./lib/jornadas-api.js";
 import { sttConfigurado, transcreverUrl } from "./lib/transcricao.js";
+import { chamarLLM, llmConfigurado } from "./lib/llm.js";
+import { promptCidadao } from "./lib/prompts.js";
 
 const SESSAO_HORAS = Number(process.env.WHATSAPP_SESSAO_HORAS || 12);
 const FALLBACK_ERRO = "Tivemos uma instabilidade momentânea no atendimento automático. Pode reenviar tua mensagem em instantes, por favor?";
@@ -158,10 +160,10 @@ async function processarMensagem(tenant, m) {
     const ouvido = await transcreverUrl(m.audioUrl).catch((e) => { console.warn("[audio]", e.message); return ""; });
     if (ouvido) {
       texto = ouvido.slice(0, 2000);
-      await enviarTexto(z, phone, `🎧 Entendi: "${texto.length > 220 ? texto.slice(0, 220) + "…" : texto}"`).catch(() => {});
+      await enviarTexto(z, phone, `🎧 Entendi: "${texto.length > 220 ? texto.slice(0, 220) + "…" : texto}"`).catch((e) => console.error(`[Zapayio:${tenant.slug}] falha no envio:`, e.message));
     } else {
       digitando(z, phone, false);
-      await enviarTexto(z, phone, "Não consegui entender o áudio. 🙏 Pode mandar de novo, mais perto do microfone, ou escrever?").catch(() => {});
+      await enviarTexto(z, phone, "Não consegui entender o áudio. 🙏 Pode mandar de novo, mais perto do microfone, ou escrever?").catch((e) => console.error(`[Zapayio:${tenant.slug}] falha no envio:`, e.message));
       return { status: "audio-falhou" };
     }
   }
@@ -218,10 +220,20 @@ async function processarMensagem(tenant, m) {
     resp = await perguntarAoBot(b, sessionId, texto, restart);
   } catch (err) {
     console.error(`[BotAyio:${tenant.slug}]`, err.message);
-    digitando(z, phone, false);
-    await enviarTexto(z, phone, FALLBACK_ERRO).catch(() => {});
-    registrarEvento({ tenantId: tenant.id, tipo: "PERGUNTA", canal: "WHATSAPP", tema: "erro", resolvido: false });
-    return { status: "erro botayio", erro: err.message };
+    // Plano B: a IA local responde com as mesmas regras do DETRAN (como no site),
+    // para o cidadão não ficar só com "tente mais tarde".
+    const local = llmConfigurado()
+      ? await chamarLLM({ system: promptCidadao(tenant, []), messages: [{ role: "user", content: texto }], maxTokens: 900 })
+        .then((t) => String(t || "").replace(/\[\[(SEMBASE|DEFESA|FORM:[\w-]+|BREAK)\]\]/g, "\n").trim())
+        .catch((e) => { console.error(`[ia-local:${tenant.slug}] plano B do WhatsApp:`, e.message); return ""; })
+      : "";
+    if (local) resp = { contents: [{ text: local }], handed_off: false, categoria: null, origem: "local" };
+    else {
+      digitando(z, phone, false);
+      await enviarTexto(z, phone, FALLBACK_ERRO).catch((e) => console.error(`[Zapayio:${tenant.slug}] falha no envio do aviso de erro:`, e.message));
+      registrarEvento({ tenantId: tenant.id, tipo: "PERGUNTA", canal: "WHATSAPP", tema: "erro", resolvido: false });
+      return { status: "erro botayio", erro: err.message };
+    }
   }
   digitando(z, phone, false);
 
@@ -275,7 +287,7 @@ export function registrarWhatsApp(app) {
     if (m.ignorar) return res.json({ ok: true, ignorado: m.ignorar });
     // O Zapayio reenvia quando demora: a mesma mensagem só é processada uma vez.
     if (m.messageId) {
-      const nova = await kvSetNxEx(`detran:${req.tenant.slug}:wa:msg:${m.messageId}`, "1", 86400).catch(() => true);
+      const nova = await kvSetNxEx(`detran:${req.tenant.slug}:wa:msg:${m.messageId}`, "1", 86400).catch((e) => { console.error(`[whatsapp:${req.tenant.slug}] dedupe indisponível:`, e.message); return true; });
       if (!nova) return res.json({ ok: true, ignorado: "duplicada" });
     }
     try {

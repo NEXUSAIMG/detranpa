@@ -21,7 +21,10 @@ import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
 import { prisma, bancoConfigurado } from "../lib/db.js";
 import { comTenant, buscarTenant, configPublica, integracoes, statusIntegracoes, SLUG_RE } from "../lib/tenants.js";
-import { login, exigir, podeAcessar } from "../lib/auth.js";
+import { login, exigir, exigirSuper, podeAcessar } from "../lib/auth.js";
+import { registrarSaude, registrarFalha } from "../lib/saude.js";
+import { lerCache, guardarCache, registrarTempo } from "../lib/cache-respostas.js";
+import { registrarSeguranca, etapaPosSenha, auditar } from "../lib/seguranca.js";
 import { lerToken } from "../lib/cripto.js";
 import { chamarLLM, limparHistorico, textoDe, temImagem, llmConfigurado, SEM_CHAVE, PROVIDER_ID, MODEL, MAX_TOKENS } from "../lib/llm.js";
 import { perguntarAoBot, textoComBotoes } from "../lib/botayio.js";
@@ -50,6 +53,37 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_TENANT = String(process.env.DEFAULT_TENANT || "pa").toLowerCase();
 
 const app = express();
+app.disable("x-powered-by");
+
+// Cabeçalhos de segurança em todas as respostas do servidor.
+// Aplicado: não pode ser embutido em outro site (clickjacking), sem plugins,
+// base fixa. A política completa de origens (CSP) vai em modo "observação"
+// (Report-Only) para não quebrar o VLibras; dá para endurecer depois.
+const CSP_OBSERVACAO = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://vlibras.gov.br https://*.vlibras.gov.br",
+  "style-src 'self' 'unsafe-inline' https://vlibras.gov.br https://*.vlibras.gov.br",
+  "img-src 'self' data: blob: https:",
+  "font-src 'self' data: https://vlibras.gov.br https://*.vlibras.gov.br",
+  "connect-src 'self' https://vlibras.gov.br https://*.vlibras.gov.br",
+  "media-src 'self' blob: https://vlibras.gov.br https://*.vlibras.gov.br",
+  "worker-src 'self' blob:",
+  "frame-ancestors 'self'", "object-src 'none'", "base-uri 'self'",
+].join("; ");
+app.use((req, res, next) => {
+  res.set({
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "SAMEORIGIN",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "camera=(self), microphone=(self), geolocation=(), payment=(), usb=(), interest-cohort=()",
+    "Content-Security-Policy": "frame-ancestors 'self'; object-src 'none'; base-uri 'self'",
+    "Content-Security-Policy-Report-Only": CSP_OBSERVACAO,
+    "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
+  });
+  if (req.path.startsWith("/api/")) res.set("Cache-Control", res.get("Cache-Control") || "no-store");
+  next();
+});
+
 app.use(express.json({ limit: "10mb" }));
 // Arquivos estáticos (css, js, imagens). As páginas HTML são servidas pelas
 // rotas abaixo, com os dados do DETRAN injetados.
@@ -195,12 +229,26 @@ app.post(`${T}/chat`, comTenant, async (req, res) => {
     return res.json({ reply, origem: "antigolpe", antigolpe: r });
   }
 
+  // 0.5) Cache das perguntas frequentes (só 1ª pergunta, sem dados pessoais).
+  const t0 = Date.now();
+  const primeira = !hist.some((m) => m.role === "assistant");
+  const podeCache = primeira && !simCtx && !realCtx && !temImagem(ultima);
+  if (podeCache) {
+    const c = await lerCache(t.slug, pergunta);
+    if (c?.reply) {
+      registrarTroca({ tenantId: t.id, canal: "WEB", contato: sid, pergunta, respostas: c.reply.replace(/\n\[\[JORNADA:\w+\]\]$/, "").split("\n[[BREAK]]\n"), categoria: c.categoria });
+      registrarEvento({ tenantId: t.id, tipo: "PERGUNTA", canal: "WEB", tema: c.categoria || tema, resolvido: true });
+      registrarTempo(t.slug, Date.now() - t0, "cache");
+      return res.json({ reply: c.reply, origem: "cache" });
+    }
+  }
+
   // 1) BotAyio (texto). Na simulação vai com o contexto do cidadão fictício e a
   // marca `simulacao` (BotAyio não grava). Se o BotAyio não confirmar que aplicou
   // o contexto (versão antiga), a resposta é descartada e segue a IA local.
   if (!temImagem(ultima) && botayio.url && botayio.secret) {
     try {
-      const restart = !hist.some((m) => m.role === "assistant");
+      const restart = primeira;
       const extra = simCtx ? { contexto: simCtx.trim().slice(0, 7900), simulacao: true } : realCtx ? { contexto: realCtx.trim().slice(0, 7900) } : {};
       const resp = await perguntarAoBot(botayio, `detran-${t.slug}-web-${simCtx ? "sim-" : ""}${sid}`, pergunta, restart, extra);
       if (simCtx && !resp.contexto_aplicado) throw new Error("BotAyio sem suporte a contexto (versão antiga)");
@@ -225,7 +273,10 @@ app.post(`${T}/chat`, comTenant, async (req, res) => {
       }
       // Despachante Parente: pergunta de uma jornada -> o site mostra "me acompanhe passo a passo".
       const jor = detectarJornada(pergunta);
-      return res.json({ reply: (reply || "Não consegui gerar uma resposta. Pode reformular a pergunta?") + (jor && !transbordo ? `\n[[JORNADA:${jor}]]` : ""), origem: simCtx ? "botayio-sim" : "botayio" });
+      const final = (reply || "Não consegui gerar uma resposta. Pode reformular a pergunta?") + (jor && !transbordo ? `\n[[JORNADA:${jor}]]` : "");
+      if (!simCtx) registrarTempo(t.slug, Date.now() - t0, "bot");
+      if (podeCache && reply && !semBase && !transbordo) guardarCache(t.slug, pergunta, { reply: final, categoria: resp.categoria || tema });
+      return res.json({ reply: final, origem: simCtx ? "botayio-sim" : "botayio" });
     } catch (err) {
       console.error(`[BotAyio:${t.slug}] chat web:`, err.message);
       if (!llmConfigurado()) {
@@ -288,17 +339,19 @@ app.post(`${T}/auth/login`, comTenant, async (req, res) => {
   if (rateLimited(`login:${req.tenant.slug}:${ipDe(req)}`, 10)) return res.status(429).json({ error: "Muitas tentativas. Aguarde um minuto." });
   try {
     const r = await login(req.tenant, req.body?.login, req.body?.senha);
-    if (!r) return res.status(401).json({ error: "Usuário ou senha incorretos." });
+    if (!r) { auditar({ slug: req.tenant.slug, acao: "login-falhou", ip: ipDe(req) }); return res.status(401).json({ error: "Usuário ou senha incorretos." }); }
     const area = String(req.body?.area || "");
     if (area && !podeAcessar(r.usuario.perfil, area)) return res.status(403).json({ error: "Seu perfil não tem acesso a esta área." });
-    res.json(r);
+    const uid = lerToken(r.token)?.uid;
+    auditar({ slug: req.tenant.slug, uid, perfil: r.usuario.perfil, acao: "login-senha-ok", ip: ipDe(req) });
+    res.json(await etapaPosSenha(r, { slug: req.tenant.slug, uid }));
   } catch (err) { console.error("[login]", err); res.status(500).json({ error: "Não foi possível entrar agora." }); }
 });
 // Confere se o token ainda vale para uma área
 app.get(`${T}/auth/eu`, comTenant, (req, res) => {
   const h = String(req.headers.authorization || "");
   const d = h.startsWith("Bearer ") ? lerToken(h.slice(7)) : null;
-  if (!d || (d.perfil !== "SUPERADMIN" && d.tid !== req.tenant.id)) return res.status(401).json({ error: "Sessão expirada." });
+  if (!d || !d.perfil || (d.perfil !== "SUPERADMIN" && d.tid !== req.tenant.id)) return res.status(401).json({ error: "Sessão expirada." });
   const area = String(req.query.area || "");
   if (area && !podeAcessar(d.perfil, area)) return res.status(403).json({ error: "Sem acesso a esta área." });
   res.json({ perfil: d.perfil });
@@ -387,6 +440,12 @@ registrarLembretes(app, { limitar: (chave, max) => rateLimited(chave, max) });
 // "Meu DETRAN" em modo simulação (só DETRAN em demonstração)
 registrarSimulacao(app);
 registrarCatalogoSim(app);
+
+// Saúde do sistema (monitor externo, painel do Admin e da Central)
+registrarSaude(app, { exigirSuper, comTenant, exigir });
+
+// Verificação em duas etapas e trilha de auditoria
+registrarSeguranca(app, { comTenant, exigir, exigirSuper, limitar: (chave, max) => rateLimited(chave, max) });
 
 // ═════════════════════════ PÁGINAS ═════════════════════════
 const PAGINAS = { chat: "index.html", tutor: "tutor.html", balcao: "balcao.html", painel: "painel-custos.html", admin: "admin.html", atendimento: "atendimento.html", gestao: "gestao.html", privacidade: "privacidade.html", servicos: "servicos.html" };
@@ -494,6 +553,18 @@ app.get("/:slug/servicos", async (req, res) => {
 app.get("/:slug/tutor", (req, res) => pagina(req, res, "tutor"));
 app.get("/:slug/balcao", (req, res) => pagina(req, res, "balcao"));
 app.get("/:slug/painel", (req, res) => pagina(req, res, "painel"));
+
+// Erro não tratado em qualquer rota: registra (sem dados pessoais) e responde
+// com mensagem amigável, em vez de derrubar a função ou sumir em silêncio.
+app.use((err, req, res, _next) => {
+  registrarFalha("rota", err, { rota: String(req.path || "").replace(/\/\d{6,}/g, "/•").slice(0, 80), slug: req.tenant?.slug });
+  if (res.headersSent) return;
+  res.status(500).json({ error: "Algo deu errado do nosso lado. Tente de novo em instantes." });
+});
+if (!globalThis.__detranErrosGlobais) {
+  globalThis.__detranErrosGlobais = true;
+  process.on("unhandledRejection", (e) => registrarFalha("promessa", e));
+}
 
 export default app;
 export { MODEL };

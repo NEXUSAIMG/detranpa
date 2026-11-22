@@ -9,7 +9,7 @@
 </head>
 <body>
   <!-- Login -->
-  <div id="tela-login" class="login">
+  <div id="tela-login" class="login" role="main">
     <div class="login-card">
       <img class="login-marca" src="{{MARCA}}" alt="" />
       <div class="eyebrow">{{SIGLA}}</div>
@@ -45,6 +45,7 @@
     </nav>
 
     <main class="principal">
+      <h1 class="so-leitor">Central de Gestão — {{SIGLA}}</h1>
       <header class="topo">
         <button class="menu-mob" id="menu-mob" aria-label="Abrir menu">☰</button>
         <h2 id="titulo-sec">Visão geral</h2>
@@ -56,12 +57,14 @@
             <option value="OFFLINE">● Offline</option>
           </select>
           <span class="eu-nome" id="eu-nome">—</span>
+          <button class="btn ghost" id="duas-etapas" title="Verificação em duas etapas" aria-label="Verificação em duas etapas">🔐</button>
           <button class="btn ghost" id="sair">Sair</button>
         </div>
       </header>
 
       <!-- Visão geral -->
       <section id="sec-visao" class="sec">
+        <div id="saude-faixa" class="saude-faixa hidden" role="status" aria-live="polite"></div>
         <div class="linha-tit">
           <h3>Agora</h3>
           <span class="ao-vivo">ao vivo</span>
@@ -75,11 +78,11 @@
         </div>
         <div class="kpis" id="kpi-periodo"></div>
         <div class="grade2">
-          <div class="cartao"><h4>Movimento por dia</h4><div id="graf-dias" class="graf"></div></div>
-          <div class="cartao"><h4>Assuntos mais procurados</h4><div id="graf-temas"></div></div>
-          <div class="cartao"><h4>Quando o cidadão procura (dia × hora)</h4><div id="graf-calor" class="calor"></div></div>
-          <div class="cartao"><h4>Satisfação</h4><div id="graf-notas"></div></div>
-          <div class="cartao largo"><h4>Equipe no período</h4><div id="tab-ranking"></div></div>
+          <div class="cartao"><h4 role="heading" aria-level="2">Movimento por dia</h4><div id="graf-dias" class="graf"></div></div>
+          <div class="cartao"><h4 role="heading" aria-level="2">Assuntos mais procurados</h4><div id="graf-temas"></div></div>
+          <div class="cartao"><h4 role="heading" aria-level="2">Quando o cidadão procura (dia × hora)</h4><div id="graf-calor" class="calor"></div></div>
+          <div class="cartao"><h4 role="heading" aria-level="2">Satisfação</h4><div id="graf-notas"></div></div>
+          <div class="cartao largo"><h4 role="heading" aria-level="2">Equipe no período</h4><div id="tab-ranking"></div></div>
         </div>
       </section>
 
@@ -94,15 +97,15 @@
         <div id="ob-msg"></div>
         <div class="kpis" id="ob-kpis"></div>
         <div class="grade2">
-          <div class="cartao largo"><h4>Assuntos — agora × período anterior</h4><div id="ob-temas"></div></div>
-          <div class="cartao"><h4>O bot não soube responder <small class="ob-sub">(ensine pela Tutoria)</small></h4><div id="ob-lacunas"></div></div>
-          <div class="cartao"><h4>Em alta <small class="ob-sub">(cresceu em relação ao período anterior)</small></h4><div id="ob-alta"></div></div>
-          <div class="cartao"><h4>Golpes conferidos pelo cidadão</h4><div id="ob-golpes"></div></div>
-          <div class="cartao"><h4>Perguntas que mais se repetem</h4><div id="ob-freq"></div></div>
-          <div class="cartao"><h4>Quando procuram (dia × hora)</h4><div id="ob-calor" class="calor"></div></div>
-          <div class="cartao"><h4>Balcão — serviços mais atendidos</h4><div id="ob-balcao"></div></div>
-          <div class="cartao largo"><h4>🧭 Despachante Parente — onde as pessoas param <small class="ob-sub">(quantas chegaram a cada etapa)</small></h4><div id="ob-jornadas"></div></div>
-          <div class="cartao largo"><h4>Comparação com a rede de DETRANs <small class="ob-sub">(média dos outros estados, sem nomes)</small></h4><div id="ob-rede"></div></div>
+          <div class="cartao largo"><h4 role="heading" aria-level="2">Assuntos — agora × período anterior</h4><div id="ob-temas"></div></div>
+          <div class="cartao"><h4 role="heading" aria-level="2">O bot não soube responder <small class="ob-sub">(ensine pela Tutoria)</small></h4><div id="ob-lacunas"></div></div>
+          <div class="cartao"><h4 role="heading" aria-level="2">Em alta <small class="ob-sub">(cresceu em relação ao período anterior)</small></h4><div id="ob-alta"></div></div>
+          <div class="cartao"><h4 role="heading" aria-level="2">Golpes conferidos pelo cidadão</h4><div id="ob-golpes"></div></div>
+          <div class="cartao"><h4 role="heading" aria-level="2">Perguntas que mais se repetem</h4><div id="ob-freq"></div></div>
+          <div class="cartao"><h4 role="heading" aria-level="2">Quando procuram (dia × hora)</h4><div id="ob-calor" class="calor"></div></div>
+          <div class="cartao"><h4 role="heading" aria-level="2">Balcão — serviços mais atendidos</h4><div id="ob-balcao"></div></div>
+          <div class="cartao largo"><h4 role="heading" aria-level="2">🧭 Despachante Parente — onde as pessoas param <small class="ob-sub">(quantas chegaram a cada etapa)</small></h4><div id="ob-jornadas"></div></div>
+          <div class="cartao largo"><h4 role="heading" aria-level="2">Comparação com a rede de DETRANs <small class="ob-sub">(média dos outros estados, sem nomes)</small></h4><div id="ob-rede"></div></div>
         </div>
         <p class="ob-nota">Dados pessoais (CPF, telefone, placa, e-mail) aparecem mascarados. Conversas de simulação não entram.</p>
       </section>
@@ -180,39 +183,39 @@
             </div>
           </div>
 
-          <aside class="cx-ficha" id="cx-ficha">
+          <section class="cx-ficha" id="cx-ficha" aria-label="Ficha do cidadão">
             <div class="ficha hidden" id="ficha">
-              <h4>Cidadão</h4>
-              <label class="f">Nome</label><input id="f-nome" class="in" />
+              <h4 role="heading" aria-level="2">Cidadão</h4>
+              <label class="f" for="f-nome">Nome</label><input id="f-nome" class="in" />
               <label class="f">Etiquetas</label><div class="etqs" id="f-etqs"></div>
-              <label class="f">Anotações</label><textarea id="f-notas" class="in" rows="3" placeholder="Só a equipe vê."></textarea>
+              <label class="f" for="f-notas">Anotações</label><textarea id="f-notas" class="in" rows="3" placeholder="Só a equipe vê."></textarea>
               <button class="btn soft mini" id="f-salvar">Salvar ficha</button>
               <div class="ia-bloco ia-only hidden">
                 <button class="btn soft mini" id="ia-resumo">✨ Resumir conversa</button>
                 <div id="ia-resumo-out" class="ia-out hidden"></div>
               </div>
-              <h4>Chamados</h4>
+              <h4 role="heading" aria-level="2">Chamados</h4>
               <div id="f-chamados"></div>
-              <h4>Lembretes</h4>
+              <h4 role="heading" aria-level="2">Lembretes</h4>
               <div id="f-lembretes"></div>
               <button class="btn perigo mini so-gestor hidden" id="f-apagar" style="margin-top:16px">🗑 Apagar dados deste cidadão (LGPD)</button>
             </div>
-          </aside>
+          </section>
         </div>
       </section>
 
       <!-- Chamados -->
       <section id="sec-chamados" class="sec hidden">
         <div class="barra">
-          <input id="busca-ch" class="in" placeholder="Protocolo, assunto, nome ou telefone…" />
-          <select id="fch-status" class="sel"><option value="abertos">Em aberto</option><option value="">Todos</option></select>
-          <select id="fch-prio" class="sel"><option value="">Prioridade</option></select>
-          <select id="fch-resp" class="sel"><option value="">Responsável</option><option value="eu">Comigo</option><option value="ninguem">Sem responsável</option></select>
+          <input id="busca-ch" class="in" aria-label="Buscar chamado" placeholder="Protocolo, assunto, nome ou telefone…" />
+          <select id="fch-status" class="sel" aria-label="Filtrar por situação"><option value="abertos">Em aberto</option><option value="">Todos</option></select>
+          <select id="fch-prio" class="sel" aria-label="Filtrar por prioridade"><option value="">Prioridade</option></select>
+          <select id="fch-resp" class="sel" aria-label="Filtrar por responsável"><option value="">Responsável</option><option value="eu">Comigo</option><option value="ninguem">Sem responsável</option></select>
           <label class="chk"><input type="checkbox" id="fch-venc" /> Só vencidos</label>
           <div class="seg" id="modo-ch"><button data-m="kanban" class="on">Quadro</button><button data-m="lista">Lista</button></div>
           <button class="btn pri" id="novo-ch">+ Novo chamado</button>
         </div>
-        <div id="kanban" class="kanban"></div>
+        <div id="kanban" class="kanban" tabindex="0" role="region" aria-label="Quadro de chamados (role para os lados)"></div>
         <div id="lista-ch" class="hidden"></div>
       </section>
 
@@ -232,65 +235,66 @@
       <section id="sec-config" class="sec hidden">
         <div class="grade2">
           <div class="cartao">
-            <h4>Pesquisa de satisfação</h4>
+            <h4 role="heading" aria-level="2">Pesquisa de satisfação</h4>
             <label class="chk"><input type="checkbox" id="cf-pesquisa" /> Pedir nota de 1 a 5 ao encerrar</label>
-            <label class="f">Pergunta</label><textarea id="cf-msgPesquisa" class="in" rows="2"></textarea>
-            <label class="f">Agradecimento</label><textarea id="cf-agradece" class="in" rows="2"></textarea>
-            <h4>Chamados</h4>
+            <label class="f" for="cf-msgPesquisa">Pergunta</label><textarea id="cf-msgPesquisa" class="in" rows="2"></textarea>
+            <label class="f" for="cf-agradece">Agradecimento</label><textarea id="cf-agradece" class="in" rows="2"></textarea>
+            <h4 role="heading" aria-level="2">Chamados</h4>
             <label class="chk"><input type="checkbox" id="cf-avisar" /> Avisar o cidadão no WhatsApp quando o chamado mudar</label>
-            <label class="f">Categorias (uma por linha)</label><textarea id="cf-cats" class="in" rows="6"></textarea>
+            <label class="f" for="cf-cats">Categorias (uma por linha)</label><textarea id="cf-cats" class="in" rows="6"></textarea>
             <label class="f">Prazo para resolver (horas) por prioridade</label>
             <div class="sla" id="cf-sla"></div>
           </div>
           <div class="cartao">
-            <h4>Horário de atendimento humano</h4>
+            <h4 role="heading" aria-level="2">Horário de atendimento humano</h4>
             <label class="chk"><input type="checkbox" id="cf-hativo" /> Avisar quando pedirem atendente fora do horário</label>
             <div class="dias" id="cf-dias"></div>
-            <div class="linha2"><div><label class="f">Início</label><input id="cf-ini" class="in" type="time" /></div><div><label class="f">Fim</label><input id="cf-fim" class="in" type="time" /></div></div>
-            <label class="f">Mensagem fora do horário</label><textarea id="cf-fora" class="in" rows="3"></textarea>
-            <label class="f">Fuso horário</label><select id="cf-fuso" class="sel"></select>
-            <h4>Fila</h4>
-            <div class="linha2"><div><label class="f">Amarelo após (min)</label><input id="cf-alerta" class="in" type="number" min="1" /></div><div><label class="f">Vermelho após (min)</label><input id="cf-critica" class="in" type="number" min="2" /></div></div>
-            <h4>🔔 Calendário de licenciamento</h4>
+            <div class="linha2"><div><label class="f" for="cf-ini">Início</label><input id="cf-ini" class="in" type="time" /></div><div><label class="f" for="cf-fim">Fim</label><input id="cf-fim" class="in" type="time" /></div></div>
+            <label class="f" for="cf-fora">Mensagem fora do horário</label><textarea id="cf-fora" class="in" rows="3"></textarea>
+            <label class="f" for="cf-fuso">Fuso horário</label><select id="cf-fuso" class="sel"></select>
+            <h4 role="heading" aria-level="2">Fila</h4>
+            <div class="linha2"><div><label class="f" for="cf-alerta">Amarelo após (min)</label><input id="cf-alerta" class="in" type="number" min="1" /></div><div><label class="f" for="cf-critica">Vermelho após (min)</label><input id="cf-critica" class="in" type="number" min="2" /></div></div>
+            <h4 role="heading" aria-level="2">🔔 Calendário de licenciamento</h4>
             <p class="sub" style="margin:0 0 6px">Vencimento por final de placa (dd/mm). Com ele preenchido, o cidadão pede o lembrete só com o final da placa.</p>
             <div class="sla" id="cf-cal" style="grid-template-columns:repeat(5,1fr)"></div>
           </div>
         </div>
         <div class="cartao" style="margin-top:14px">
-          <h4>🔒 Privacidade (LGPD)</h4>
+          <h4 role="heading" aria-level="2">🔒 Privacidade (LGPD)</h4>
           <p class="sub" style="margin:0 0 6px">A limpeza roda sozinha todo dia. Defina os prazos com o encarregado de dados do DETRAN. O cidadão vê esses prazos no aviso de privacidade do site e do WhatsApp.</p>
           <div class="linha2">
-            <div><label class="f">Apagar conversas sem atividade após (dias)</label><input id="cf-retConv" class="in" type="number" min="30" max="1825" /></div>
-            <div><label class="f">Tirar dados pessoais dos chamados encerrados após (dias)</label><input id="cf-retCh" class="in" type="number" min="90" max="3650" /></div>
-            <div><label class="f">Contato do encarregado de dados (DPO)</label><input id="cf-encarregado" class="in" placeholder="e-mail ou link do canal do DETRAN" /></div>
-            <div><label class="f">Política de privacidade oficial (link https)</label><input id="cf-politica" class="in" placeholder="https://..." /></div>
+            <div><label class="f" for="cf-retConv">Apagar conversas sem atividade após (dias)</label><input id="cf-retConv" class="in" type="number" min="30" max="1825" /></div>
+            <div><label class="f" for="cf-retCh">Tirar dados pessoais dos chamados encerrados após (dias)</label><input id="cf-retCh" class="in" type="number" min="90" max="3650" /></div>
+            <div><label class="f" for="cf-encarregado">Contato do encarregado de dados (DPO)</label><input id="cf-encarregado" class="in" placeholder="e-mail ou link do canal do DETRAN" /></div>
+            <div><label class="f" for="cf-politica">Política de privacidade oficial (link https)</label><input id="cf-politica" class="in" placeholder="https://..." /></div>
           </div>
           <label class="chk"><input type="checkbox" id="cf-avisoWa" /> Avisar no primeiro contato pelo WhatsApp que a conversa fica registrada</label>
           <div class="sub" id="lgpd-previa" style="margin:8px 0"></div>
           <button class="btn soft mini" id="lgpd-limpar">Aplicar a limpeza agora</button>
           <a class="btn ghost mini" id="lgpd-ver" target="_blank" rel="noopener">Ver o aviso de privacidade ↗</a>
+          <details id="lgpd-hist" style="margin-top:10px"><summary style="cursor:pointer;font-weight:600">Histórico das eliminações (relatório LGPD)</summary><div id="lgpd-hist-corpo" class="sub" style="margin-top:6px">Carregando…</div></details>
         </div>
         <div id="cf-msg"></div>
         <button class="btn pri" id="cf-salvar">Salvar configurações</button>
 
         <div class="grade2" style="margin-top:22px">
           <div class="cartao">
-            <h4>Respostas rápidas</h4>
+            <h4 role="heading" aria-level="2">Respostas rápidas</h4>
             <div id="lista-rr"></div>
             <div class="form-mini">
               <input type="hidden" id="rr-id" />
-              <div class="linha2"><div><label class="f">Atalho</label><input id="rr-atalho" class="in" placeholder="docs-cnh" /></div><div><label class="f">Título</label><input id="rr-titulo" class="in" /></div></div>
-              <label class="f">Texto</label><textarea id="rr-texto" class="in" rows="3"></textarea>
+              <div class="linha2"><div><label class="f" for="rr-atalho">Atalho</label><input id="rr-atalho" class="in" placeholder="docs-cnh" /></div><div><label class="f" for="rr-titulo">Título</label><input id="rr-titulo" class="in" /></div></div>
+              <label class="f" for="rr-texto">Texto</label><textarea id="rr-texto" class="in" rows="3"></textarea>
               <div id="rr-msg"></div>
               <button class="btn soft mini" id="rr-salvar">Salvar resposta</button> <button class="btn ghost mini" id="rr-limpar">Limpar</button>
             </div>
           </div>
           <div class="cartao">
-            <h4>Etiquetas</h4>
+            <h4 role="heading" aria-level="2">Etiquetas</h4>
             <div id="lista-etq"></div>
             <div class="form-mini">
               <input type="hidden" id="et-id" />
-              <div class="linha2"><div><label class="f">Nome</label><input id="et-nome" class="in" /></div><div><label class="f">Cor</label><input id="et-cor" type="color" class="cor" value="#0EA5E9" /></div></div>
+              <div class="linha2"><div><label class="f" for="et-nome">Nome</label><input id="et-nome" class="in" /></div><div><label class="f" for="et-cor">Cor</label><input id="et-cor" type="color" class="cor" value="#0EA5E9" /></div></div>
               <div id="et-msg"></div>
               <button class="btn soft mini" id="et-salvar">Salvar etiqueta</button> <button class="btn ghost mini" id="et-limpar">Limpar</button>
             </div>
