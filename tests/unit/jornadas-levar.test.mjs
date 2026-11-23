@@ -13,7 +13,7 @@ test("o que levar: itens da conferência do serviço + itens da jornada, sem rep
   const papel = oQueLevar(t, JORNADAS.compra, { documento: "papel" });
   assert.ok(papel.itens.some((i) => /CRV/.test(i.nome) && /ATPV-e/.test(i.nome)));
   assert.equal(papel.itens.filter((i) => /vistoria/i.test(i.nome)).length, 1, "vistoria aparece uma vez só");
-  assert.ok(papel.itens.some((i) => /DAE/.test(i.nome)));
+  assert.ok(papel.itens.some((i) => /Comprovante de pagamento da guia/.test(i.nome)));
   assert.equal(new Set(papel.itens.map((i) => i.nome)).size, papel.itens.length);
   assert.ok(oQueLevar(t, JORNADAS.primeira, {}).itens.some((i) => /CPF/.test(i.nome)));
   assert.ok(oQueLevar(t, JORNADAS.segundavia, {}).itens.some((i) => /[Bb]oletim/.test(i.nome)));
