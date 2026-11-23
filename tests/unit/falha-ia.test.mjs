@@ -31,3 +31,11 @@ test("mensagem honesta traz portal e telefone e não promete atendente", () => {
   assert.match(mensagemIndisponivel(T, { negrito: true }), /\*154\*/);
   assert.match(mensagemIndisponivel({}), /portal oficial/);
 });
+
+test("cache não guarda nem devolve a resposta de falha", async () => {
+  const { guardarCache, lerCache } = await import("../../lib/cache-respostas.js");
+  const P = "Como faço a transferência de um veículo que comprei?";
+  assert.equal(await guardarCache("teste-falha", P, { reply: FALHA }), false);
+  assert.equal(await guardarCache("teste-falha", P, { reply: "Leve o CRV assinado ao DETRAN." }), true);
+  assert.equal((await lerCache("teste-falha", P)).reply, "Leve o CRV assinado ao DETRAN.");
+});
