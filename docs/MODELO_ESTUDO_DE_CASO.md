@@ -23,7 +23,7 @@ O problema, o que foi feito, e os 3 principais resultados com números.
 ## 3. A solução
 
 - Assistente no site e no WhatsApp oficial, com base nas normas do DETRAN.
-- Conferência de documentos antes de sair de casa; jornadas guiadas (venda, renovação, multa); verificação de golpe; transbordo para atendente.
+- Conferência de documentos antes de sair de casa; jornadas guiadas do Despachante Parente (venda, compra/transferência, licenciamento, 1ª CNH, renovação, 2ª via da CNH, mudança de endereço/estado, multa), com "o que levar" e lembretes; verificação de golpe; transbordo para atendente.
 - Tutoria: servidores corrigem lacunas sem programador.
 - Acessibilidade (WCAG 2.1 AA, VLibras) e LGPD (sem guardar fotos; histórico de solicitações).
 - Por que é inovador: o que nenhum canal anterior fazia (ex.: conferir documentos e barrar golpe antes do atendimento).

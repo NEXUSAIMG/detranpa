@@ -183,7 +183,7 @@ async function processarMensagem(tenant, m) {
   // Despachante Parente: comandos da jornada em andamento (OK, PULAR, 1/2, datas, SAIR) ou "ACOMPANHAR".
   if (!atalho) {
     const jor = await tratarJornadaWhatsApp(tenant, phone, texto, {
-      criarLembreteWA: async (tipo, data) => !(await criarLembrete(tenant, { contato: phone, origem: "WHATSAPP", tipo, data, dataRecebimento: data })).erro,
+      criarLembreteWA: async (tipo, data, final) => !(await criarLembrete(tenant, { contato: phone, origem: "WHATSAPP", tipo, data, dataRecebimento: data, final })).erro,
     }).catch((e) => { console.warn(`[jornadas:${tenant.slug}]`, e.message); return null; });
     if (jor) {
       const textos = [...jor.textos];

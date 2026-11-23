@@ -525,6 +525,13 @@ a.docs-cta.sim-cta small { color: #FFE9A8; }
 .jor-prazos div.aviso { background: #E8F0FE; color: #1A3E7A; }
 .jor-acoes { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
 .jor-rodape { display: flex; justify-content: space-between; margin-top: 14px; }
+.jor-levar { margin-top: 12px; padding: 12px 14px; border-radius: 12px; background: #F1F5F9; color: #1F2A24; }
+.jor-levar h5 { margin: 0 0 6px; font-size: 14.5px; }
+.jor-levar-lista { list-style: none; padding: 0; margin: 0; }
+.jor-levar-lista li { margin: 6px 0; font-size: 14px; }
+.jor-levar-lista label { display: flex; gap: 8px; align-items: flex-start; cursor: pointer; }
+.jor-levar-lista input { margin-top: 3px; width: 18px; height: 18px; flex: none; }
+.jor-levar-lista small { color: #4A5A52; }
 .linklike { border: 0; background: none; color: #5A6A62; text-decoration: underline; cursor: pointer; font: inherit; font-size: 12.5px; padding: 0; }
 
 /* ── Pesquisa de impacto (1 pergunta) ── */

@@ -946,7 +946,7 @@ function abrirDefesa(texto, tipo) {
   if (els.emptyDocs) {
     const cta = document.createElement("button");
     cta.className = "docs-cta jor-cta";
-    cta.innerHTML = '<span class="docs-cta-icon">🧭</span><span><strong>Despachante Parente — resolva passo a passo</strong><small>Vendi meu veículo · Renovar a CNH · Contestar multa. Eu acompanho até o fim, com prazos e lembretes.</small></span><span class="docs-cta-arrow">→</span>';
+    cta.innerHTML = '<span class="docs-cta-icon">🧭</span><span><strong>Despachante Parente — resolva passo a passo</strong><small>Comprei ou vendi um veículo · Licenciamento · 1ª CNH, renovação ou 2ª via · Mudança de endereço · Contestar multa. Eu acompanho até o fim, com prazos e lembretes.</small></span><span class="docs-cta-arrow">→</span>';
     cta.onclick = () => abrir();
     els.emptyDocs.insertAdjacentElement("beforebegin", cta);
   }
@@ -984,13 +984,39 @@ function abrirDefesa(texto, tipo) {
     if (r.data.cartao) atual = r.data.cartao;
     atualizarChip(); render(r.ok ? null : r.data.error);
     // Lembrete pelo WhatsApp com a data já preenchida (o cidadão confirma pelo próprio WhatsApp).
+    const NOMES = { DEFESA: "prazo da defesa", CNH: "vencimento da CNH", TRANSFERENCIA: "prazo da transferência", LICENCIAMENTO: "vencimento do licenciamento" };
     for (const a of r.data.avisos || []) {
       const box = document.getElementById("jor-aviso");
-      if (box && window.__abrirLembrete) {
-        box.innerHTML = `<button class="btn btn-soft" id="jor-lemb">🔔 Receber lembrete no WhatsApp (${a.lembrete === "DEFESA" ? "prazo da defesa" : "vencimento da CNH"})</button>`;
-        document.getElementById("jor-lemb").onclick = () => window.__abrirLembrete(a.lembrete === "DEFESA" ? { tipo: "DEFESA", recebimento: a.data } : { tipo: "CNH", data: a.data });
+      if (box && window.__abrirLembrete && NOMES[a.lembrete]) {
+        box.innerHTML = `<button class="btn btn-soft" id="jor-lemb">🔔 Receber lembrete no WhatsApp (${NOMES[a.lembrete]})</button>`;
+        const pre = a.lembrete === "DEFESA" ? { tipo: "DEFESA", recebimento: a.data } : { tipo: a.lembrete, data: a.data, final: a.final };
+        document.getElementById("jor-lemb").onclick = () => window.__abrirLembrete(pre);
       }
     }
+  }
+  // "O que levar": lista pronta para imprimir ou mandar para o próprio WhatsApp.
+  function textoLevar(c) {
+    const l = c.levar; if (!l) return "";
+    return `${l.titulo}\n\n${l.itens.map((i) => `[ ] ${i.nome}${i.condicional ? ` (${i.condicional.replace(/\.$/, "")})` : ""}`).join("\n")}`
+      + (c.prazos.length ? `\n\n${c.prazos.map((p) => `${p.rotulo}: ${p.dataBR}`).join("\n")}` : "")
+      + `\n\nLeve os originais. ${TENANT.sigla || "DETRAN"} — ${location.origin}${window.TENANT_BASE || ""}`;
+  }
+  function mostrarLevar() {
+    const c = atual; if (!c || !c.levar) return;
+    const box = document.getElementById("jor-levar"); if (!box) return;
+    const bt = document.querySelector('[data-x="levar"]');
+    if (!box.classList.contains("hidden")) { box.classList.add("hidden"); bt?.setAttribute("aria-expanded", "false"); return; }
+    bt?.setAttribute("aria-expanded", "true");
+    box.innerHTML = `<h5 role="heading" aria-level="4">📋 ${escJ(c.levar.titulo)}</h5><ul class="jor-levar-lista">${c.levar.itens.map((i) => `<li><label><input type="checkbox"><span>${escJ(i.nome)}${i.condicional ? ` <small>(${escJ(i.condicional.replace(/\.$/, ""))})</small>` : ""}</span></label></li>`).join("")}</ul>`
+      + `<div class="jor-acoes"><button class="btn btn-soft" data-l="imprimir">🖨️ Imprimir</button><a class="btn btn-soft" data-l="zap" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(textoLevar(c))}">📲 Mandar para o meu WhatsApp</a></div>`;
+    box.classList.remove("hidden");
+    box.querySelector('[data-l="imprimir"]').onclick = () => {
+      const w = window.open("", "_blank", "width=720,height=900"); if (!w) return;
+      const linhas = c.levar.itens.map((i) => `<li>☐ ${escJ(i.nome)}${i.condicional ? ` <small>(${escJ(i.condicional.replace(/\.$/, ""))})</small>` : ""}</li>`).join("");
+      const prazos = c.prazos.map((p) => `<li>📅 ${escJ(p.rotulo)}: <b>${escJ(p.dataBR)}</b></li>`).join("");
+      w.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${escJ(c.levar.titulo)}</title><style>body{font:16px/1.5 system-ui,sans-serif;margin:32px;color:#111}h1{font-size:20px}ul{list-style:none;padding:0}li{margin:8px 0}small{color:#555}footer{margin-top:24px;font-size:13px;color:#555}</style></head><body><h1>${escJ(c.levar.titulo)}</h1><ul>${linhas}</ul>${prazos ? `<ul>${prazos}</ul>` : ""}<footer>Leve os documentos originais. Lista gerada pelo assistente do ${escJ(TENANT.sigla || "DETRAN")}; confirme no portal oficial.</footer></body></html>`);
+      w.document.close(); w.focus(); w.print();
+    };
   }
   function render(erro) {
     const c = atual; if (!c) return abrir();
@@ -1006,9 +1032,11 @@ function abrirDefesa(texto, tipo) {
       if (e.formId) acoes += `<button class="btn btn-soft" data-x="form">📝 Preencher o documento</button>`;
       if (e.servico) acoes += `<button class="btn btn-soft" data-x="conferir">✅ Conferir documentos</button>`;
       if (e.tipo === "defesa") acoes += `<button class="btn btn-soft" data-x="defesa">⚖️ Gerar o rascunho</button>`;
-      if (e.id === "debitos" || e.id === "guia") acoes += `<button class="btn btn-soft" data-x="golpe">🛡️ É golpe? Conferir cobrança</button>`;
+      if (e.id === "debitos" || e.id === "guia" || e.id === "guia1") acoes += `<button class="btn btn-soft" data-x="golpe">🛡️ É golpe? Conferir cobrança</button>`;
+      if (c.jornada.id === "segundavia" && e.id === "renovar") acoes += `<button class="btn btn-soft" data-x="ir-renovacao">🪪 Ir para "Renovar minha CNH"</button>`;
       acoes += `<button class="btn btn-primary" data-a="feito">Feito ✓ — próxima etapa</button>`;
     } else acoes = `<button class="btn btn-primary" data-x="nova">Resolver outra coisa</button>`;
+    if (c.levar) acoes += `<button class="btn btn-soft" data-x="levar" aria-controls="jor-levar">📋 O que levar</button>`;
     els.overlayBody.innerHTML = `
       <div class="jor-barra"><span style="width:${Math.round((c.progresso.atual / c.progresso.total) * 100)}%"></span></div>
       <div class="jor-grade"><ol class="jor-passos">${passos}</ol>
@@ -1019,6 +1047,7 @@ function abrirDefesa(texto, tipo) {
           ${prazos}
           ${erro ? `<div class="golpe-res atencao">${escJ(erro)}</div>` : ""}
           <div class="jor-acoes">${acoes}</div>
+          <div id="jor-levar" class="jor-levar hidden" aria-live="polite"></div>
           ${c.concluida ? window.__pesquisaImpacto("jornada:" + c.jornada.id) : ""}
           <div id="jor-aviso"></div>
           <div class="jor-rodape">${c.progresso.atual > 1 && !c.concluida ? '<button class="linklike" data-a="voltar">← Etapa anterior</button>' : ""}<button class="linklike" data-x="sair">${c.concluida ? "Fechar esta jornada" : "Parar o acompanhamento"}</button></div>
@@ -1034,6 +1063,8 @@ function abrirDefesa(texto, tipo) {
       else if (x === "conferir" && window.__abrirConferenciaServico) window.__abrirConferenciaServico(e.servico);
       else if (x === "defesa") escolherDefesa();
       else if (x === "golpe" && window.__abrirGolpe) window.__abrirGolpe();
+      else if (x === "levar") mostrarLevar();
+      else if (x === "ir-renovacao") { await api("/sair", {}); atual = null; comecar("renovacao"); }
       else if (x === "sair" || x === "nova") { await api("/sair", {}); atual = null; atualizarChip(); abrir(); }
     }));
   }
@@ -1481,6 +1512,7 @@ function abrirDefesa(texto, tipo) {
           <label><input type="radio" name="lt" value="CNH"> 🪪 Vencimento da CNH</label>
           <label><input type="radio" name="lt" value="DEFESA"> ⚖️ Prazo da defesa da multa</label>
           <label><input type="radio" name="lt" value="LICENCIAMENTO"> 🚗 Licenciamento do veículo</label>
+          <label><input type="radio" name="lt" value="TRANSFERENCIA"> 🚙 Prazo da transferência (comprei um veículo)</label>
         </div>
         <div id="lb-campos"></div>
         <label class="lemb-lbl" for="lb-fone">Seu WhatsApp (com DDD)</label>
@@ -1495,8 +1527,9 @@ function abrirDefesa(texto, tipo) {
       if (tipo === "CNH") c.innerHTML = `<label class="lemb-lbl" for="lb-data">Data de validade da sua CNH</label><input id="lb-data" type="date" min="${hoje()}" value="${pre.data && pre.data >= hoje() ? pre.data : ""}">`;
       else if (tipo === "DEFESA") c.innerHTML = `<label class="lemb-lbl" for="lb-data">Quando você recebeu a notificação?</label><input id="lb-data" type="date" max="${hoje()}" value="${pre.recebimento || ""}"><div class="calc-sub">O prazo é de 30 dias a partir do recebimento. Eu aviso 10, 3 e 1 dia antes.</div>`;
       else if (tipo === "LICENCIAMENTO") c.innerHTML = temCal
-        ? `<label class="lemb-lbl" for="lb-final">Último número da placa</label><select id="lb-final"><option value="">Escolha</option>${d.finais.map((f) => `<option>${f}</option>`).join("")}</select>`
-        : `<label class="lemb-lbl" for="lb-data">Data de vencimento do licenciamento</label><input id="lb-data" type="date" min="${hoje()}"><div class="calc-sub">Veja a data no calendário de licenciamento do portal.</div>`;
+        ? `<label class="lemb-lbl" for="lb-final">Último número da placa</label><select id="lb-final"><option value="">Escolha</option>${d.finais.map((f) => `<option${String(pre.final) === String(f) ? " selected" : ""}>${f}</option>`).join("")}</select>`
+        : `<label class="lemb-lbl" for="lb-data">Data de vencimento do licenciamento</label><input id="lb-data" type="date" min="${hoje()}" value="${pre.data && pre.data >= hoje() ? pre.data : ""}"><div class="calc-sub">Veja a data no calendário de licenciamento do portal.</div>`;
+      else if (tipo === "TRANSFERENCIA") c.innerHTML = `<label class="lemb-lbl" for="lb-data">Data da compra (assinatura da ATPV-e ou do CRV)</label><input id="lb-data" type="date" max="${hoje()}" value="${pre.data || ""}"><div class="calc-sub">A transferência deve ser feita em até 30 dias da compra. Eu aviso 10, 3 e 1 dia antes.</div>`;
       else c.innerHTML = "";
     };
     els.overlayBody.querySelectorAll('input[name="lt"]').forEach((r) => (r.onchange = () => campos(r.value)));
