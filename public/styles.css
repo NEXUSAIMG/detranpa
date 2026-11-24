@@ -76,6 +76,21 @@ html, body {
 .jor-forms-lista { display: flex; flex-wrap: wrap; gap: 6px 14px; }
 .jor-forms-lista .linklike { font-size: 14px; text-align: left; }
 
+/* Protocolo no DETRAN ao fim da jornada (24/11/2026) */
+.jor-proto { margin-top: 14px; }
+.proto-cta, .proto-ok, .proto-form { border: 1px solid var(--paper-edge); border-radius: 12px; padding: 12px 14px; background: var(--surface); }
+.proto-cta p { margin: 4px 0 10px; font-size: 14px; color: var(--ink-soft); }
+.proto-ok { border-color: var(--moss); display: grid; gap: 4px; }
+.proto-ok small { color: var(--ink-soft); }
+.proto-num { font-size: 22px; font-weight: 800; letter-spacing: .04em; }
+.proto-form { display: grid; gap: 6px; }
+.proto-form h5 { margin: 0 0 4px; font-size: 15px; }
+.proto-form label { font-size: 13px; font-weight: 600; margin-top: 4px; }
+.proto-form .golpe-in { margin: 0; }
+.proto-lista { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; font-size: 13.5px; }
+.proto-cons { display: flex; gap: 8px; align-items: flex-start; font-weight: 400 !important; font-size: 13px; }
+.proto-cons input { margin-top: 3px; }
+
 /* Serviços por assunto (24/11/2026) */
 .assuntos { margin-top: 18px; text-align: left; }
 .assuntos-titulo { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--moss); margin: 0 0 8px; font-weight: 700; }

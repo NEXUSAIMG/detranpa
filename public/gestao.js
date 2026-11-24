@@ -528,6 +528,7 @@
       <label class="chk"><input type="checkbox" id="g-avisar" ${c.avisarCidadao ? "checked" : ""} ${c.canal === "WHATSAPP" ? "" : "disabled"} /> Avisar o cidadão no WhatsApp a cada mudança de situação</label>
       ${c.conversaId ? `<button class="btn soft mini" id="g-conv">💬 Abrir a conversa</button>` : ""}
       ${c.descricao ? `<label class="f">Descrição</label><div class="cartao" style="box-shadow:none;white-space:pre-wrap">${linkify(c.descricao)}</div>` : ""}
+      <div id="g-anexos"></div>
       <label class="f">Comentar</label><textarea id="g-com" class="in" rows="2" placeholder="Atualização do chamado…"></textarea>
       <div style="display:flex;gap:8px;margin-top:8px"><button class="btn soft mini" id="g-nota">🔒 Nota interna</button>${c.canal === "WHATSAPP" && c.contato ? `<button class="btn pri mini" id="g-pub">📣 Enviar ao cidadão</button>` : ""}</div>
       <label class="f">Linha do tempo</label>
@@ -553,6 +554,20 @@
     };
     $("g-nota").onclick = () => comentar(false);
     if ($("g-pub")) $("g-pub").onclick = () => comentar(true);
+    // Anexos enviados pelo cidadão com o protocolo (fotos e PDFs dos documentos).
+    api(`/chamados/${c.id}/anexos`).then((ra) => {
+      const box = $("g-anexos"); if (!box || !ra.ok || !(ra.data.anexos || []).length) return;
+      box.innerHTML = `<label class="f">Documentos enviados pelo cidadão</label><div class="anexos">${ra.data.anexos.map((a) =>
+        `<button class="btn soft mini" data-anexo="${esc(a.id)}" data-nome="${esc(a.nome)}">${a.mime === "application/pdf" ? "📄" : "🖼️"} ${esc(a.nome)} <small>(${Math.max(1, Math.round(a.tamanho / 1024))} KB)</small></button>`).join(" ")}</div>`;
+      box.querySelectorAll("[data-anexo]").forEach((b) => (b.onclick = async () => {
+        const w = window.open("", "_blank");
+        const r = await fetch((window.API_BASE || "") + `/gestao/chamados/${encodeURIComponent(c.id)}/anexos/${encodeURIComponent(b.dataset.anexo)}`, { headers: { Authorization: "Bearer " + Sessao.token() } });
+        if (!r.ok) { if (w) w.close(); return toast("Não foi possível abrir o anexo."); }
+        const url = URL.createObjectURL(await r.blob());
+        if (w) w.location.href = url; else location.href = url;
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      }));
+    });
   }
 
   // ═════════ CIDADÃOS ═════════

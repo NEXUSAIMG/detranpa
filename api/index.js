@@ -34,7 +34,7 @@ import { registrarUso } from "../lib/uso-ia.js";
 import { montarResposta, aquecerTenant } from "../lib/aquecer-cache.js";
 import { promptCidadao, promptOperador, promptDefesa, promptTermo, promptExtracao } from "../lib/prompts.js";
 import { registrarTroca, registrarEvento, estatisticas, classificarTema } from "../lib/registro.js";
-import { registrarWhatsApp } from "../whatsapp.js";
+import { registrarWhatsApp, enviarWhatsApp } from "../whatsapp.js";
 import { registrarAdmin } from "../lib/admin.js";
 import { registrarAtendimento } from "../lib/atendimento.js";
 import { registrarGestao } from "../lib/gestao.js";
@@ -43,6 +43,7 @@ import { analisarSuspeita, pareceVerificacao, textoParaChat, perguntaCobrancaPor
 import { registrarObservatorio } from "../lib/observatorio.js";
 import { registrarMeuDetran, contextoMeuDetran } from "../lib/meu-detran.js";
 import { registrarJornadas } from "../lib/jornadas-api.js";
+import { registrarProtocoloJornada } from "../lib/protocolo-jornada.js";
 import { detectarJornada } from "../lib/jornadas.js";
 import { registrarConferencia } from "../lib/conferencia.js";
 import { registrarPrivacidade } from "../lib/privacidade.js";
@@ -497,6 +498,11 @@ registrarMeuDetran(app, { limitar: (chave, max) => rateLimited(chave, max) });
 
 // "Despachante Parente": jornadas guiadas (venda de veículo, renovação de CNH, defesa de multa)
 registrarJornadas(app, { limitar: (chave, max) => rateLimited(chave, max) });
+// Protocolo no fim da jornada: vira chamado na Central de Gestão, com anexos (24/11/2026)
+registrarProtocoloJornada(app, {
+  limitar: (chave, max) => rateLimited(chave, max),
+  avisarWhatsApp: async (t, tel, txt) => { await enviarWhatsApp(t, tel, txt); return true; },
+});
 
 // Conferência de documentos antes do protocolo (checklist por serviço + foto)
 registrarConferencia(app, { limitar: (chave, max) => rateLimited(chave, max) });

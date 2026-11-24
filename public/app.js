@@ -1092,6 +1092,102 @@ function abrirDefesa(texto, tipo) {
       w.document.close(); w.focus(); w.print();
     };
   }
+  /* Protocolo no DETRAN ao fim da jornada (24/11/2026): o pedido, com os anexos,
+     vira um chamado na Central de Gestão do DETRAN, com número de protocolo. */
+  const SIGLA = TENANT.sigla || "DETRAN";
+  const lerArquivo = (f) => new Promise((ok, erro) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = erro; r.readAsDataURL(f); });
+  async function reduzirFoto(f) {
+    // Fotos do celular passam de 4 MB: reduz para até 1600 px, em JPEG.
+    const url = await lerArquivo(f);
+    const img = await new Promise((ok, erro) => { const i = new Image(); i.onload = () => ok(i); i.onerror = erro; i.src = url; });
+    const k = Math.min(1, 1600 / Math.max(img.width, img.height));
+    const cv = document.createElement("canvas"); cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+    cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+    const dados = cv.toDataURL("image/jpeg", 0.82);
+    return { nome: f.name.replace(/\.[^.]+$/, "") + ".jpg", mime: "image/jpeg", base64: dados, bytes: Math.round(dados.length * 0.75) };
+  }
+  async function prepararAnexo(f) {
+    if (/^image\//.test(f.type)) return reduzirFoto(f);
+    if (f.type === "application/pdf") {
+      if (f.size > 2_500_000) throw new Error(`"${f.name}" passa de 2,5 MB.`);
+      return { nome: f.name, mime: f.type, base64: await lerArquivo(f), bytes: f.size };
+    }
+    throw new Error(`"${f.name}": envie foto ou PDF.`);
+  }
+  function comprovante(p, c) {
+    const w = window.open("", "_blank", "width=720,height=800"); if (!w) return;
+    w.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Protocolo ${escJ(p.protocolo)}</title><style>body{font:16px/1.5 system-ui,sans-serif;margin:32px;color:#111}h1{font-size:20px}.n{font-size:28px;font-weight:700;letter-spacing:.04em}small{color:#555}</style></head><body><h1>Comprovante de pedido: ${escJ(c.jornada.titulo)}</h1><p>Protocolo</p><p class="n">${escJ(p.protocolo)}</p><p>${escJ(SIGLA)}${p.statusTexto ? ` · Situação: ${escJ(p.statusTexto)}` : ""}${p.prazoEm ? ` · Previsão: ${new Date(p.prazoEm).toLocaleDateString("pt-BR")}` : ""}</p>${TENANT.demonstracao ? "<p><b>Ambiente de demonstração: não é um pedido oficial.</b></p>" : ""}<small>Para acompanhar, mande no WhatsApp do ${escJ(SIGLA)}: protocolo ${escJ(p.protocolo)}</small></body></html>`);
+    w.document.close(); w.focus(); w.print();
+  }
+  async function montarProtocolo(c) {
+    const box = document.getElementById("jor-proto"); if (!box) return;
+    if (c.dados?.protocolo) {
+      box.innerHTML = `<div class="proto-ok">Pedido enviado ao ${escJ(SIGLA)}: <b>${escJ(c.dados.protocolo)}</b></div>`;
+      const r = await api("/protocolo");
+      if (r.ok && r.data.protocolo) {
+        const p = r.data;
+        const ult = (p.eventos || []).slice(-1)[0];
+        box.innerHTML = `<div class="proto-ok"><div>Pedido enviado ao ${escJ(SIGLA)}</div><div class="proto-num">${escJ(p.protocolo)}</div>
+          <div>Situação: <b>${escJ(p.statusTexto || "Recebido")}</b>${p.prazoEm ? ` · Previsão: ${new Date(p.prazoEm).toLocaleDateString("pt-BR")}` : ""}</div>
+          ${ult ? `<small>Última atualização: ${escJ(ult.texto)}</small>` : ""}
+          <small>Os avisos chegam no seu WhatsApp. Para consultar lá, mande: protocolo ${escJ(p.protocolo)}</small>
+          <div class="jor-acoes"><button class="btn btn-soft" data-p="comprovante">🖨️ Comprovante</button></div></div>`;
+        box.querySelector('[data-p="comprovante"]').onclick = () => comprovante(p, c);
+      }
+      return;
+    }
+    box.innerHTML = `<div class="proto-cta"><b>Quer que o ${escJ(SIGLA)} analise o seu pedido?</b><p>Envie os seus dados e as fotos ou PDFs dos documentos. Você recebe um número de protocolo e os avisos no WhatsApp.</p>
+      <button class="btn btn-primary" data-p="abrir">📨 Protocolar no ${escJ(SIGLA)}</button></div>`;
+    box.querySelector('[data-p="abrir"]').onclick = () => formularioProtocolo(c, box);
+  }
+  function formularioProtocolo(c, box) {
+    let arquivos = [];
+    box.innerHTML = `<form class="proto-form" novalidate>
+      <h5>Protocolar no ${escJ(SIGLA)}</h5>
+      ${TENANT.demonstracao ? `<div class="golpe-res atencao">Ambiente de demonstração: o pedido vai para a Central de demonstração e não é um pedido oficial.</div>` : ""}
+      <label for="pr-nome">Nome completo</label><input id="pr-nome" class="golpe-in" autocomplete="name" required>
+      <label for="pr-tel">WhatsApp com DDD (para o protocolo e os avisos)</label><input id="pr-tel" class="golpe-in" type="tel" inputmode="tel" autocomplete="tel" placeholder="(91) 99999-9999" required>
+      <label for="pr-cpf">CPF (opcional)</label><input id="pr-cpf" class="golpe-in" inputmode="numeric" autocomplete="off" placeholder="000.000.000-00">
+      <label for="pr-arq">Documentos (fotos ou PDF, até 6)</label>
+      <input id="pr-arq" type="file" accept="image/*,application/pdf" multiple>
+      <ul id="pr-lista" class="proto-lista"></ul>
+      <label for="pr-obs">Observação (opcional)</label><textarea id="pr-obs" class="golpe-in" rows="2" maxlength="1500"></textarea>
+      <label class="proto-cons"><input id="pr-ok" type="checkbox"> Autorizo enviar meus dados e estes documentos ao ${escJ(SIGLA)} para a análise deste pedido. Os arquivos ficam guardados enquanto o pedido estiver aberto e são apagados 60 dias depois de encerrado.</label>
+      <div id="pr-erro" class="golpe-res atencao hidden" role="alert"></div>
+      <div class="jor-acoes"><button type="submit" class="btn btn-primary" id="pr-enviar">Enviar pedido</button><button type="button" class="btn btn-soft" data-p="cancelar">Cancelar</button></div>
+    </form>`;
+    const $p = (id) => box.querySelector("#" + id);
+    const erro = (m) => { const e = $p("pr-erro"); e.textContent = m; e.classList.toggle("hidden", !m); };
+    const listar = () => {
+      $p("pr-lista").innerHTML = arquivos.map((a, i) => `<li>${a.mime === "application/pdf" ? "📄" : "🖼️"} ${escJ(a.nome)} <small>(${Math.max(1, Math.round(a.bytes / 1024))} KB)</small> <button type="button" class="linklike" data-p="rm" data-i="${i}">remover</button></li>`).join("");
+      $p("pr-lista").querySelectorAll('[data-p="rm"]').forEach((b) => (b.onclick = () => { arquivos.splice(Number(b.dataset.i), 1); listar(); }));
+    };
+    $p("pr-arq").onchange = async (ev) => {
+      erro("");
+      for (const f of [...ev.target.files]) {
+        if (arquivos.length >= 6) { erro("No máximo 6 arquivos."); break; }
+        try { arquivos.push(await prepararAnexo(f)); } catch (e) { erro(e.message || "Não consegui ler o arquivo."); }
+      }
+      ev.target.value = ""; listar();
+    };
+    box.querySelector('[data-p="cancelar"]').onclick = () => montarProtocolo(c);
+    box.querySelector("form").onsubmit = async (ev) => {
+      ev.preventDefault(); erro("");
+      const nome = $p("pr-nome").value.trim(), telefone = $p("pr-tel").value, cpf = $p("pr-cpf").value;
+      if (nome.split(/\s+/).length < 2) return erro("Informe o nome completo."), $p("pr-nome").focus();
+      const dig = telefone.replace(/\D/g, ""); if (dig.length < 10) return erro("Informe o WhatsApp com DDD."), $p("pr-tel").focus();
+      if (!$p("pr-ok").checked) return erro("Marque a autorização para enviar o pedido.");
+      if (arquivos.reduce((s, a) => s + a.bytes, 0) > 4_000_000) return erro("Os arquivos juntos passam de 4 MB. Remova algum.");
+      const bt = $p("pr-enviar"); bt.disabled = true; bt.textContent = "Enviando…";
+      const r = await api("/protocolar", { nome, telefone, cpf, observacao: $p("pr-obs").value, consentimento: true, anexos: arquivos.map(({ nome, mime, base64 }) => ({ nome, mime, base64 })) });
+      if (!r.ok) { bt.disabled = false; bt.textContent = "Enviar pedido"; return erro(r.data.error || "Não foi possível enviar agora."); }
+      c.dados = { ...(c.dados || {}), protocolo: r.data.protocolo };
+      if (atual) atual.dados = c.dados;
+      montarProtocolo(c);
+    };
+    $p("pr-nome").focus();
+  }
+
   function render(erro) {
     const c = atual; if (!c) return abrir();
     const e = c.etapa;
@@ -1123,12 +1219,14 @@ function abrirDefesa(texto, tipo) {
           <div class="jor-acoes">${acoes}</div>
           ${(c.formularios || []).length ? `<div class="jor-forms"><span class="jor-forms-tit">📄 Documentos para preencher</span><div class="jor-forms-lista">${c.formularios.map((f) => `<button class="linklike" data-f="${escJ(f.id)}">${escJ(f.titulo)}</button>`).join("")}</div></div>` : ""}
           <div id="jor-levar" class="jor-levar hidden" aria-live="polite"></div>
+          ${c.concluida ? '<div id="jor-proto" class="jor-proto"></div>' : ""}
           ${c.concluida ? window.__pesquisaImpacto("jornada:" + c.jornada.id) : ""}
           <div id="jor-aviso"></div>
           <div class="jor-rodape">${c.progresso.atual > 1 && !c.concluida ? '<button class="linklike" data-a="voltar">← Etapa anterior</button>' : ""}<button class="linklike" data-x="sair">${c.concluida ? "Fechar esta jornada" : "Parar o acompanhamento"}</button></div>
         </div></div>`;
     els.overlayBody.querySelectorAll("[data-op]").forEach((b) => (b.onclick = () => responder("opcao", b.dataset.op)));
     els.overlayBody.querySelectorAll("[data-f]").forEach((b) => (b.onclick = () => openForm(b.dataset.f, false)));
+    if (c.concluida) montarProtocolo(c);
     els.overlayBody.querySelectorAll("[data-a]").forEach((b) => (b.onclick = () => {
       if (b.dataset.a === "data") { const v = document.getElementById("jor-data").value; if (!v) return render("Escolha a data."); return responder("data", v); }
       responder(b.dataset.a);
