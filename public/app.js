@@ -1121,12 +1121,14 @@ function abrirDefesa(texto, tipo) {
           ${prazos}
           ${erro ? `<div class="golpe-res atencao">${escJ(erro)}</div>` : ""}
           <div class="jor-acoes">${acoes}</div>
+          ${(c.formularios || []).length ? `<div class="jor-forms"><span class="jor-forms-tit">📄 Documentos para preencher</span><div class="jor-forms-lista">${c.formularios.map((f) => `<button class="linklike" data-f="${escJ(f.id)}">${escJ(f.titulo)}</button>`).join("")}</div></div>` : ""}
           <div id="jor-levar" class="jor-levar hidden" aria-live="polite"></div>
           ${c.concluida ? window.__pesquisaImpacto("jornada:" + c.jornada.id) : ""}
           <div id="jor-aviso"></div>
           <div class="jor-rodape">${c.progresso.atual > 1 && !c.concluida ? '<button class="linklike" data-a="voltar">← Etapa anterior</button>' : ""}<button class="linklike" data-x="sair">${c.concluida ? "Fechar esta jornada" : "Parar o acompanhamento"}</button></div>
         </div></div>`;
     els.overlayBody.querySelectorAll("[data-op]").forEach((b) => (b.onclick = () => responder("opcao", b.dataset.op)));
+    els.overlayBody.querySelectorAll("[data-f]").forEach((b) => (b.onclick = () => openForm(b.dataset.f, false)));
     els.overlayBody.querySelectorAll("[data-a]").forEach((b) => (b.onclick = () => {
       if (b.dataset.a === "data") { const v = document.getElementById("jor-data").value; if (!v) return render("Escolha a data."); return responder("data", v); }
       responder(b.dataset.a);

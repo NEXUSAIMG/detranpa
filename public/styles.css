@@ -70,6 +70,12 @@ html, body {
 .empty h1, .empty h2 { font-size: 22px; font-weight: 700; line-height: 1.25; margin: 0; }
 .empty p { color: var(--ink-soft); margin: 8px 0 0; font-size: 14.5px; }
 
+/* Documentos para preencher dentro da jornada (24/11/2026) */
+.jor-forms { margin-top: 14px; padding: 10px 12px; border: 1px dashed var(--paper-edge); border-radius: 10px; }
+.jor-forms-tit { display: block; font-size: 13px; font-weight: 700; margin-bottom: 6px; }
+.jor-forms-lista { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.jor-forms-lista .linklike { font-size: 14px; text-align: left; }
+
 /* Serviços por assunto (24/11/2026) */
 .assuntos { margin-top: 18px; text-align: left; }
 .assuntos-titulo { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--moss); margin: 0 0 8px; font-weight: 700; }
