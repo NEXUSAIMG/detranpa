@@ -24,6 +24,8 @@ import { configDe, dentroDoHorario } from "./lib/gestao-config.js";
 import { apagarCidadao, textoAvisoWhatsApp } from "./lib/privacidade.js";
 import { tratarComandoLembrete, resolverAtalhoLembrete, criarLembrete } from "./lib/lembretes.js";
 import { tratarJornadaWhatsApp, ofertaJornadaWhatsApp } from "./lib/jornadas-api.js";
+import { tratarProtocoloWhatsApp } from "./lib/protocolo-jornada.js";
+import { tratarMenuWhatsApp } from "./lib/assuntos.js";
 import { sttConfigurado, transcreverUrl } from "./lib/transcricao.js";
 import { chamarLLM, llmConfigurado } from "./lib/llm.js";
 import { registrarUso } from "./lib/uso-ia.js";
@@ -81,7 +83,11 @@ export function lerMensagem(p) {
   const midia = p.image ? `📷 Imagem: ${p.image.imageUrl || ""}` : p.audio ? `🎤 Áudio: ${p.audio.audioUrl || ""}`
     : p.video ? `🎬 Vídeo: ${p.video.videoUrl || ""}` : p.document ? `📎 ${p.document.fileName || "Documento"}: ${p.document.documentUrl || ""}`
     : p.sticker ? "(figurinha)" : "";
-  return { phone, texto, temMidia, midia: midia.trim(), audioUrl: p.audio?.audioUrl || null, messageId: String(p.messageId || ""), nome: p.senderName || p.chatName || "" };
+  // Foto ou documento (para juntar ao protocolo): link, tipo e nome.
+  const anexo = p.image?.imageUrl ? { url: p.image.imageUrl, mime: String(p.image.mimeType || "image/jpeg").split(";")[0].toLowerCase(), nome: "" }
+    : p.document?.documentUrl ? { url: p.document.documentUrl, mime: String(p.document.mimeType || "").split(";")[0].toLowerCase(), nome: String(p.document.fileName || p.document.title || "") }
+    : null;
+  return { phone, texto, temMidia, midia: midia.trim(), anexo, audioUrl: p.audio?.audioUrl || null, messageId: String(p.messageId || ""), nome: p.senderName || p.chatName || "" };
 }
 
 // Usado pela tela de atendimento: o atendente responde pelo WhatsApp do DETRAN.
@@ -137,6 +143,17 @@ async function processarMensagem(tenant, m) {
     return { status: "lgpd-apagado" };
   }
 
+  // Protocolo no fim da jornada (24/11/2026): PROTOCOLAR -> nome -> CPF -> fotos/PDFs -> SIM.
+  // Vem antes dos lembretes porque usa SIM e recebe fotos.
+  if (conv?.status !== "HUMANO") {
+    const proto = await tratarProtocoloWhatsApp(tenant, phone, m).catch((e) => { console.error(`[protocolo-wa:${tenant.slug}]`, e.message); return { textos: ["Não consegui concluir o protocolo agora. Tente de novo em alguns minutos escrevendo *PROTOCOLAR*."] }; });
+    if (proto) {
+      for (const p of proto.textos) await enviarTexto(z, phone, p).catch((e) => console.warn("[Zapayio]", e.message));
+      await registrarTroca({ tenantId: tenant.id, canal: "WHATSAPP", contato: phone, nome: m.nome, pergunta: texto || m.midia || "(arquivo)", respostas: proto.textos, categoria: "protocolo" });
+      return { status: "protocolo-jornada" };
+    }
+  }
+
   // Lembretes: "lembrete cnh 15/03/2027", "meus lembretes", "parar lembretes", "SIM" (confirmação).
   const respLembrete = texto ? await tratarComandoLembrete(tenant, phone, texto).catch((e) => { console.error("[lembretes]", e.message); return null; }) : null;
   if (respLembrete) {
@@ -179,6 +196,20 @@ async function processarMensagem(tenant, m) {
     return { status: "lembrete-atalho" };
   }
   if (atalho?.pergunta) texto = atalho.pergunta;
+
+  // Serviços por assunto (MENU): números escolhem assunto e serviço; serviço com jornada
+  // começa o passo a passo, os outros viram a pergunta para o assistente.
+  if (!atalho) {
+    const menu = await tratarMenuWhatsApp(tenant, phone, texto).catch((e) => { console.warn(`[menu:${tenant.slug}]`, e.message); return null; });
+    if (menu?.textos) {
+      const textos = [...menu.textos];
+      if (!conv && configDe(tenant).avisoWhatsApp) textos.unshift(textoAvisoWhatsApp(tenant));
+      for (const p of textos) await enviarTexto(z, phone, p).catch((e) => console.warn("[Zapayio]", e.message));
+      await registrarTroca({ tenantId: tenant.id, canal: "WHATSAPP", contato: phone, nome: m.nome, pergunta: texto, respostas: textos, categoria: "menu", status: conv?.status === "ENCERRADA" ? "BOT" : undefined });
+      return { status: "menu" };
+    }
+    if (menu?.pergunta) texto = menu.pergunta;
+  }
 
   // Despachante Parente: comandos da jornada em andamento (OK, PULAR, 1/2, datas, SAIR) ou "ACOMPANHAR".
   if (!atalho) {
@@ -262,6 +293,8 @@ async function processarMensagem(tenant, m) {
     const aviso = textoAvisoWhatsApp(tenant);
     try { await enviarTexto(z, phone, aviso); enviados++; enviadosTxt.push(aviso); } catch (err) { console.warn("[Zapayio] aviso LGPD:", err.message); }
   }
+  // Primeiro contato: mostra que dá para escolher o serviço por assunto.
+  const dicaMenu = !conv ? "💡 Dica: escreva *MENU* para ver os serviços por assunto (veículos, habilitação, multas, licenciamento)." : null;
   for (const item of resp.contents || []) {
     try {
       for (const parte of adaptarParaWhatsApp(textoComBotoes(item), tenant)) {
@@ -278,6 +311,7 @@ async function processarMensagem(tenant, m) {
     const oferta = await ofertaJornadaWhatsApp(tenant, phone, texto).catch(() => null);
     if (oferta) { try { await enviarTexto(z, phone, oferta); enviados++; enviadosTxt.push(oferta); } catch (e) { console.warn("[Zapayio]", e.message); } }
   }
+  if (dicaMenu) { try { await enviarTexto(z, phone, dicaMenu); enviados++; enviadosTxt.push(dicaMenu); } catch (e) { console.warn("[Zapayio]", e.message); } }
   const semBase = (resp.contents || []).some((c) => String(c?.text || "").includes("[[SEMBASE]]"));
   // Pediu atendente fora do expediente: avisa (a conversa fica na fila mesmo assim).
   if (transbordo) {
