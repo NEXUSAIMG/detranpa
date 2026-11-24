@@ -70,6 +70,37 @@ html, body {
 .empty h1, .empty h2 { font-size: 22px; font-weight: 700; line-height: 1.25; margin: 0; }
 .empty p { color: var(--ink-soft); margin: 8px 0 0; font-size: 14.5px; }
 
+/* Serviços por assunto (24/11/2026) */
+.assuntos { margin-top: 18px; text-align: left; }
+.assuntos-titulo { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--moss); margin: 0 0 8px; font-weight: 700; }
+.assuntos-grade { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+@media (max-width: 540px) { .assuntos-grade { grid-template-columns: 1fr 1fr; } }
+.assunto {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  min-height: 78px; padding: 10px 6px; cursor: pointer; text-align: center;
+  background: var(--surface); border: 1px solid var(--paper-edge); border-radius: 12px;
+  font: inherit; font-size: 14px; font-weight: 600; color: var(--ink, #23332D);
+  transition: border-color .15s, background .15s, transform .05s;
+}
+.assunto-icone { font-size: 24px; line-height: 1; }
+.assunto:hover { border-color: var(--moss-pale); }
+.assunto:active { transform: translateY(1px); }
+.assunto.on { border-color: var(--moss); background: rgba(20,173,146,.10); box-shadow: 0 0 0 2px rgba(20,173,146,.18); }
+.assunto:focus-visible, .assunto-item:focus-visible { outline: 3px solid var(--moss-pale); outline-offset: 2px; }
+.assunto-lista { margin-top: 10px; padding: 12px; border: 1px solid var(--paper-edge); border-radius: 12px; background: var(--surface); }
+.assunto-cab { font-size: 13px; font-weight: 700; color: var(--moss); margin-bottom: 8px; }
+.assunto-itens { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+@media (max-width: 540px) { .assunto-itens { grid-template-columns: 1fr; } }
+.assunto-item {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; cursor: pointer;
+  padding: 10px 12px; border: 1px solid var(--paper-edge); border-radius: 10px; background: transparent; font: inherit;
+  color: var(--ink, #23332D);
+}
+.assunto-item:hover { border-color: var(--moss-pale); }
+.assunto-item strong { font-size: 14px; }
+.assunto-item small { font-size: 12.5px; color: var(--ink-soft); }
+.assunto-passo { margin-top: 4px; font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--moss); background: rgba(20,173,146,.12); border-radius: 999px; padding: 1px 8px; }
+
 .suggestions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 20px; }
 @media (max-width: 540px) { .suggestions { grid-template-columns: 1fr; } }
 .suggestion {

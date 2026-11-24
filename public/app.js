@@ -92,6 +92,80 @@ els.input.addEventListener("keydown", (e) => {
 els.send.onclick = () => enviar();
 els.reset.onclick = () => location.reload();
 
+/* Serviços por assunto (24/11/2026, sugestão do Breno): o cidadão toca em
+   Veículos, Habilitação, Multas ou Licenciamento e IPVA e vê a lista do que o
+   assistente explica. Serviço com jornada abre o passo a passo; os demais viram
+   a pergunta no chat. Um DETRAN pode trocar a lista em conteudo.assuntos. */
+const ASSUNTOS = Array.isArray(CONTEUDO.assuntos) && CONTEUDO.assuntos.length ? CONTEUDO.assuntos : [
+  { id: "veiculos", icone: "🚗", titulo: "Veículos", itens: [
+    { t: "Comprei um veículo", d: "Transferência para o seu nome", j: "compra" },
+    { t: "Vendi meu veículo", d: "Comunicação de venda", j: "venda" },
+    { t: "Primeiro emplacamento", d: "Veículo zero quilômetro", q: "Como faço o primeiro emplacamento de um veículo zero quilômetro?" },
+    { t: "Baixa de gravame", d: "Financiamento quitado", q: "Quitei o financiamento. Como faço a baixa do gravame do veículo?" },
+    { t: "Inclusão de gravame", d: "Veículo financiado ou alienado", q: "Como funciona a inclusão de gravame (alienação fiduciária) no documento do veículo?" },
+    { t: "Veículo de outro estado", d: "Transferência de jurisdição", q: "Trouxe um veículo de outro estado. Como faço a transferência para cá?" },
+    { t: "2ª via do documento", d: "CRV ou CRLV perdido", q: "Perdi o documento do veículo. Como tiro a segunda via?" },
+    { t: "Mudar cor ou característica", d: "Alteração no veículo", q: "Como faço para mudar a cor ou outra característica do meu veículo?" },
+    { t: "Vistoria", d: "Quando e onde fazer", q: "Quando preciso fazer vistoria do veículo e onde faço?" },
+    { t: "Baixa definitiva", d: "Veículo sem condição de uso", q: "Como dou baixa definitiva em um veículo que não vai mais rodar?" },
+  ] },
+  { id: "habilitacao", icone: "🪪", titulo: "Habilitação", itens: [
+    { t: "Primeira habilitação", d: "Do processo à CNH", j: "primeira" },
+    { t: "Renovar a CNH", d: "Exames e documentos", j: "renovacao" },
+    { t: "2ª via da CNH", d: "Perda, roubo ou dano", j: "segundavia" },
+    { t: "Mudar ou adicionar categoria", d: "Moto, caminhão, ônibus", q: "Como faço para adicionar ou mudar a categoria da minha CNH?" },
+    { t: "Mudei de endereço", d: "Atualizar CNH e veículo", j: "endereco" },
+    { t: "CNH Social", d: "Habilitação gratuita", q: "Como funciona a CNH Social e quem pode participar?" },
+    { t: "Permissão Internacional (PID)", d: "Dirigir no exterior", q: "Como tiro a Permissão Internacional para Dirigir (PID)?" },
+    { t: "CNH suspensa ou cassada", d: "Como voltar a dirigir", q: "Minha CNH foi suspensa. O que preciso fazer para voltar a dirigir?" },
+  ] },
+  { id: "multas", icone: "🧾", titulo: "Multas", itens: [
+    { t: "Contestar uma multa", d: "Defesa prévia e recursos", j: "defesa" },
+    { t: "Indicar o condutor", d: "Quem estava dirigindo", q: "Como faço a indicação do condutor de uma multa?" },
+    { t: "Consultar pontos", d: "Pontuação da CNH", q: "Como consulto os pontos da minha CNH?" },
+    { t: "Recurso à JARI", d: "Depois da defesa prévia", q: "Como faço recurso de multa à JARI?" },
+    { t: "Parcelar multas", d: "Pagamento em parcelas", q: "Posso parcelar multas de trânsito? Como?" },
+    { t: "Multa de carro que vendi", d: "Veículo já vendido", q: "Recebi uma multa de um carro que já vendi. O que faço?" },
+  ] },
+  { id: "licenciamento", icone: "📄", titulo: "Licenciamento e IPVA", itens: [
+    { t: "Licenciamento anual", d: "CRLV-e do ano", j: "licenciamento" },
+    { t: "Calendário pela placa", d: "Mês pelo final da placa", q: "Qual o calendário de licenciamento pelo final da placa?" },
+    { t: "IPVA", d: "Consultar, pagar ou parcelar", q: "Como consulto e pago o IPVA do meu veículo? Posso parcelar?" },
+    { t: "Emitir o CRLV-e", d: "Documento digital", q: "Como emito o CRLV-e digital do meu veículo?" },
+    { t: "Débitos do veículo", d: "O que está pendente", q: "Como consulto os débitos do meu veículo?" },
+    { t: "Isenção de IPVA", d: "Pessoa com deficiência e outros casos", q: "Quem tem direito à isenção de IPVA e como pedir?" },
+  ] },
+];
+
+(function montarAssuntos() {
+  const caixa = document.getElementById("assuntos");
+  if (!caixa || !ASSUNTOS.length) return;
+  caixa.innerHTML = `<h3 class="assuntos-titulo" id="assuntos-titulo">Do que você precisa?</h3>
+    <div class="assuntos-grade" role="group" aria-labelledby="assuntos-titulo">${ASSUNTOS.map((a) =>
+      `<button type="button" class="assunto" data-a="${escapeHtml(a.id)}" aria-expanded="false" aria-controls="assunto-lista"><span class="assunto-icone" aria-hidden="true">${escapeHtml(a.icone || "")}</span><span>${escapeHtml(a.titulo)}</span></button>`).join("")}</div>
+    <div id="assunto-lista" class="assunto-lista hidden" role="region" aria-live="polite"></div>`;
+  const lista = caixa.querySelector("#assunto-lista");
+  const botoes = [...caixa.querySelectorAll(".assunto")];
+  let aberto = null;
+  botoes.forEach((b) => (b.onclick = () => {
+    const a = ASSUNTOS.find((x) => x.id === b.dataset.a);
+    const fechar = aberto === a.id;
+    botoes.forEach((x) => { x.classList.remove("on"); x.setAttribute("aria-expanded", "false"); });
+    if (fechar) { aberto = null; lista.classList.add("hidden"); lista.innerHTML = ""; return; }
+    aberto = a.id; b.classList.add("on"); b.setAttribute("aria-expanded", "true");
+    lista.innerHTML = `<div class="assunto-cab">${escapeHtml(a.titulo)}: escolha o serviço</div>`
+      + `<div class="assunto-itens">${(a.itens || []).map((it, i) =>
+        `<button type="button" class="assunto-item" data-i="${i}"><strong>${escapeHtml(it.t)}</strong>${it.d ? `<small>${escapeHtml(it.d)}</small>` : ""}${it.j ? '<span class="assunto-passo">passo a passo</span>' : ""}</button>`).join("")}</div>`;
+    lista.classList.remove("hidden");
+    lista.querySelectorAll(".assunto-item").forEach((x) => (x.onclick = () => {
+      const it = a.itens[Number(x.dataset.i)];
+      if (it.j && window.__comecarJornada) window.__comecarJornada(it.j);
+      else enviar(it.q || it.t);
+    }));
+    lista.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }));
+})();
+
 function escapeHtml(s) {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
@@ -1069,6 +1143,7 @@ function abrirDefesa(texto, tipo) {
     }));
   }
   window.__abrirJornada = abrir;
+  window.__comecarJornada = comecar;
 })();
 
 /* ═══════════════════ ANTIGOLPE ═══════════════════ */
