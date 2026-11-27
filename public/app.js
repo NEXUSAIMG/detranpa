@@ -90,7 +90,12 @@ els.input.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); }
 });
 els.send.onclick = () => enviar();
-els.reset.onclick = () => location.reload();
+// Nova conversa = sessão nova (27/11/2026, teste dos estagiários): sem isso o bot
+// continuava o assunto anterior e a conversa antiga voltava para a fila da Central.
+els.reset.onclick = () => {
+  try { sessionStorage.removeItem(LS("sid")); sessionStorage.removeItem(LS("humano")); } catch (_) {}
+  location.reload();
+};
 
 /* Serviços por assunto (24/11/2026, sugestão do Breno): o cidadão toca em
    Veículos, Habilitação, Multas ou Licenciamento e IPVA e vê a lista do que o
@@ -313,15 +318,51 @@ async function enviar(texto) {
       conversa.push({ role: "assistant", content: limpo });
       const parts = splitReply(reply);
       await revealParts(parts, formId, wantsDefesa, transmitiu);
+      if (data.humano) iniciarEscuta();
     }
   } catch (e) {
     hideTyping();
-    showError("Não foi possível conectar ao servidor. Verifique se ele está rodando.");
+    showError("Sem conexão no momento. Confira a internet e toque em enviar de novo.");
     conversa.pop(); els.input.value = pergunta;
   } finally {
-    carregando = false; els.send.disabled = !els.input.value.trim(); els.input.focus();
+    carregando = false; els.send.disabled = !els.input.value.trim();
+    // Só volta o foco ao campo com mouse/teclado: no celular (e com o TalkBack) o foco
+    // saltava para o campo em vez de deixar ler a resposta (teste A5).
+    if (window.matchMedia?.("(pointer: fine)").matches) els.input.focus();
   }
 }
+
+// ── Atendimento com pessoa no site (27/11/2026) ──
+// Depois do encaminhamento, busca as respostas do atendente a cada 5 s (só com a
+// página visível) até a conversa voltar para o assistente ou ser encerrada.
+let escuta = null, desdeAtendente = 0;
+async function buscarAtendente() {
+  if (document.hidden) return;
+  try {
+    const r = await fetch(API(`/chat/atendente?sessao=${encodeURIComponent(SESSION_ID)}&depois=${desdeAtendente}`));
+    if (!r.ok) return;
+    const d = await r.json();
+    for (const m of d.mensagens || []) {
+      desdeAtendente = Math.max(desdeAtendente, m.em);
+      const b = addBubble("assistant", m.texto);
+      b.classList.add("atendente");
+      b.insertAdjacentHTML("afterbegin", `<div class="atd-nome">👤 ${escapeHtml(m.nome)}, atendente do ${escapeHtml(TENANT.sigla || "DETRAN")}</div>`);
+      conversa.push({ role: "assistant", content: m.texto });
+    }
+    if (d.status && d.status !== "HUMANO") pararEscuta();
+  } catch (_) { /* tenta de novo no próximo ciclo */ }
+}
+function iniciarEscuta() {
+  try { sessionStorage.setItem(LS("humano"), "1"); } catch (_) {}
+  if (escuta) return;
+  escuta = setInterval(buscarAtendente, 5000);
+  buscarAtendente();
+}
+function pararEscuta() {
+  clearInterval(escuta); escuta = null;
+  try { sessionStorage.removeItem(LS("humano")); } catch (_) {}
+}
+try { if (sessionStorage.getItem(LS("humano"))) iniciarEscuta(); } catch (_) {}
 
 /* ════════════════════════ DOCUMENTOS ════════════════════════ */
 
@@ -804,8 +845,26 @@ window.__feedback = function (bubble) {
       const up = b.getAttribute("data-up") === "1";
       row.querySelectorAll(".fb-btn").forEach((x) => { x.disabled = true; });
       b.classList.add("chosen");
-      row.querySelector("span").textContent = "Valeu pelo retorno!";
-      fetch(API("/feedback"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ up }) }).catch(() => {});
+      const enviarFb = (motivo) => fetch(API("/feedback"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ up, motivo }) }).catch(() => {});
+      if (up) { row.querySelector("span").textContent = "Valeu pelo retorno!"; enviarFb(); return; }
+      // 👎 pergunta o que faltou (teste C1): o gestor vê o motivo no painel.
+      // O 👎 conta já; o motivo vai num 2º envio (opcional).
+      enviarFb();
+      row.querySelector("span").textContent = "O que faltou?";
+      const ops = document.createElement("div"); ops.className = "fb-motivos";
+      ops.innerHTML = [["faltou", "Faltou informação"], ["errada", "Informação errada"], ["confusa", "Não entendi"], ["outro", "Outro motivo"]]
+        .map(([id, r]) => `<button type="button" class="fb-motivo" data-m="${id}">${r}</button>`).join("");
+      row.appendChild(ops);
+      ops.querySelectorAll("button").forEach((m) => (m.onclick = () => {
+        enviarFb(m.dataset.m); ops.remove();
+        row.querySelector("span").textContent = "Obrigado! Isso ajuda a melhorar as respostas.";
+        if (m.dataset.m === "faltou" || m.dataset.m === "confusa") {
+          const dica = document.createElement("small"); dica.className = "fb-dica";
+          dica.textContent = " Se quiser, reescreva a pergunta com mais detalhes ou peça para falar com um atendente.";
+          row.appendChild(dica);
+        }
+      }));
+      ops.querySelector("button").focus();
     };
   });
   bubble.appendChild(row);
@@ -850,6 +909,8 @@ async function gerarDefesa(tipo) {
   }
 }
 function abrirDefesa(texto, tipo) {
+  // A peça é impressa: tira "**", "#" e crases que o modelo às vezes devolve (teste C7).
+  texto = String(texto || "").replace(/^\s{0,3}#{1,6}\s+/gm, "").replace(/\*\*(.+?)\*\*/g, "$1").replace(/__(.+?)__/g, "$1").replace(/`([^`\n]+)`/g, "$1");
   els.overlay.classList.remove("hidden");
   els.overlayTitle.textContent = { defesa_previa: "Rascunho — Defesa Prévia", jari: "Rascunho — Recurso à JARI", cetran: `Rascunho — Recurso ao ${CONSELHO}` }[tipo] || "Rascunho de defesa de multa";
   els.docsBack.classList.add("hidden");
@@ -1093,7 +1154,7 @@ function abrirDefesa(texto, tipo) {
           <div>Situação: <b>${escJ(p.statusTexto || "Recebido")}</b>${p.prazoEm ? ` · Previsão: ${new Date(p.prazoEm).toLocaleDateString("pt-BR")}` : ""}</div>
           ${ult ? `<small>Última atualização: ${escJ(ult.texto)}</small>` : ""}
           <small>Os avisos chegam no seu WhatsApp. Para consultar lá, mande: protocolo ${escJ(p.protocolo)}</small>
-          <div class="jor-acoes"><button class="btn btn-soft" data-p="comprovante">🖨️ Comprovante</button></div></div>`;
+          <div class="jor-acoes"><button class="btn btn-soft" data-p="comprovante">🖨️ Comprovante</button><a class="btn btn-soft" href="${escJ(window.TENANT_BASE || "")}/conta">📋 Acompanhar em Meus pedidos</a></div></div>`;
         box.querySelector('[data-p="comprovante"]').onclick = () => comprovante(p, c);
       }
       return;
@@ -1112,7 +1173,8 @@ function abrirDefesa(texto, tipo) {
       <label for="pr-cpf">CPF (opcional)</label><input id="pr-cpf" class="golpe-in" inputmode="numeric" autocomplete="off" placeholder="000.000.000-00">
       <label for="pr-arq">Documentos (fotos ou PDF, até 6)</label>
       <input id="pr-arq" type="file" accept="image/*,application/pdf" multiple>
-      <ul id="pr-lista" class="proto-lista"></ul>
+      <ul id="pr-lista" class="proto-lista" aria-live="polite"></ul>
+      <div id="pr-falta"></div>
       <label for="pr-obs">Observação (opcional)</label><textarea id="pr-obs" class="golpe-in" rows="2" maxlength="1500"></textarea>
       <label class="proto-cons"><input id="pr-ok" type="checkbox"> Autorizo enviar meus dados e estes documentos ao ${escJ(SIGLA)} para a análise deste pedido. Os arquivos ficam guardados enquanto o pedido estiver aberto e são apagados 60 dias depois de encerrado.</label>
       <div id="pr-erro" class="golpe-res atencao hidden" role="alert"></div>
@@ -1120,15 +1182,34 @@ function abrirDefesa(texto, tipo) {
     </form>`;
     const $p = (id) => box.querySelector("#" + id);
     const erro = (m) => { const e = $p("pr-erro"); e.textContent = m; e.classList.toggle("hidden", !m); };
+    // Conferência por IA de cada foto (só avisa; o envio segue mesmo com aviso).
+    let esperados = [];
+    const leituraHtml = (a) => {
+      if (a.conferindo) return `<div class="proto-conf">🔎 Conferindo a foto…</div>`;
+      const L = a.leitura; if (!L) return "";
+      return L.status === "OK" ? `<div class="proto-conf ok">✅ ${escJ(L.documento || "Documento")}: legível.</div>` : `<div class="proto-conf alerta">⚠️ ${escJ(L.motivo)}</div>`;
+    };
     const listar = () => {
-      $p("pr-lista").innerHTML = arquivos.map((a, i) => `<li>${a.mime === "application/pdf" ? "📄" : "🖼️"} ${escJ(a.nome)} <small>(${Math.max(1, Math.round(a.bytes / 1024))} KB)</small> <button type="button" class="linklike" data-p="rm" data-i="${i}">remover</button></li>`).join("");
+      $p("pr-lista").innerHTML = arquivos.map((a, i) => `<li>${a.mime === "application/pdf" ? "📄" : "🖼️"} ${escJ(a.nome)} <small>(${Math.max(1, Math.round(a.bytes / 1024))} KB)</small> <button type="button" class="linklike" data-p="rm" data-i="${i}">remover</button>${leituraHtml(a)}</li>`).join("");
       $p("pr-lista").querySelectorAll('[data-p="rm"]').forEach((b) => (b.onclick = () => { arquivos.splice(Number(b.dataset.i), 1); listar(); }));
+      const lidos = arquivos.filter((a) => a.leitura);
+      const achados = new Set(lidos.filter((a) => a.leitura.item && a.leitura.status !== "ILEGIVEL").map((a) => a.leitura.item));
+      const falta = lidos.length && !arquivos.some((a) => a.conferindo) ? esperados.filter((x) => !x.condicional && !achados.has(x.id)).map((x) => x.nome) : [];
+      $p("pr-falta").innerHTML = falta.length ? `<div class="proto-conf alerta" role="status">Ainda não encontrei nas fotos: <b>${falta.map(escJ).join("; ")}</b>. Se tiver, junte antes de enviar.</div>` : "";
+    };
+    const conferir = async (a) => {
+      if (!/^image\//.test(a.mime)) return;
+      a.conferindo = true; listar();
+      const r = await api("/conferir-anexo", { mime: a.mime, base64: a.base64 }).catch(() => ({ ok: false }));
+      a.conferindo = false;
+      if (r.ok) { a.leitura = r.data.leitura || null; esperados = r.data.esperados || esperados; }
+      listar();
     };
     $p("pr-arq").onchange = async (ev) => {
       erro("");
       for (const f of [...ev.target.files]) {
         if (arquivos.length >= 6) { erro("No máximo 6 arquivos."); break; }
-        try { arquivos.push(await prepararAnexo(f)); } catch (e) { erro(e.message || "Não consegui ler o arquivo."); }
+        try { const a = await prepararAnexo(f); arquivos.push(a); conferir(a); } catch (e) { erro(e.message || "Não consegui ler o arquivo."); }
       }
       ev.target.value = ""; listar();
     };
@@ -1154,7 +1235,7 @@ function abrirDefesa(texto, tipo) {
     const c = atual; if (!c) return abrir();
     const e = c.etapa;
     els.overlayTitle.textContent = `${c.jornada.icone} ${c.jornada.titulo}`;
-    const passos = c.progresso.etapas.map((x) => `<li class="${x.feito ? "feito" : x.atual ? "atual" : ""}"><span>${x.feito ? "✓" : ""}</span>${escJ(x.titulo)}</li>`).join("");
+    const passos = c.progresso.etapas.map((x) => `<li class="${x.pulado ? "pulado" : x.feito ? "feito" : x.atual ? "atual" : ""}"${x.pulado ? ' title="Etapa pulada"' : ""}><span>${x.pulado ? "–" : x.feito ? "✓" : ""}</span>${escJ(x.titulo)}</li>`).join("");
     const prazos = c.prazos.length ? `<div class="jor-prazos">${c.prazos.map((p) => `<div class="${p.aviso ? "aviso" : p.faltam >= 0 && p.faltam <= 5 ? "perto" : ""}">📅 ${escJ(p.rotulo)}: <b>${escJ(p.dataBR)}</b>${p.faltam >= 0 ? ` <small>(faltam ${p.faltam} dias)</small>` : p.aviso ? "" : " <small>(já passou)</small>"}</div>`).join("")}</div>` : "";
     let acoes = "";
     if (e.tipo === "escolha") acoes = e.opcoes.map((o) => `<button class="btn btn-primary" data-op="${escJ(o.id)}">${escJ(o.rotulo)}</button>`).join("");
@@ -1190,7 +1271,7 @@ function abrirDefesa(texto, tipo) {
     els.overlayBody.querySelectorAll("[data-f]").forEach((b) => (b.onclick = () => openForm(b.dataset.f, false)));
     if (c.concluida) montarProtocolo(c);
     els.overlayBody.querySelectorAll("[data-a]").forEach((b) => (b.onclick = () => {
-      if (b.dataset.a === "data") { const v = document.getElementById("jor-data").value; if (!v) return render("Escolha a data."); return responder("data", v); }
+      if (b.dataset.a === "data") { const v = document.getElementById("jor-data").value; if (!v) return render("Data inválida ou incompleta. Toque no campo e escolha dia, mês e ano no calendário."); return responder("data", v); }
       responder(b.dataset.a);
     }));
     els.overlayBody.querySelectorAll("[data-x]").forEach((b) => (b.onclick = async () => {
@@ -1317,18 +1398,28 @@ function abrirDefesa(texto, tipo) {
     };
     document.getElementById("c-data").addEventListener("input", calcPrazo);
 
-    const TAXAS = [
+    // Taxas por estado (teste C8): antes eram as do Pará (TRLAV, DAE) para todo DETRAN.
+    // Cada DETRAN pode cadastrar as suas em conteudo.taxas ([{ n, v }]); sem cadastro, só o Pará tem padrão.
+    const UF = String(TENANT.uf || "").toUpperCase();
+    const GUIA = ({ PA: "DAE", GO: "DUA" })[UF] || "guia";
+    const TAXAS_PA = [
       { n: "Transferência de propriedade", v: 274.69 },
       { n: "Vistoria veicular", v: 68.67 },
       { n: "Emplacamento Mercosul (0km)", v: 45.78 },
       { n: "Licenciamento anual (TRLAV)", v: 214.51 },
       { n: "Transferência de jurisdição (CNH)", v: 149.72 },
     ];
-    document.getElementById("c-taxas").innerHTML = TAXAS.map((t, i) => `<label class="calc-check"><input type="checkbox" data-v="${t.v}" id="tx${i}"> ${t.n} <span>${brl(t.v)}</span></label>`).join("");
+    const cad = (TENANT.conteudo && Array.isArray(TENANT.conteudo.taxas)) ? TENANT.conteudo.taxas.filter((x) => x && x.n && Number(x.v) > 0) : null;
+    const TAXAS = cad && cad.length ? cad : UF === "PA" ? TAXAS_PA : [];
+    const sub = document.querySelector("#c-taxas")?.closest(".calc-card")?.querySelector(".calc-sub");
+    if (sub) sub.textContent = `Marque as taxas. Valores são referência — o final é o da ${GUIA} gerada no portal.`;
+    document.getElementById("c-taxas").innerHTML = TAXAS.length
+      ? TAXAS.map((t, i) => `<label class="calc-check"><input type="checkbox" data-v="${Number(t.v)}" id="tx${i}"> ${escapeHtml(t.n)} <span>${brl(Number(t.v))}</span></label>`).join("")
+      : `<p class="calc-note">Os valores das taxas do ${escapeHtml(TENANT.sigla || "DETRAN")} ainda não foram cadastrados aqui. Consulte o valor atualizado no portal oficial${TENANT.portalUrl ? `: <a href="${escapeHtml(TENANT.portalUrl)}" target="_blank" rel="noopener">${escapeHtml(TENANT.portalUrl)}</a>` : ""}.</p>`;
     const calcCusto = () => {
       let tot = 0;
       document.querySelectorAll("#c-taxas input:checked").forEach((c) => { tot += +c.getAttribute("data-v"); });
-      document.getElementById("c-custo-out").innerHTML = tot ? `<div class="calc-big">${brl(tot)}</div><div class="calc-note">Total de referência. Confirme no boleto/DAE do portal.</div>` : "";
+      document.getElementById("c-custo-out").innerHTML = tot ? `<div class="calc-big">${brl(tot)}</div><div class="calc-note">Total de referência. Confirme na ${GUIA} do portal.</div>` : "";
     };
     document.querySelectorAll("#c-taxas input").forEach((c) => c.addEventListener("change", calcCusto));
   }
@@ -1464,6 +1555,13 @@ function abrirDefesa(texto, tipo) {
           + `${temResid ? `Se o comprovante de residência estiver no nome de outra pessoa (pai, mãe, cônjuge, locador), leve também uma <b>declaração de residência</b> assinada por ela${(formsCache || []).some((f) => f.id === "declaracao-residencia") ? ' — <button class="btn btn-soft" data-form="declaracao-residencia">📝 preencher aqui</button>' : ""}.` : "Confira se todos são mesmo da pessoa que vai fazer o serviço."}</div>`
         : "";
       const tudo = !problemas.length && !faltam.length && nomesDif.length <= 1;
+      // Resumo e próximo passo (teste C5): dizer o que resolver primeiro, pelo nome do documento.
+      const nomesDe = (l) => l.slice(0, 4).map((i) => `<b>${escapeHtml(i.nome)}</b>`).join(", ") + (l.length > 4 ? ` e mais ${l.length - 4}` : "");
+      const proximoPasso = `<div class="conf-proximo" role="status"><b>Próximo passo:</b> ${
+        problemas.length ? `resolva ${nomesDe(problemas)} — veja o motivo em cada um abaixo e mande outra foto ou providencie um documento novo.`
+        : faltam.length ? `confira ${nomesDe(faltam)} (pela foto ou marcando “Já tenho”).`
+        : nomesDif.length > 1 ? "veja o aviso dos nomes diferentes logo abaixo."
+        : `com os originais em mãos, faça o pedido no portal oficial${TENANT.portalUrl ? ` (<a href="${escapeHtml(TENANT.portalUrl)}" target="_blank" rel="noopener">abrir</a>)` : ""} ou agende o atendimento, e leve esta lista impressa.`}</div>`;
       const itens = s.itens.map((i) => {
         const e = estado[i.id] || {}; const st = ST[e.status];
         const naoAplica = i.condicional && e.aplica === false;
@@ -1484,6 +1582,7 @@ function abrirDefesa(texto, tipo) {
         <div class="conf-resumo ${tudo ? "pronto" : ""}"><div class="conf-pct"><span style="width:${pct}%"></span></div>
           <b>${tudo ? "✅ Tudo certo para dar entrada!" : `${prontos.length} de ${obrig.length} documentos prontos`}</b>
           <span>${tudo ? "Leve os originais. Confira o horário e o endereço no portal oficial." : [problemas.length ? `${problemas.length} com problema` : "", faltam.length ? `${faltam.length} ainda não conferido(s)` : ""].filter(Boolean).join(" · ")}</span></div>
+        ${proximoPasso}
         ${tudo ? window.__pesquisaImpacto("conferencia:" + id) : ""}
         ${alertaNomes}
         <p class="doc-intro">${escapeHtml(s.resumo || "")} ${IA ? "As fotos servem só para a conferência e não ficam guardadas." : ""}</p>
@@ -1618,6 +1717,9 @@ function abrirDefesa(texto, tipo) {
    O cidadão escolhe o lembrete, informa a data e o WhatsApp e aceita receber.
    O número recebe "responda SIM" — só depois disso os avisos são enviados. */
 (function () {
+  // DETRAN sem WhatsApp ligado: nada de cartão, botão de jornada ou da calculadora
+  // oferecendo lembrete que não funciona (teste dos estagiários C13, J3, J4, J8).
+  if (TENANT.whatsapp === false) return;
   let INFO = null;
   async function info() { if (!INFO) { const r = await fetch(API("/lembretes")); INFO = await r.json().catch(() => ({})); } return INFO; }
 
@@ -1753,4 +1855,45 @@ function simAtual() {
   colocar();
   new MutationObserver(colocar).observe(empty, { childList: true });
   empty.classList.add("pronto");
+})();
+
+/* ═══════════════════ FOCO NO MODAL (27/11/2026, teste A6) ═══════════════════
+   Ao abrir o painel, o foco vai para dentro dele e fica preso lá (Tab/Shift+Tab);
+   ao fechar, volta para onde estava. Com o painel aberto, o botão do VLibras some
+   para não ficar por cima dos botões do modal. */
+(function () {
+  const ov = els.overlay; if (!ov) return;
+  els.docsClose?.setAttribute("aria-label", "Fechar");
+  els.docsBack?.setAttribute("aria-label", "Voltar");
+  const FOC = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  let volta = null, aberto = false;
+  const visiveis = () => [...ov.querySelectorAll(FOC)].filter((x) => x.offsetParent !== null);
+  const focarDentro = () => {
+    if (ov.contains(document.activeElement) && document.activeElement !== document.body) return;
+    const titulo = document.getElementById("docs-title");
+    if (titulo) { titulo.setAttribute("tabindex", "-1"); titulo.focus({ preventScroll: true }); }
+    else visiveis()[0]?.focus();
+  };
+  new MutationObserver(() => {
+    const agora = !ov.classList.contains("hidden");
+    if (agora && !aberto) { volta = document.activeElement; aberto = true; document.body.classList.add("modal-aberto"); setTimeout(focarDentro, 30); }
+    else if (!agora && aberto) { aberto = false; document.body.classList.remove("modal-aberto"); if (volta && document.contains(volta)) volta.focus({ preventScroll: true }); volta = null; }
+  }).observe(ov, { attributes: true, attributeFilter: ["class"] });
+  // Conteúdo trocado com o painel aberto (ex.: próxima etapa): o foco não pode cair fora.
+  new MutationObserver(() => { if (aberto) setTimeout(focarDentro, 30); }).observe(els.overlayBody, { childList: true });
+  ov.addEventListener("keydown", (e) => {
+    if (e.key !== "Tab") return;
+    const f = visiveis(); if (!f.length) return;
+    const i = f.indexOf(document.activeElement);
+    if (e.shiftKey && (i <= 0)) { e.preventDefault(); f[f.length - 1].focus(); }
+    else if (!e.shiftKey && (i === -1 || i === f.length - 1)) { e.preventDefault(); f[0].focus(); }
+  });
+})();
+
+/* Placeholder curto em tela estreita (27/11/2026): o longo quebrava em duas linhas. */
+(function () {
+  const inp = document.getElementById("input"); if (!inp) return;
+  const longo = inp.getAttribute("placeholder") || "";
+  const ajustar = () => { inp.setAttribute("placeholder", window.innerWidth < 480 ? "Escreva sua pergunta" : longo); };
+  ajustar(); window.addEventListener("resize", ajustar);
 })();

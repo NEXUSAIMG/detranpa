@@ -88,6 +88,11 @@ html, body {
 .proto-form label { font-size: 13px; font-weight: 600; margin-top: 4px; }
 .proto-form .golpe-in { margin: 0; }
 .proto-lista { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; font-size: 13.5px; }
+.bubble.atendente { border-left: 4px solid var(--moss); }
+.atd-nome { font-size: 12.5px; font-weight: 700; color: var(--moss); margin-bottom: 4px; }
+.proto-conf { font-size: 13px; margin: 2px 0 4px; padding: 4px 8px; border-radius: 8px; background: #EEF1F6; color: #33405A; }
+.proto-conf.ok { background: #E3F6F2; color: #0E5A50; }
+.proto-conf.alerta { background: #FFF1D6; color: #6B4200; }
 .proto-cons { display: flex; gap: 8px; align-items: flex-start; font-weight: 400 !important; font-size: 13px; }
 .proto-cons input { margin-top: 3px; }
 
@@ -566,6 +571,7 @@ a.docs-cta.sim-cta small { color: #FFE9A8; }
 .jor-passos li { display: flex; gap: 8px; align-items: center; padding: 6px 0; color: #7A8790; }
 .jor-passos li span { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--paper-edge); display: inline-flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; }
 .jor-passos li.feito { color: #1E7B4A; } .jor-passos li.feito span { background: #1E7B4A; border-color: #1E7B4A; color: #fff; }
+.jor-passos li.pulado { color: #5B6573; } .jor-passos li.pulado span { background: #EEF1F4; border-color: #9AA4AF; color: #5B6573; font-weight: 700; }
 .jor-passos li.atual { color: var(--ayio-navy); font-weight: 700; } .jor-passos li.atual span { border-color: var(--moss); }
 .jor-etapa { background: var(--surface); border: 1px solid var(--paper-edge); border-radius: 14px; padding: 16px; }
 .jor-etapa small { color: #7A8790; font-weight: 600; }
@@ -657,3 +663,23 @@ input[type="time"]:focus, input[type="date"]:focus, input[type="datetime-local"]
 #empty .channels { visibility: hidden; animation: aparecer-ja 0s 3s forwards; }
 #empty.pronto .channels { visibility: visible; animation: none; }
 
+
+/* Motivo do 👎 (27/11/2026, teste C1) */
+.fb-motivos { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; margin-top: 6px; }
+.fb-motivo { border: 1px solid var(--paper-edge); background: #fff; border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; min-height: 32px; }
+.fb-motivo:hover, .fb-motivo:focus-visible { background: #f0f0f0; }
+.fb-dica { color: #5B6573; }
+.fb-row { flex-wrap: wrap; }
+
+/* Modal no celular e com fonte grande (27/11/2026, testes A1/A3) e VLibras escondido com modal aberto */
+body.modal-aberto [vw], body.modal-aberto #vlibras-access-wrapper, body.modal-aberto [vw-access-button], body.modal-aberto .jor-chip { display: none !important; }
+@media (max-width: 640px) {
+  .overlay { padding: 0; align-items: stretch; }
+  .overlay-card { max-width: none; height: 100dvh; border-radius: 0; }
+  .overlay-body { padding: 14px; }
+}
+.overlay-head h3 { overflow-wrap: anywhere; }
+.overlay-body input, .overlay-body select, .overlay-body textarea { max-width: 100%; box-sizing: border-box; }
+.overlay-body .btn, .jor-acoes .btn { white-space: normal; text-align: center; }
+#input::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.conf-proximo { background: #EEF4FF; border: 1px solid #C9D8F5; color: #1A3E7A; border-radius: 10px; padding: 10px 12px; margin: 10px 0; font-size: 14px; line-height: 1.5; }

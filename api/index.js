@@ -30,20 +30,24 @@ import { registrarImpacto } from "../lib/impacto.js";
 import { lerToken } from "../lib/cripto.js";
 import { chamarLLM, limparHistorico, textoDe, temImagem, llmConfigurado, SEM_CHAVE, PROVIDER_ID, MODEL, MAX_TOKENS } from "../lib/llm.js";
 import { perguntarRapido, mensagemIndisponivel } from "../lib/botayio.js";
+import { foraDoEscopo, respostaForaDoEscopo } from "../lib/escopo.js";
 import { registrarUso } from "../lib/uso-ia.js";
 import { montarResposta, aquecerTenant } from "../lib/aquecer-cache.js";
 import { promptCidadao, promptOperador, promptDefesa, promptTermo, promptExtracao } from "../lib/prompts.js";
-import { registrarTroca, registrarEvento, estatisticas, classificarTema } from "../lib/registro.js";
+import { registrarTroca, registrarEvento, estatisticas, classificarTema, buscarConversa, registrarEntradaHumano } from "../lib/registro.js";
 import { registrarWhatsApp, enviarWhatsApp } from "../whatsapp.js";
 import { registrarAdmin } from "../lib/admin.js";
-import { registrarAtendimento } from "../lib/atendimento.js";
+import { registrarAtendimento, avisoFilaSite } from "../lib/atendimento.js";
 import { registrarGestao } from "../lib/gestao.js";
 import { registrarTutoriaGestao, buscarNaBase, mascarar } from "../lib/tutoria-gestao.js";
 import { analisarSuspeita, pareceVerificacao, textoParaChat, perguntaCobrancaPorMensagem, respostaCobrancaPorMensagem } from "../lib/antigolpe.js";
 import { registrarObservatorio } from "../lib/observatorio.js";
+import { registrarRelatorioMensal } from "../lib/relatorio-mensal.js";
+import { registrarMonitorSite } from "../lib/monitor-site.js";
 import { registrarMeuDetran, contextoMeuDetran } from "../lib/meu-detran.js";
 import { registrarJornadas } from "../lib/jornadas-api.js";
 import { registrarProtocoloJornada } from "../lib/protocolo-jornada.js";
+import { registrarContaCidadao } from "../lib/conta-cidadao.js";
 import { detectarJornada } from "../lib/jornadas.js";
 import { registrarConferencia } from "../lib/conferencia.js";
 import { registrarPrivacidade } from "../lib/privacidade.js";
@@ -227,6 +231,28 @@ app.get("/api/cron/aquecer", async (req, res) => {
 });
 
 // ── Chat do cidadão ─────────────────────────────────────────────────────────
+// Respostas do atendente para o cidadão do SITE (27/11/2026). A tela pergunta a cada
+// poucos segundos enquanto a conversa está com pessoa. Só o próprio navegador conhece
+// o id da sessão (aleatório, guardado na aba); volta só o primeiro nome do atendente.
+app.get(`${T}/chat/atendente`, comTenant, async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  const sid = String(req.query.sessao || "").replace(/[^a-zA-Z0-9-]/g, "").slice(0, 48);
+  if (sid.length < 12) return res.status(400).json({ error: "Sessão inválida." });
+  if (rateLimited(`atd:${req.tenant.slug}:${ipDe(req)}`, 60)) return res.status(429).json({ error: "Aguarde um instante." });
+  try {
+    const conv = await buscarConversa(req.tenant.id, "WEB", sid);
+    if (!conv) return res.json({ status: null, mensagens: [] });
+    // Só as respostas deste atendimento (depois do último encaminhamento).
+    const depois = new Date(Math.max(Number(req.query.depois) || 0, conv.transbordoEm ? conv.transbordoEm.getTime() : 0));
+    const msgs = await prisma.mensagem.findMany({ where: { conversaId: conv.id, autor: "ATENDENTE", criadoEm: { gt: depois } }, orderBy: { criadoEm: "asc" }, take: 50 });
+    const primeiro = (n) => String(n || "Atendente").trim().split(/\s+/)[0];
+    res.json({
+      status: conv.status, comAtendente: Boolean(conv.atendenteId),
+      mensagens: msgs.map((m) => ({ texto: m.texto, em: m.criadoEm.getTime(), nome: primeiro(m.autorNome) })),
+    });
+  } catch (err) { console.error("[chat/atendente]", err.message); res.status(500).json({ error: "Falha ao buscar." }); }
+});
+
 // Texto -> bot do DETRAN no BotAyio. Foto (ou DETRAN sem bot) -> IA local.
 app.post(`${T}/chat`, comTenant, async (req, res) => {
   const t = req.tenant;
@@ -275,6 +301,18 @@ app.post(`${T}/chat`, comTenant, async (req, res) => {
   const realCtx = simCtx || avaliador ? "" : await contextoMeuDetran(req, t).catch((e) => { console.warn(`[meu-detran:${t.slug}]`, e.message); return ""; });
   const naoGravar = Boolean(simCtx) || Boolean(avaliador); // simulação e avaliação não entram nos números do DETRAN
 
+  // Atendimento humano no site (27/11/2026, teste dos estagiários I4/C14): com a conversa
+  // na fila ou com atendente, a mensagem vai para a Central, não para o bot. A resposta
+  // do atendente chega por GET /chat/atendente.
+  if (!naoGravar) {
+    const conv = await buscarConversa(t.id, "WEB", sid);
+    if (conv?.status === "HUMANO") {
+      const nome = (pergunta.match(/^\s*(?:meu nome (?:é|e)|me chamo|sou (?:o|a))\s+([A-Za-zÀ-ÿ' ]{3,60}?)\s*[.!]?\s*$/i) || [])[1];
+      await registrarEntradaHumano(conv, { texto: temImagem(ultima) ? `${pergunta} (a foto não foi enviada: no atendimento com pessoa, mande só texto)` : pergunta, nome: nome ? nome.trim() : undefined });
+      return res.json({ reply: temImagem(ultima) ? "📨 Mensagem enviada ao atendente. Fotos não passam por aqui: descreva em texto, por favor." : "📨 Mensagem enviada ao atendente. A resposta aparece aqui nesta tela.", origem: "humano", humano: true });
+    }
+  }
+
   // 0) Antigolpe (orientação): "o DETRAN manda cobrança por link/WhatsApp/SMS?" -> resposta fixa e segura.
   if (!temImagem(ultima) && perguntaCobrancaPorMensagem(pergunta)) {
     const reply = respostaCobrancaPorMensagem(t);
@@ -300,6 +338,9 @@ app.post(`${T}/chat`, comTenant, async (req, res) => {
   // 0.4) Pergunta longa demais não vai para a IA (custo e abuso). Mensagem colada para
   // conferir golpe passa antes, pelo antigolpe, que não usa IA.
   if (pergunta.length > MAX_PERGUNTA) return responder({ error: `Sua pergunta ficou muito longa (${pergunta.length.toLocaleString("pt-BR")} caracteres). Resuma em até ${MAX_PERGUNTA.toLocaleString("pt-BR")} caracteres, por favor.` }, 413);
+
+  // 0.45) Pedido fora do assunto (piada, receita...): resposta fixa, sem IA (teste C3).
+  if (!temImagem(ultima) && foraDoEscopo(pergunta)) return res.json({ reply: respostaForaDoEscopo(t), origem: "escopo" });
 
   // 0.5) Cache das perguntas frequentes (só 1ª pergunta, sem dados pessoais).
   const t0 = Date.now();
@@ -329,7 +370,13 @@ app.post(`${T}/chat`, comTenant, async (req, res) => {
       const resp = await perguntarRapido(botayio, `detran-${t.slug}-web-${simCtx ? "sim-" : avaliador ? "aval-" : ""}${sid}`, pergunta, restart, extra, aoPedaco);
       if (simCtx && !resp.contexto_aplicado) throw new Error("BotAyio sem suporte a contexto (versão antiga)");
       // [[SEMBASE]] é registro interno: não vai para o cidadão; marca a lacuna.
-      const { partes, reply, semBase, transbordo, final } = montarResposta(resp, pergunta);
+      let { partes, reply, semBase, transbordo, final } = montarResposta(resp, pergunta);
+      // Encaminhado para pessoa: explica como funciona e o horário (antes ficava só "aguarde").
+      if (transbordo && !naoGravar) {
+        const aviso = avisoFilaSite(t);
+        partes = [...partes, aviso];
+        final = `${final}\n[[BREAK]]\n${aviso}`;
+      }
       // simulação não entra nas conversas nem nas estatísticas do DETRAN
       const gravacoes = naoGravar ? [] : [
         registrarTroca({ tenantId: t.id, canal: "WEB", contato: sid, pergunta, respostas: partes, categoria: resp.categoria, transbordo }),
@@ -344,7 +391,7 @@ app.post(`${T}/chat`, comTenant, async (req, res) => {
         naoGravar ? null : registrarUso(t.slug, "WEB", resp.uso),
         podeCache && reply && !semBase && !transbordo ? guardarCache(t.slug, pergunta, { reply: final, categoria: resp.categoria || tema }) : null,
       ]);
-      return responder({ reply: final, origem: simCtx ? "botayio-sim" : "botayio", ...(avaliador ? { avaliacao: true, uso: resp.uso || null } : {}) });
+      return responder({ reply: final, origem: simCtx ? "botayio-sim" : "botayio", ...(transbordo && !naoGravar ? { humano: true } : {}), ...(avaliador ? { avaliacao: true, uso: resp.uso || null } : {}) });
     } catch (err) {
       console.error(`[BotAyio:${t.slug}] chat web:`, err.message);
       if (!llmConfigurado()) {
@@ -401,7 +448,8 @@ app.post(`${T}/antigolpe`, comTenant, (req, res) => {
 
 // Feedback do cidadão (público)
 app.post(`${T}/feedback`, comTenant, (req, res) => {
-  registrarEvento({ tenantId: req.tenant.id, tipo: "FEEDBACK", canal: "WEB", positivo: Boolean(req.body?.up) });
+  const motivo = ["faltou", "errada", "confusa", "outro"].includes(req.body?.motivo) ? req.body.motivo : null;
+  registrarEvento({ tenantId: req.tenant.id, tipo: "FEEDBACK", canal: "WEB", positivo: Boolean(req.body?.up), ...(motivo ? { tema: "fb:" + motivo } : {}) });
   res.json({ ok: true });
 });
 
@@ -491,7 +539,9 @@ registrarAtendimento(app);
 // Central de Gestão de cada DETRAN (chamados, fila, indicadores, equipe)
 registrarGestao(app, { limitar: (chave, max) => rateLimited(chave, max) });
 registrarTutoriaGestao(app);
+registrarMonitorSite(app, { limitar: (chave, max) => rateLimited(chave, max) });
 registrarObservatorio(app);
+registrarRelatorioMensal(app);
 
 // "Meu DETRAN" oficial (conector da API do DETRAN + login gov.br); desligado por padrão
 registrarMeuDetran(app, { limitar: (chave, max) => rateLimited(chave, max) });
@@ -503,6 +553,8 @@ registrarProtocoloJornada(app, {
   limitar: (chave, max) => rateLimited(chave, max),
   avisarWhatsApp: async (t, tel, txt) => { await enviarWhatsApp(t, tel, txt); return true; },
 });
+// Conta rápida do cidadão ("Meus pedidos"): código no WhatsApp, sem senha (25/11/2026)
+registrarContaCidadao(app, { limitar: (chave, max) => rateLimited(chave, max), enviar: enviarWhatsApp });
 
 // Conferência de documentos antes do protocolo (checklist por serviço + foto)
 registrarConferencia(app, { limitar: (chave, max) => rateLimited(chave, max) });
@@ -527,7 +579,7 @@ registrarSeguranca(app, { comTenant, exigir, exigirSuper, limitar: (chave, max) 
 registrarImpacto(app, { limitar: (chave, max) => rateLimited(chave, max) });
 
 // ═════════════════════════ PÁGINAS ═════════════════════════
-const PAGINAS = { chat: "index.html", tutor: "tutor.html", balcao: "balcao.html", painel: "painel-custos.html", admin: "admin.html", atendimento: "atendimento.html", gestao: "gestao.html", privacidade: "privacidade.html", servicos: "servicos.html" };
+const PAGINAS = { chat: "index.html", tutor: "tutor.html", balcao: "balcao.html", painel: "painel-custos.html", admin: "admin.html", atendimento: "atendimento.html", gestao: "gestao.html", privacidade: "privacidade.html", servicos: "servicos.html", conta: "conta.html" };
 const htmlCache = new Map();
 const lerHtml = (arq) => {
   if (!htmlCache.has(arq) || process.env.NODE_ENV === "development") htmlCache.set(arq, versionar(readFileSync(join(ROOT, "public", arq), "utf8")));
@@ -615,6 +667,7 @@ app.get("/:slug/admin", (req, res) => pagina(req, res, "admin"));
 app.get("/:slug/atendimento", (req, res) => pagina(req, res, "atendimento"));
 app.get("/:slug/gestao", (req, res) => pagina(req, res, "gestao"));
 app.get("/:slug/privacidade", (req, res) => pagina(req, res, "privacidade"));
+app.get("/:slug/conta", (req, res) => pagina(req, res, "conta"));
 app.get("/:slug/servicos", async (req, res) => {
   // Demonstração: abre com o link da demo. DETRAN cliente: só com o link privado da simulação (?sim=CHAVE -> cookie).
   const t = SLUG_RE.test(String(req.params.slug || "").toLowerCase()) ? await buscarTenant(String(req.params.slug).toLowerCase()).catch(() => null) : null;

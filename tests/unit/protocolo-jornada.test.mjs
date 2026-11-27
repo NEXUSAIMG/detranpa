@@ -30,6 +30,6 @@ test("descrição do chamado traz as respostas, os prazos e o aviso de demonstra
   assert.match(d, /DEMONSTRAÇÃO/);
   assert.match(d, /O que aconteceu: Perdi/);
   assert.match(d, /A CNH está na validade\?: Sim, estava válida/);
-  assert.match(d, /Anexos \(1\): bo\.pdf/);
+  assert.match(d, /Anexos \(1\):\n- bo\.pdf/);
   assert.match(d, /Observação do cidadão:\nTeste/);
 });

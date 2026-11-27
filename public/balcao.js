@@ -13,7 +13,7 @@ const CHIPS = [
 ];
 
 function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
-function rich(t) { return esc(t).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/(https?:\/\/[^\s)]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>'); }
+function rich(t) { if (window.textoRico) return window.textoRico(t); return esc(t).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/(https?:\/\/[^\s)]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>'); }
 
 // Chamadas à API do DETRAN da URL (com o token da sessão).
 const api = (path, opts = {}) => Sessao.api(path.replace(/^\/api/, ""), opts);
@@ -113,6 +113,7 @@ async function gerarTermo() {
   abrirTermo(data.termo);
 }
 function abrirTermo(texto) {
+  if (window.textoLimpo) texto = window.textoLimpo(texto); // o termo é impresso: sem "**" nem "#"
   $("termo-paper").textContent = texto;
   $("termo-ov").classList.remove("hidden");
   $("termo-copy").onclick = async () => { try { await navigator.clipboard.writeText(texto); const c = $("termo-copy"); const t = c.textContent; c.textContent = "✓ Copiado"; setTimeout(() => { c.textContent = t; }, 1500); } catch (_) {} };

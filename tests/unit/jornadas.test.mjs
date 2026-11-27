@@ -57,16 +57,32 @@ test("renovação: data obrigatória, prorrogação da Resolução 1.033 e exame
   assert.ok(c.prazos[0].aviso);
   assert.match(c.prazos[0].rotulo, /1\.033/);
   assert.equal(r.avisos[0].lembrete, "CNH");
+  // Faixa de idade (27/11/2026): define a validade da CNH nova.
+  assert.ok((await J.responder(t, r.est, { acao: "feito" })).erro);
+  r = await J.responder(t, r.est, { acao: "opcao", valor: "50a69" });
+  assert.match(J.cartao(t, r.est).etapa.texto, /5 anos/);
   r = await J.responder(t, r.est, { acao: "feito" });
   r = await J.responder(t, r.est, { acao: "feito" });
   r = await J.responder(t, r.est, { acao: "pular" });
-  assert.equal(J.cartao(t, r.est).etapa.id, "biometria");
+  const c2 = J.cartao(t, r.est);
+  assert.equal(c2.etapa.id, "biometria");
+  // Pulada aparece como pulada (não como feita) e o total não muda no caminho.
+  const exame = c2.progresso.etapas.find((x) => x.id === "exame");
+  assert.equal(exame.pulado, true);
+  assert.equal(c2.progresso.etapas.find((x) => x.id === "guia").pulado, false);
+  assert.equal(c2.progresso.total, 7);
+});
+
+test("total de etapas: igual no catálogo, no início e depois das escolhas", async () => {
+  const est = await J.iniciar(t, "web:unit-total-0001", "segundavia");
+  const prev = J.etapasPrevistas(J.JORNADAS.segundavia);
+  assert.equal(J.cartao(t, est).progresso.total, prev);
 });
 
 test("WhatsApp: texto com progresso e comandos", async () => {
   const est = await J.iniciar(t, "wa:5591900000001", "defesa", { canal: "WHATSAPP" });
   const c = J.cartao(t, est);
-  assert.match(J.textoWhatsApp(c), /etapa 1 de 6/);
+  assert.match(J.textoWhatsApp(c), /etapa 1 de 7/);
   assert.equal(J.comandoWhatsApp(c, "10/11/2026")?.acao, "data");
   assert.equal(J.comandoWhatsApp(c, "qual o endereço?"), null);
   await J.sair(t, "wa:5591900000001");

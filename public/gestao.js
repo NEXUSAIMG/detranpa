@@ -15,7 +15,7 @@
   const minDesde = (d) => (d ? Math.max(0, Math.floor((Date.now() - new Date(d)) / 60000)) : 0);
   const durTxt = (m) => (m == null ? "—" : m < 60 ? `${Math.round(m)} min` : m < 1440 ? `${Math.floor(m / 60)}h${String(Math.round(m % 60)).padStart(2, "0")}` : `${Math.floor(m / 1440)}d ${Math.floor((m % 1440) / 60)}h`);
   const msgBox = (el, t, tipo = "err") => { $(el).innerHTML = t ? `<div class="msg ${tipo}">${esc(t)}</div>` : ""; };
-  const linkify = (s) => esc(s).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>').replace(/\*([^*\n]+)\*/g, "<b>$1</b>");
+  const linkify = (s) => window.textoRico ? window.textoRico(s) : esc(s).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>').replace(/\*([^*\n]+)\*/g, "<b>$1</b>");
   let toastT;
   const toast = (t) => { $("toast").textContent = t; $("toast").classList.remove("hidden"); clearTimeout(toastT); toastT = setTimeout(() => $("toast").classList.add("hidden"), 2600); };
 
@@ -177,7 +177,7 @@
       + kpi("Chamados em aberto", a.chamadosAbertos, a.chamadosVencidos ? `${a.chamadosVencidos} vencido(s)` : "nenhum vencido", a.chamadosVencidos ? "critico" : "");
     $("kpi-periodo").innerHTML =
       kpi("Perguntas ao assistente", p.perguntas.toLocaleString("pt-BR"), `${p.conversas} conversas`, "neutro")
-      + kpi("Pediram atendente", p.transbordos, `${p.taxaTransbordo}% das perguntas`)
+      + kpi("Pediram atendente", p.transbordos, `${p.taxaTransbordo}% das conversas`)
       + kpi("1ª resposta humana", durTxt(p.tprMedioMin), "tempo médio")
       + kpi("Duração do atendimento", durTxt(p.tmaMedioMin), `${p.encerradas} encerrados`)
       + kpi("Satisfação", p.nota != null ? `${String(p.nota).replace(".", ",")} ★` : "—", p.avaliacoes ? `${p.csat}% satisfeitos · ${p.avaliacoes} notas` : "sem notas ainda", p.nota != null && p.nota < 3.5 ? "alerta" : "")
@@ -237,9 +237,9 @@
     $("lista-conv").innerHTML = cs.map((c) => {
       const esp = c.esperaDesde ? minDesde(c.esperaDesde) : null;
       const etqs = (c.etiquetas || []).map(etq).filter(Boolean).map((e) => `<span class="chip tinto" style="background:${esc(e.cor)};color:${corTexto(e.cor)}">${esc(e.nome)}</span>`).join("");
-      const ultima = c.ultima ? `${c.ultima.autor === "CIDADAO" ? "" : c.ultima.autor === "BOT" ? "🤖 " : "Você/equipe: "}${c.ultima.texto}` : "";
+      const ultima = c.ultima ? `${c.ultima.autor === "CIDADAO" ? "" : c.ultima.autor === "BOT" ? "🤖 " : "Você/equipe: "}${window.textoLimpo ? window.textoLimpo(c.ultima.texto) : c.ultima.texto}` : "";
       return `<div class="it ${c.id === S.convId ? "sel" : ""}" data-id="${esc(c.id)}">
-        <div class="l1"><span>${c.canal === "WHATSAPP" ? "🟢" : "🌐"} ${esc(c.nome || c.contato)}</span>${esp != null ? `<span class="espera ${classeEspera(esp)}">⏱ ${durTxt(esp)}</span>` : `<span class="hora">${quando(c.ultimaEm)}</span>`}</div>
+        <div class="l1"><span>${c.canal === "WHATSAPP" ? "🟢" : "🌐"} ${esc(c.nome || (c.canal === "WEB" ? "Visitante do site" : formatarFone(c.contato)))}</span>${esp != null ? `<span class="espera ${classeEspera(esp)}">⏱ ${durTxt(esp)}</span>` : `<span class="hora">${quando(c.ultimaEm)}</span>`}</div>
         <div class="l2">${esc(ultima)}</div>
         <div class="l3">${c.atendenteNome && S.aba !== "meus" ? `<span class="chip">👤 ${esc(c.atendenteNome)}</span>` : ""}${c.categoria ? `<span class="chip">${esc(nomeCat[c.categoria] || c.categoria)}</span>` : ""}${c.avaliacao ? `<span class="chip">${c.avaliacao} ★</span>` : ""}${etqs}</div>
       </div>`;
@@ -263,16 +263,18 @@
     const box = $("c-msgs"); const noFim = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
     const html = r.data.mensagens.map((m) => `<div class="m ${esc(m.autor)}">${linkify(m.texto)}<small>${m.autorNome ? esc(m.autorNome) + " · " : ""}${fmtDH(m.criadoEm)}</small></div>`).join("");
     if (box.dataset.h !== String(html.length) || mudou) { box.innerHTML = html; box.dataset.h = html.length; if (mudou || noFim) box.scrollTop = box.scrollHeight; }
-    const podeResponder = c.status === "HUMANO" && c.canal === "WHATSAPP";
+    // Site também (27/11/2026): a resposta aparece na tela do cidadão enquanto ele estiver nela.
+    const podeResponder = c.status === "HUMANO";
     $("compor").classList.toggle("hidden", !(podeResponder || S.modo === "nota" || c.status !== "HUMANO"));
     if (mudou) { trocarModo(podeResponder ? "resp" : "nota"); $("ia-resumo-out").classList.add("hidden"); fichaPreencher(r.data); }
     else fichaChamados(r.data.chamados);
   }
-  const formatarFone = (f) => { const d = String(f).replace(/\D/g, "").replace(/^55/, ""); return d.length >= 10 ? `(${d.slice(0, 2)}) ${d.slice(2, -4)}-${d.slice(-4)}` : f; };
+  // Só formata o que é telefone; o "contato" do site é o código da sessão (teste I13).
+  const formatarFone = (f) => { if (!/^\+?[\d\s().-]{10,20}$/.test(String(f || ""))) return "sessão do site"; const d = String(f).replace(/\D/g, "").replace(/^55/, ""); return d.length >= 10 ? `(${d.slice(0, 2)}) ${d.slice(2, -4)}-${d.slice(-4)}` : f; };
   function acoesConversa(c) {
     const meu = c.atendenteId === S.eu.id; const b = [];
     if (c.status === "HUMANO" && !c.atendenteId) b.push(`<button class="btn pri mini" data-a="assumir">Assumir</button>`);
-    if (c.status !== "HUMANO" && c.canal === "WHATSAPP") b.push(`<button class="btn soft mini" data-a="transferir">Puxar para mim</button>`);
+    if (c.status !== "HUMANO") b.push(`<button class="btn soft mini" data-a="transferir">Puxar para mim</button>`);
     if (c.status === "HUMANO") b.push(`<button class="btn ghost mini" data-a="repassar">Repassar</button>`);
     b.push(`<button class="btn soft mini" data-a="chamado">📋 Abrir chamado</button>`);
     if (c.status === "HUMANO" && (meu || S.podeGerir || !c.atendenteId)) b.push(`<button class="btn ghost mini" data-a="devolver">Devolver ao bot</button><button class="btn acento mini" data-a="encerrar">Encerrar</button>`);
@@ -284,12 +286,24 @@
     if (a === "assumir" || a === "transferir") r = await apiAt(`/conversas/${id}/${a}`, post());
     else if (a === "repassar") return modalRepassar();
     else if (a === "chamado") return modalChamado({ conversaId: id });
-    else if (a === "devolver") { if (!confirmar("Devolver a conversa para o assistente virtual?")) return; r = await apiAt(`/conversas/${id}/devolver`, post()); }
+    else if (a === "devolver") { if (!(await confirmar("Devolver a conversa para o assistente virtual?"))) return; r = await apiAt(`/conversas/${id}/devolver`, post()); }
     else if (a === "encerrar") return modalEncerrar();
     if (r && !r.ok) return toast(r.data.error || "Não foi possível.");
     toast("Feito."); await abrirConversa(id, true); carregarLista(); pulsar();
   }
-  const confirmar = (t) => window.confirm(t);
+  // Confirmação dentro da página (teste I13): a caixa do navegador trava a tela e some
+  // em alguns navegadores. Devolve uma Promise; quem chama usa "await confirmar(...)".
+  const confirmar = (t) => new Promise((ok) => {
+    const volta = document.activeElement;
+    const ov = document.createElement("div"); ov.className = "conf-ov";
+    ov.innerHTML = `<div class="conf-box" role="alertdialog" aria-modal="true" aria-labelledby="conf-t"><p id="conf-t">${esc(t)}</p><div class="conf-bts"><button type="button" class="btn ghost" data-r="0">Cancelar</button><button type="button" class="btn" data-r="1">Confirmar</button></div></div>`;
+    const fim = (r) => { ov.remove(); document.removeEventListener("keydown", tecla, true); volta?.focus?.(); ok(r); };
+    const tecla = (e) => { if (e.key === "Escape") { e.preventDefault(); fim(false); } else if (e.key === "Tab") { const bs = [...ov.querySelectorAll("button")]; const i = bs.indexOf(document.activeElement); e.preventDefault(); bs[(i + (e.shiftKey ? bs.length - 1 : 1)) % bs.length].focus(); } };
+    ov.querySelectorAll("button").forEach((b) => (b.onclick = () => fim(b.dataset.r === "1")));
+    ov.addEventListener("click", (e) => { if (e.target === ov) fim(false); });
+    document.addEventListener("keydown", tecla, true);
+    document.body.appendChild(ov); ov.querySelector('[data-r="0"]').focus();
+  });
 
   // Caixa de resposta: resposta ao cidadão ou nota interna; "/" abre respostas rápidas
   document.querySelectorAll(".compor-abas button[data-modo]").forEach((b) => (b.onclick = () => trocarModo(b.dataset.modo)));
@@ -297,9 +311,11 @@
     S.modo = m; $("compor").classList.toggle("nota", m === "nota");
     document.querySelectorAll(".compor-abas button[data-modo]").forEach((b) => b.classList.toggle("on", b.dataset.modo === m));
     const c = S.conv?.conversa;
-    const pode = c && c.status === "HUMANO" && c.canal === "WHATSAPP";
+    const pode = c && c.status === "HUMANO";
     document.querySelector('.compor-abas button[data-modo="resp"]').disabled = !pode;
-    $("c-texto").placeholder = m === "nota" ? "Nota interna — só a equipe vê." : "Escreva a mensagem para o cidadão… (Enter envia, Shift+Enter quebra linha)";
+    $("c-texto").placeholder = m === "nota" ? "Nota interna — só a equipe vê."
+      : c?.canal === "WEB" ? "Mensagem para o cidadão no site (ele vê enquanto estiver com a página aberta)… Enter envia"
+      : "Escreva a mensagem para o cidadão… (Enter envia, Shift+Enter quebra linha)";
     $("compor").classList.remove("hidden");
   }
   $("c-enviar").onclick = enviar;
@@ -364,7 +380,7 @@
     const ls = (r.ok && r.data.lembretes) || [];
     const ST = { ATIVO: "ativo", PENDENTE: "aguardando SIM", CONCLUIDO: "concluído", CANCELADO: "cancelado" };
     $("f-lembretes").innerHTML = ls.length ? ls.map((l) => `<div class="mini-ch">🔔 <b>${esc(l.nome || l.tipo)}</b>${l.descricao ? ` <small>(${esc(l.descricao)})</small>` : ""}<div>${new Date(l.dataAlvo).toLocaleDateString("pt-BR", { timeZone: "UTC" })} · ${ST[l.status] || l.status}${["ATIVO", "PENDENTE"].includes(l.status) ? ` <button class="btn ghost mini" data-cl="${esc(l.id)}">cancelar</button>` : ""}</div></div>`).join("") : '<span class="vazio-p">Nenhum. O cidadão pode pedir pelo site ou mandando "lembrete" no WhatsApp.</span>';
-    $("f-lembretes").querySelectorAll("[data-cl]").forEach((b) => (b.onclick = async (e) => { e.stopPropagation(); if (!confirmar("Cancelar este lembrete?")) return; await api("/lembretes/" + b.dataset.cl, { method: "DELETE" }); fichaLembretes(contato); }));
+    $("f-lembretes").querySelectorAll("[data-cl]").forEach((b) => (b.onclick = async (e) => { e.stopPropagation(); if (!(await confirmar("Cancelar este lembrete?"))) return; await api("/lembretes/" + b.dataset.cl, { method: "DELETE" }); fichaLembretes(contato); }));
   }
   function fichaChamados(chs) {
     $("f-chamados").innerHTML = chs.length ? chs.map((c) => `<div class="mini-ch" data-id="${esc(c.id)}"><b>${esc(c.protocolo)}</b> <span class="pill st-${esc(c.status)}">${esc(S.statusTexto[c.status])}</span><div>${esc(c.assunto)}</div></div>`).join("") : '<span class="vazio-p">Nenhum chamado.</span>';
@@ -467,7 +483,8 @@
   let tBch; $("busca-ch").oninput = () => { clearTimeout(tBch); tBch = setTimeout(carregarChamados, 300); };
   ["fch-status", "fch-prio", "fch-resp", "fch-venc"].forEach((id) => ($(id).onchange = carregarChamados));
   async function carregarChamados() {
-    const status = S.modoCh === "kanban" && $("fch-status").value === "abertos" ? "" : $("fch-status").value;
+    // "Em aberto" vale também no quadro (teste I6): antes o quadro buscava todos e mostrava resolvidos.
+    const status = $("fch-status").value;
     const q = new URLSearchParams({ busca: $("busca-ch").value.trim(), status, prioridade: $("fch-prio").value, responsavel: $("fch-resp").value, vencidos: $("fch-venc").checked ? "1" : "" });
     const r = await api("/chamados?" + q); if (!r.ok) return;
     S.chamados = r.data.chamados; desenharChamados();
@@ -481,7 +498,7 @@
     if (kan) {
       const cols = ["ABERTO", "EM_ANDAMENTO", "AGUARDANDO_CIDADAO", "RESOLVIDO", "CANCELADO"];
       const recentes = (c) => !["RESOLVIDO", "CANCELADO"].includes(c.status) || Date.now() - new Date(c.resolvidoEm || c.atualizadoEm) < 7 * 86400000;
-      $("kanban").innerHTML = cols.map((s) => { const cs = S.chamados.filter((c) => c.status === s && recentes(c)); return `<div class="col" data-st="${s}"><h5 role="heading" aria-level="3"><span>${esc(S.statusTexto[s])}</span><span>${cs.length}</span></h5>${cs.map(cartao).join("")}</div>`; }).join("");
+      $("kanban").innerHTML = cols.map((s) => { const cs = S.chamados.filter((c) => c.status === s && recentes(c)); const fechada = $("fch-status").value === "abertos" && ["RESOLVIDO", "CANCELADO"].includes(s); return `<div class="col" data-st="${s}"><h5 role="heading" aria-level="3"><span>${esc(S.statusTexto[s])}</span><span>${fechada ? "" : cs.length}</span></h5>${fechada ? '<p class="vazio-p" style="padding:8px">Arraste um chamado para cá. Para ver os já encerrados, mude o filtro para “Todos”.</p>' : cs.map(cartao).join("")}</div>`; }).join("");
       arrastar();
     } else {
       $("lista-ch").innerHTML = S.chamados.length ? `<div class="cartao"><table class="tabela"><thead><tr><th>Protocolo</th><th>Assunto</th><th>Cidadão</th><th>Situação</th><th>Prioridade</th><th>Responsável</th><th>Prazo</th></tr></thead><tbody>${S.chamados.map((c) => `<tr class="click" data-id="${esc(c.id)}"><td><b>${esc(c.protocolo)}</b></td><td>${esc(c.assunto)}</td><td>${esc(c.nome || (c.contato ? formatarFone(c.contato) : "—"))}</td><td><span class="pill st-${esc(c.status)}">${esc(S.statusTexto[c.status])}</span></td><td>${esc(c.prioridade)}</td><td>${esc(c.responsavelNome || "—")}</td><td class="${c.vencido ? "pill venc" : ""}">${fmtData(c.prazoEm)}</td></tr>`).join("")}</tbody></table></div>` : '<div class="vazio"><div class="vazio-ic">📋</div><b>Nenhum chamado</b><span>Abra a partir de uma conversa ou pelo botão “Novo chamado”.</span></div>';
@@ -625,14 +642,14 @@
     $("lgpd-previa").innerHTML = `Pela regra atual, a próxima limpeza remove <b>${d.conversas}</b> conversa(s) e <b>${d.balcao}</b> registro(s) do balcão, e tira os dados pessoais de <b>${d.chamados}</b> chamado(s) encerrado(s). Última limpeza: <b>${d.ultimaLimpeza ? fmtDH(d.ultimaLimpeza) : "ainda não rodou"}</b>.`;
   }
   $("lgpd-limpar").onclick = async () => {
-    if (!confirmar("Aplicar agora a limpeza pela regra configurada? O que for apagado não volta.")) return;
+    if (!(await confirmar("Aplicar agora a limpeza pela regra configurada? O que for apagado não volta."))) return;
     const r = await api("/lgpd/limpar", post());
     if (!r.ok) return toast(r.data.error || "Erro na limpeza.");
     toast(`Limpeza feita: ${r.data.conversas} conversa(s), ${r.data.chamados} chamado(s) anonimizado(s).`); previaLgpd();
   };
   $("f-apagar").onclick = async () => {
     const c = S.conv?.conversa; if (!c) return;
-    if (!confirmar(`Apagar TODAS as conversas e a ficha de ${S.conv.ficha.nome || formatarFone(c.contato)}? Os chamados ficam, mas sem nome e telefone. Use só a pedido do cidadão. Não dá para desfazer.`)) return;
+    if (!(await confirmar(`Apagar TODAS as conversas e a ficha de ${S.conv.ficha.nome || formatarFone(c.contato)}? Os chamados ficam, mas sem nome e telefone. Use só a pedido do cidadão. Não dá para desfazer.`))) return;
     const r = await api("/lgpd/apagar-cidadao", post({ contato: c.contato }));
     if (!r.ok) return toast(r.data.error || "Não foi possível apagar.");
     toast(`Dados apagados: ${r.data.conversas} conversa(s), ${r.data.chamados} chamado(s) anonimizado(s).`);
@@ -656,7 +673,7 @@
   function listaRespostas() {
     $("lista-rr").innerHTML = S.respostas.map((r) => `<div class="rr-item"><div><b>/${esc(r.atalho)}</b> — ${esc(r.titulo)}<span>${esc(r.texto)}</span></div><button class="btn ghost mini" data-ed="${esc(r.id)}">Editar</button><button class="btn perigo mini" data-rm="${esc(r.id)}">✕</button></div>`).join("") || '<div class="vazio-p">Nenhuma resposta rápida.</div>';
     $("lista-rr").querySelectorAll("[data-ed]").forEach((b) => (b.onclick = () => { const r = S.respostas.find((x) => x.id === b.dataset.ed); $("rr-id").value = r.id; $("rr-atalho").value = r.atalho; $("rr-titulo").value = r.titulo; $("rr-texto").value = r.texto; }));
-    $("lista-rr").querySelectorAll("[data-rm]").forEach((b) => (b.onclick = async () => { if (!confirmar("Apagar esta resposta rápida?")) return; await api("/respostas/" + b.dataset.rm, { method: "DELETE" }); S.respostas = S.respostas.filter((x) => x.id !== b.dataset.rm); listaRespostas(); }));
+    $("lista-rr").querySelectorAll("[data-rm]").forEach((b) => (b.onclick = async () => { if (!(await confirmar("Apagar esta resposta rápida?"))) return; await api("/respostas/" + b.dataset.rm, { method: "DELETE" }); S.respostas = S.respostas.filter((x) => x.id !== b.dataset.rm); listaRespostas(); }));
   }
   $("rr-limpar").onclick = () => ["rr-id", "rr-atalho", "rr-titulo", "rr-texto"].forEach((i) => ($(i).value = ""));
   $("rr-salvar").onclick = async () => {
@@ -668,7 +685,7 @@
   function listaEtiquetas() {
     $("lista-etq").innerHTML = S.etiquetas.map((e) => `<div class="rr-item"><div><span class="chip tinto" style="background:${esc(e.cor)};color:${corTexto(e.cor)}">${esc(e.nome)}</span></div><button class="btn ghost mini" data-ed="${esc(e.id)}">Editar</button><button class="btn perigo mini" data-rm="${esc(e.id)}">✕</button></div>`).join("") || '<div class="vazio-p">Nenhuma etiqueta.</div>';
     $("lista-etq").querySelectorAll("[data-ed]").forEach((b) => (b.onclick = () => { const e = S.etiquetas.find((x) => x.id === b.dataset.ed); $("et-id").value = e.id; $("et-nome").value = e.nome; $("et-cor").value = e.cor; }));
-    $("lista-etq").querySelectorAll("[data-rm]").forEach((b) => (b.onclick = async () => { if (!confirmar("Apagar esta etiqueta?")) return; await api("/etiquetas/" + b.dataset.rm, { method: "DELETE" }); S.etiquetas = S.etiquetas.filter((x) => x.id !== b.dataset.rm); listaEtiquetas(); montarFiltros(); }));
+    $("lista-etq").querySelectorAll("[data-rm]").forEach((b) => (b.onclick = async () => { if (!(await confirmar("Apagar esta etiqueta?"))) return; await api("/etiquetas/" + b.dataset.rm, { method: "DELETE" }); S.etiquetas = S.etiquetas.filter((x) => x.id !== b.dataset.rm); listaEtiquetas(); montarFiltros(); }));
   }
   $("et-limpar").onclick = () => { $("et-id").value = ""; $("et-nome").value = ""; };
   $("et-salvar").onclick = async () => {

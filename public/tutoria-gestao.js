@@ -10,7 +10,7 @@
   const fmtD = (d) => (d ? new Date(d.length === 10 ? d + "T12:00:00" : d).toLocaleDateString("pt-BR") : "—");
   const fmtDH = (d) => (d ? new Date(d).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "—");
   const hoje = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-  const txt = (s) => esc(s).replace(/\[\[BREAK\]\]/g, "<br>").replace(/\[\[[A-Z:-]+[\w-]*\]\]/g, "").replace(/\*([^*\n]+)\*/g, "<b>$1</b>").replace(/\n/g, "<br>");
+  const txt = (s) => window.textoRico ? window.textoRico(s) : esc(s).replace(/\[\[BREAK\]\]/g, "<br>").replace(/\[\[[A-Z:-]+[\w-]*\]\]/g, "").replace(/\*([^*\n]+)\*/g, "<b>$1</b>").replace(/\n/g, "<br>");
   const conf = (c) => (c == null ? "" : `<span class="tu-conf ${c >= 0.25 ? "ok" : "baixa"}" title="O quanto a base de conhecimento combinou com a pergunta">${Math.round(c * 100)}% de confiança</span>`);
   const msg = (t, tipo = "err") => { $("tu-msg").innerHTML = t ? `<div class="msg ${tipo}">${esc(t)}</div>` : ""; if (t && tipo === "ok") setTimeout(() => { if ($("tu-msg").textContent === t) $("tu-msg").innerHTML = ""; }, 5000); };
   let aba = "ensinar";
@@ -106,7 +106,7 @@
       $("tu-corpo").innerHTML = `<div class="cartao"><p class="vazio-p">${soRevisar ? "Nada para revisar agora: o bot achou resposta na base para tudo que perguntaram. 🎉" : "Ainda não há respostas registradas."}</p></div>`;
       return;
     }
-    $("tu-corpo").innerHTML = (soRevisar ? `<p class="vazio-p">Perguntas em que o bot <b>não achou nada parecido na base</b> — as mais incertas primeiro. Corrija para ele aprender.</p>` : "")
+    $("tu-corpo").innerHTML = (soRevisar ? `<p class="vazio-p">Perguntas em que o bot <b>não achou nada parecido na base</b> ou respondeu com <b>confiança baixa</b> (abaixo de 25%) — as mais incertas primeiro. Corrija para ele aprender.</p>` : "")
       + itens.map((i, k) => `<div class="cartao tu-item">
         <div class="tu-topo"><small>${fmtDH(i.quando)}</small>${conf(i.confianca)}${i.jaCorrigida ? `<span class="tu-tag ok">já corrigida</span>` : ""}</div>
         <div class="tu-q"><b>Cidadão:</b> ${esc(i.pergunta || "(sem texto)")}</div>
@@ -262,8 +262,58 @@
     }));
   }
 
+  // ── Site oficial do DETRAN: páginas acompanhadas e o que mudou (rotina diária) ──
+  const ROT_SITE = { revisado: "✅ Base revisada", sem_impacto: "Sem impacto na base" };
+  async function cartaoSite(acao) {
+    const alvo = $("tu-site"); if (!alvo) return;
+    const tit = `<h4 role="heading" aria-level="2">Mudanças no site oficial</h4>`;
+    alvo.innerHTML = `<div class="cartao">${tit}<p class="vazio-p">${acao === "verificar" ? "Conferindo as páginas no site do DETRAN…" : "Carregando…"}</p></div>`;
+    const r = acao === "verificar" ? await api("/site/verificar", post({})) : await api("/site");
+    if (!r.ok) { alvo.innerHTML = `<div class="cartao">${tit}<div class="msg err">${esc(r.data?.error || "Não foi possível carregar.")}</div></div>`; return; }
+    const d = r.data, itens = d.itens || [];
+    const pend = itens.filter((x) => x.pendente);
+    const linhaMud = (x) => {
+      if (!x.mudanca) return "";
+      if (x.mudanca.pdf) return `<p class="vazio-p">O arquivo PDF foi trocado. Abra e confira.</p>`;
+      const lista = (arr, cls, rot) => (arr.length ? `<div class="tu-dif ${cls}"><b>${rot}</b><ul>${arr.map((l) => `<li>${esc(l)}</li>`).join("")}</ul></div>` : "");
+      return lista(x.mudanca.entrou, "entrou", "Entrou no site:") + lista(x.mudanca.saiu, "saiu", "Saiu do site:");
+    };
+    alvo.innerHTML = `<div class="cartao tu-site">
+      <h4 role="heading" aria-level="2">Mudanças no site oficial ${pend.length ? `<b class="tu-badge">${pend.length} para revisar</b>` : ""}</h4>
+      <p class="vazio-p">Todo dia o sistema confere as páginas abaixo no portal do DETRAN (${esc(d.dominio || "portal não cadastrado")}). Quando o texto muda (taxa, documento, prazo), aparece aqui o que entrou e o que saiu. Confira, ensine ou corrija o bot se precisar, e marque como revisado.</p>
+      ${itens.length ? `<ul class="tu-normas-lista">${itens.map((x) => `<li class="${x.pendente ? "" : "feita"}">
+        <div style="flex:1;min-width:0"><b>${esc(x.titulo || x.url)}</b>
+          <small>${esc(x.url)}</small>
+          <small>${x.erro ? `⚠️ ${esc(x.erro)}` : x.verificadoEm ? `Conferida em ${fmtDH(x.verificadoEm)}` : "Ainda não conferida"}${x.mudouEm ? ` · mudou em ${fmtDH(x.mudouEm)}` : ""}${x.decisao ? ` · ${ROT_SITE[x.decisao.decisao] || x.decisao.decisao}${x.decisao.autor ? ` por ${esc(x.decisao.autor)}` : ""}` : ""}</small>
+          ${x.semTexto ? `<div class="tu-dif saiu">Esta página é montada por JavaScript: o texto não vem no endereço, e o monitor não consegue comparar. Acompanhe o PDF ou uma página com o texto escrito, ou tire esta.</div>` : ""}
+          ${x.pendente ? linhaMud(x) : ""}</div>
+        <div class="tu-acoes">
+          <a class="btn soft" href="${esc(x.url)}" target="_blank" rel="noopener">Abrir ↗</a>
+          ${x.pendente ? `<button class="btn pri" data-url="${esc(x.url)}" data-sa="revisado">Base revisada</button><button class="btn soft" data-url="${esc(x.url)}" data-sa="sem_impacto">Sem impacto</button>` : x.decisao ? `<button class="btn soft" data-url="${esc(x.url)}" data-sa="desfazer">Desfazer</button>` : ""}
+          <button class="btn ghost" data-url="${esc(x.url)}" data-sa="tirar" aria-label="Parar de acompanhar ${esc(x.titulo || x.url)}">Tirar</button>
+        </div></li>`).join("")}</ul>` : `<p class="vazio-p">Nenhuma página acompanhada.</p>`}
+      ${itens.length < (d.max || 20) ? `<div class="tu-linha"><div><label class="f" for="tu-site-url">Acompanhar outra página do portal</label><input id="tu-site-url" class="in" type="url" placeholder="https://www.${esc(d.dominio || "detran.xx.gov.br")}/servicos/..." /></div></div>` : ""}
+      <div class="tu-acoes">${itens.length < (d.max || 20) ? `<button class="btn pri" id="tu-site-add">Adicionar página</button>` : ""}<button class="btn soft" id="tu-site-verif">Verificar agora</button></div></div>`;
+    $("tu-site-verif").onclick = () => cartaoSite("verificar");
+    if ($("tu-site-add")) $("tu-site-add").onclick = async () => {
+      const url = $("tu-site-url").value.trim(); if (!url) return $("tu-site-url").focus();
+      $("tu-site-add").disabled = true;
+      const rr = await api("/site/paginas", post({ url }));
+      if (!rr.ok) { $("tu-site-add").disabled = false; return falhou(rr); }
+      msg("Página adicionada. A versão de hoje virou a referência.", "ok"); cartaoSite();
+    };
+    alvo.querySelectorAll("[data-sa]").forEach((b) => (b.onclick = async () => {
+      b.disabled = true;
+      const rr = b.dataset.sa === "tirar"
+        ? await api("/site/paginas?url=" + encodeURIComponent(b.dataset.url), { method: "DELETE" })
+        : await api("/site/decidir", post({ url: b.dataset.url, acao: b.dataset.sa }));
+      if (!rr.ok) { b.disabled = false; return falhou(rr); }
+      cartaoSite();
+    }));
+  }
+
   async function telaDocumentos() {
-    $("tu-corpo").innerHTML = `<div id="tu-normas"></div><div class="cartao">
+    $("tu-corpo").innerHTML = `<div id="tu-normas"></div><div id="tu-site"></div><div class="cartao">
       <h4 role="heading" aria-level="2">Enviar norma ou documento</h4>
       <p class="vazio-p">Portaria, instrução normativa, resolução, manual. O texto inteiro entra na base do bot. PDF, DOCX ou TXT de até 4 MB.</p>
       <div class="tu-linha"><div><label class="f" for="doc-arq">Arquivo</label><input id="doc-arq" class="in" type="file" accept=".pdf,.docx,.txt,.md" /></div>
@@ -272,6 +322,7 @@
     </div><div id="tu-lista"><div class="vazio-p">Carregando…</div></div>`;
     $("doc-ok").onclick = enviarDoc;
     cartaoNormas(false);
+    cartaoSite();
     const r = await api("/documentos");
     if (!r.ok) { $("tu-lista").innerHTML = ""; return falhou(r); }
     const docs = r.data.itens;

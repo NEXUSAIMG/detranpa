@@ -97,7 +97,7 @@
         </div>
         <div id="ob-msg"></div>
         <div class="kpis" id="ob-kpis"></div>
-        <div class="cartao largo ob-impacto-c"><div class="linha-tit" style="margin:0"><h4 role="heading" aria-level="2">Impacto do assistente <small class="ob-sub">(o que mudou para o cidadão e para o DETRAN)</small></h4><button class="btn soft mini" id="ob-relatorio" type="button">📄 Relatório do período (PDF)</button></div><div id="ob-impacto"></div></div>
+        <div class="cartao largo ob-impacto-c"><div class="linha-tit" style="margin:0"><h4 role="heading" aria-level="2">Impacto do assistente <small class="ob-sub">(o que mudou para o cidadão e para o DETRAN)</small></h4><span class="rel-mes"><button class="btn soft mini" id="ob-relatorio" type="button">📄 Relatório do período (PDF)</button><label class="so-leitor" for="rel-mes">Mês do relatório mensal</label><input id="rel-mes" class="in mini" type="month" style="width:auto;padding:4px 8px" /><button class="btn pri mini" id="rel-mensal" type="button">📊 Relatório mensal</button></span></div><div id="ob-impacto"></div></div>
         <div class="grade2" style="margin-bottom:14px">
           <div class="cartao"><h4 role="heading" aria-level="2">Antes e depois <small class="ob-sub">(números do DETRAN; a 1ª medição é a linha de base)</small></h4><div id="ob-med"></div><details style="margin-top:8px"><summary style="cursor:pointer;font-weight:600">Registrar medição</summary><div id="ob-med-form" style="margin-top:8px"></div></details></div>
           <div class="cartao"><h4 role="heading" aria-level="2">Divulgação <small class="ob-sub">(QR Code e cartaz por ponto)</small></h4><div id="ob-divulgar"></div><div id="ob-origens" style="margin-top:10px"></div></div>
@@ -329,8 +329,10 @@
 
   <div class="toast hidden" id="toast"></div>
   <script src="/sessao.js"></script>
-  <script src="/tutoria-gestao.js"></script>
+  <script src="/texto-rico.js"></script>
+<script src="/tutoria-gestao.js"></script>
   <script src="/impacto.js"></script>
+  <script src="/relatorio-mensal.js"></script>
   <script src="/observatorio.js"></script>
   <script src="/gestao.js"></script>
 </body>

@@ -35,7 +35,12 @@
       kpi("Sem resposta na base", `${R.taxaSemBase}%`, `${R.semBase} pergunta(s)`, R.taxaSemBase >= 15 ? "critico" : R.taxaSemBase >= 5 ? "alerta" : ""),
       kpi("Foram para atendente", `${R.taxaTransbordo}%`, `${R.transbordos} conversa(s)`, "neutro"),
       kpi("Golpes conferidos", R.golpesConferidos, `${R.golpesProvaveis} com cara de golpe ${R.golpesProvaveis ? seta(R.golpesVariacao) : ""}`, R.golpesProvaveis ? "alerta" : ""),
-      kpi("Satisfação", R.satisfacao == null ? "—" : `${R.satisfacao}%`, `${R.avaliacoes} avaliação(ões) 👍/👎`),
+      kpi("Satisfação", R.satisfacao == null ? "—" : `${R.satisfacao}%`, `${R.avaliacoes} avaliação(ões) 👍/👎` + (() => {
+        // Por que o 👎 (teste C1): o cidadão escolhe o motivo depois do voto.
+        const M = R.motivosNegativo || {}; const nome = { faltou: "faltou informação", errada: "informação errada", confusa: "não entendeu", outro: "outro" };
+        const it = Object.entries(M).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${n} ${nome[k] || k}`);
+        return it.length ? ` · 👎: ${it.join(", ")}` : "";
+      })()),
     ].join("");
 
     const max = Math.max(1, ...d.temas.map((t) => Math.max(t.atual, t.anterior)));

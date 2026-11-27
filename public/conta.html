@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex" />
+  <title>Meus pedidos — {{ASSISTENTE}}</title>
+  <link rel="icon" href="{{MARCA}}" />
+  <style>
+    :root { --ayio-navy: #192662; --ayio-teal: #14AD92; --ayio-teal-deep: #167D70; --t-claro: #E3F6F2; --borda: #E3E8F0; --suave: #5B6478; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #F4F6FA; color: #1B2236; font: 15.5px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    .topo { background: var(--ayio-grad, var(--ayio-navy)); color: #fff; padding: 20px 16px; }
+    .topo .in { max-width: 760px; margin: 0 auto; display: flex; gap: 14px; align-items: center; }
+    .topo img { width: 46px; height: 46px; object-fit: contain; background: #fff; border-radius: 12px; padding: 3px; }
+    .topo h1 { margin: 0; font-size: 21px; } .topo small { opacity: .85; }
+    .topo a { color: #fff; margin-left: auto; font-size: 14px; white-space: nowrap; }
+    main { max-width: 760px; margin: 0 auto; padding: 18px 16px 50px; }
+    .cartao { background: #fff; border: 1px solid var(--borda); border-radius: 14px; padding: 18px 20px; margin-bottom: 14px; }
+    h2 { font-size: 17px; color: var(--ayio-navy); margin: 0 0 8px; }
+    h3 { font-size: 15.5px; margin: 0; }
+    p { margin: 6px 0; }
+    label { display: block; font-weight: 600; font-size: 14px; margin: 12px 0 4px; }
+    input, textarea { width: 100%; font: inherit; padding: 11px 12px; border: 1px solid #C9D1DE; border-radius: 10px; background: #fff; color: inherit; }
+    input:focus, textarea:focus, .btn:focus-visible, a:focus-visible { outline: 3px solid var(--ayio-teal); outline-offset: 2px; }
+    .codigo { letter-spacing: .35em; font-size: 22px; text-align: center; max-width: 220px; }
+    .btn { cursor: pointer; border: 0; border-radius: 10px; font: 600 14.5px system-ui, sans-serif; padding: 11px 16px; background: var(--ayio-navy); color: #fff; }
+    .btn[disabled] { opacity: .6; cursor: default; }
+    .btn.sec { background: #EEF1F6; color: #1B2236; }
+    .acoes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; align-items: center; }
+    .linklike { background: none; border: 0; padding: 0; color: var(--ayio-teal-deep); text-decoration: underline; cursor: pointer; font: inherit; }
+    .suave { color: var(--suave); font-size: 14px; }
+    .msg { margin-top: 10px; padding: 10px 12px; border-radius: 10px; font-weight: 600; font-size: 14.5px; }
+    .msg.err { background: #FDECEC; color: #8A1C1C; } .msg.ok { background: #E3F6F2; color: #0E5A50; }
+    .hidden { display: none !important; }
+    .destaque { background: var(--t-claro); border-color: transparent; }
+    .pedido { padding: 0; overflow: hidden; }
+    .pedido summary { list-style: none; cursor: pointer; padding: 16px 20px; display: flex; gap: 12px; align-items: flex-start; }
+    .pedido summary::-webkit-details-marker { display: none; }
+    .pedido .corpo { border-top: 1px solid var(--borda); padding: 14px 20px 18px; }
+    .num { font-weight: 700; letter-spacing: .03em; }
+    .selo { display: inline-block; font-size: 12.5px; font-weight: 700; padding: 3px 9px; border-radius: 99px; background: #EEF1F6; color: #33405A; white-space: nowrap; }
+    .selo.voce { background: #FFF1D6; color: #7A4B00; } .selo.fim { background: var(--t-claro); color: #0E5A50; } .selo.cancel { background: #F1F1F1; color: #666; }
+    .linha { list-style: none; padding: 0; margin: 6px 0 0; border-left: 2px solid var(--borda); }
+    .linha li { position: relative; padding: 0 0 12px 16px; }
+    .linha li::before { content: ""; position: absolute; left: -6px; top: 6px; width: 10px; height: 10px; border-radius: 50%; background: var(--ayio-teal); }
+    .linha li.voce::before { background: var(--ayio-navy); }
+    .linha small { display: block; color: var(--suave); }
+    .linha .txt { white-space: pre-wrap; }
+    .arqs { list-style: none; padding: 0; margin: 6px 0 0; font-size: 14px; }
+    .jor { display: flex; gap: 10px; align-items: center; padding: 10px 0; border-top: 1px solid var(--borda); }
+    .jor:first-of-type { border-top: 0; }
+    .barra { height: 6px; background: #EEF1F6; border-radius: 6px; overflow: hidden; margin-top: 4px; }
+    .barra span { display: block; height: 100%; background: var(--ayio-teal); }
+    a { color: var(--ayio-teal-deep); }
+  </style>
+</head>
+<body>
+  <header class="topo"><div class="in"><img src="{{MARCA}}" alt="" /><div><h1>Meus pedidos</h1><small>{{ASSISTENTE}} · {{SIGLA}}</small></div><a href="/{{SLUG}}">Voltar ao assistente</a></div></header>
+  <main id="principal">
+    <div id="carregando" class="cartao" aria-live="polite">Carregando…</div>
+
+    <!-- Entrar com o WhatsApp -->
+    <section id="entrar" class="cartao hidden" aria-labelledby="t-entrar">
+      <h2 id="t-entrar">Entrar com o seu WhatsApp</h2>
+      <p class="suave">Sem senha: mandamos um código de 6 números para o WhatsApp que você usou no pedido.</p>
+      <form id="f-tel" novalidate>
+        <label for="tel">WhatsApp com DDD</label>
+        <input id="tel" type="tel" inputmode="tel" autocomplete="tel" placeholder="(91) 99999-9999" required />
+        <div class="acoes"><button class="btn" id="b-cod" type="submit">Receber código</button></div>
+      </form>
+      <form id="f-cod" class="hidden" novalidate>
+        <p id="enviado" aria-live="polite"></p>
+        <label for="cod">Código de 6 números</label>
+        <input id="cod" class="codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required />
+        <div class="acoes"><button class="btn" id="b-entrar" type="submit">Entrar</button><button class="linklike" type="button" id="b-outro">Usar outro número ou pedir outro código</button></div>
+      </form>
+      <div id="m-entrar" class="msg hidden" role="alert"></div>
+      <p class="suave" style="margin-top:14px">Ninguém do {{SIGLA}} pede este código. Não passe para outra pessoa.</p>
+    </section>
+
+    <!-- Consulta simples -->
+    <section id="consulta" class="cartao hidden" aria-labelledby="t-cons">
+      <h2 id="t-cons">Só quer ver a situação de um protocolo?</h2>
+      <form id="f-cons" novalidate>
+        <label for="c-prot">Número do protocolo</label>
+        <input id="c-prot" autocomplete="off" placeholder="{{UF}}-2026-000123" style="text-transform:uppercase" required />
+        <label for="c-tel">WhatsApp usado no pedido</label>
+        <input id="c-tel" type="tel" inputmode="tel" autocomplete="tel" placeholder="(91) 99999-9999" required />
+        <div class="acoes"><button class="btn sec" type="submit">Consultar</button></div>
+      </form>
+      <div id="r-cons" aria-live="polite"></div>
+    </section>
+
+    <!-- Logado -->
+    <section id="conta" class="hidden" aria-labelledby="t-conta">
+      <div class="cartao destaque">
+        <h2 id="t-conta">Seus pedidos no {{SIGLA}}</h2>
+        <p>Entrou com o WhatsApp <b id="fone"></b>. Os avisos de cada mudança continuam chegando lá.</p>
+        <div class="acoes"><button class="btn sec" id="b-atualizar" type="button">Atualizar</button><button class="linklike" id="b-sair" type="button">Sair</button><button class="linklike" id="b-sair-todos" type="button">Sair de todos os aparelhos</button></div>
+      </div>
+      <div id="lista"></div>
+      <div id="jornadas"></div>
+    </section>
+  </main>
+  <script src="/conta.js"></script>
+</body>
+</html>

@@ -4,7 +4,7 @@ const $ = (id) => document.getElementById(id);
 let filtro = "HUMANO", abertaId = null, meuId = null, timerLista = null, timerConv = null, ultimaQtd = -1;
 
 const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-const link = (s) => esc(s).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+const link = (s) => window.textoRico ? window.textoRico(s) : esc(s).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
 const hora = (v) => { const d = new Date(v); const hoje = new Date().toDateString() === d.toDateString(); return hoje ? d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) + " " + d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }); };
 const fone = (c) => { const d = String(c || ""); return d.length >= 12 ? `+${d.slice(0, 2)} (${d.slice(2, 4)}) ${d.slice(4, -4)}-${d.slice(-4)}` : d; };
 const api = (p, o) => Sessao.api("/atendimento" + p, o);
@@ -51,8 +51,9 @@ async function carregarLista() {
     const tags = c.status === "HUMANO"
       ? (!c.atendenteId ? '<span class="tag esp">sem atendente</span>' : c.atendenteId === meuId ? '<span class="tag meu">comigo</span>' : `<span class="tag out">${esc(c.atendenteNome || "")}</span>`)
       : "";
-    const quem = c.nome || fone(c.contato);
-    const ult = c.ultima ? `${c.ultima.autor === "CIDADAO" ? "" : c.ultima.autor === "BOT" ? "🤖 " : c.ultima.autor === "ATENDENTE" ? "Você/equipe: " : ""}${c.ultima.texto}` : "";
+    // Site: o "contato" é o código da sessão, não telefone (teste I13).
+    const quem = c.nome || (c.canal === "WEB" ? "Visitante do site" : fone(c.contato));
+    const ult = c.ultima ? `${c.ultima.autor === "CIDADAO" ? "" : c.ultima.autor === "BOT" ? "🤖 " : c.ultima.autor === "ATENDENTE" ? "Você/equipe: " : ""}${window.textoLimpo ? window.textoLimpo(c.ultima.texto) : c.ultima.texto}` : "";
     return `<div class="item ${c.id === abertaId ? "sel" : ""}" data-id="${esc(c.id)}">
       <div class="l1"><span>${c.aguardando ? "🔴 " : ""}${esc(quem)}</span><span class="hr">${hora(c.ultimaEm)}</span></div>
       <div class="l2">${tags}${c.canal === "WEB" ? '<span class="tag out">site</span>' : ""}${esc(ult)}</div></div>`;
